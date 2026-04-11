@@ -1,0 +1,11 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Twig</title>
+  <desc>Twig app icon — a git commit graph stylized as a tree twig</desc>
+  <rect width="256" height="256" rx="52" fill="#1a1b26"/>
+  <line x1="76" y1="207" x2="200" y2="47" stroke="#7aa2f7" stroke-width="16" stroke-linecap="round"/>
+  <line x1="138" y1="127" x2="60" y2="87" stroke="#9ece6a" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="76" cy="207" r="20" fill="#7aa2f7"/>
+  <circle cx="138" cy="127" r="17" fill="#7aa2f7"/>
+  <circle cx="200" cy="47" r="13" fill="#7aa2f7"/>
+  <circle cx="60" cy="87" r="13" fill="#9ece6a"/>
+</svg>
