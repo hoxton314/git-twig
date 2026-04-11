@@ -1,6 +1,7 @@
 mod commands;
 mod error;
 mod git;
+mod github;
 mod state;
 
 use state::AppState;
@@ -53,6 +54,14 @@ pub fn run() {
             commands::stash::stash_pop,
             commands::stash::stash_apply,
             commands::stash::stash_drop,
+            // GitHub
+            commands::github::github_validate_token,
+            commands::github::github_list_repos,
+            commands::github::github_clone_repo,
+            commands::github::github_create_repo,
+            commands::github::github_detect_remote,
+            commands::github::github_create_pull_request,
+            commands::github::github_list_branches,
             // Window
             commands::window::is_tiling_wm,
         ])

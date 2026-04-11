@@ -143,6 +143,8 @@ export interface AppSettings {
   external_merge_tool: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
+  // GitHub
+  github_token: string | null;
 }
 
 // ── Git Config ───────────────────────────────────────────────────

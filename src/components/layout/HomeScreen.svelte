@@ -1,10 +1,16 @@
 <script lang="ts">
-  import { FolderOpen, GitBranch, Clock } from "lucide-svelte";
+  import { FolderOpen, GitBranch, Clock, GitFork, Plus } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
+  import { currentView } from "../../lib/stores/ui";
+  import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
+  import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
+  import type { RepoInfo } from "../../lib/types/git";
 
   const repos = $derived([...$openRepos.entries()]);
+  let showCloneModal = $state(false);
+  let showCreateRepoModal = $state(false);
 
   async function handleOpenRepo() {
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
@@ -20,6 +26,16 @@
   function switchToRepo(path: string) {
     $activeRepoPath = path;
   }
+
+  function handleCloned(info: RepoInfo) {
+    addRepo(info);
+    $currentView = "repos";
+  }
+
+  function handleRepoCreated(info: RepoInfo) {
+    addRepo(info);
+    $currentView = "repos";
+  }
 </script>
 
 <div class="home-screen">
@@ -30,7 +46,28 @@
       <FolderOpen size={16} />
       Open Repository
     </button>
+    <div class="github-buttons">
+      <button class="github-button" onclick={() => (showCloneModal = true)}>
+        <GitFork size={15} />
+        Clone from GitHub
+      </button>
+      <button class="github-button" onclick={() => (showCreateRepoModal = true)}>
+        <Plus size={15} />
+        New GitHub Repo
+      </button>
+    </div>
   </div>
+
+  <CloneFromGitHub
+    open_={showCloneModal}
+    onclose={() => (showCloneModal = false)}
+    oncloned={handleCloned}
+  />
+  <CreateRepoOnGitHub
+    open_={showCreateRepoModal}
+    onclose={() => (showCreateRepoModal = false)}
+    oncreated={handleRepoCreated}
+  />
 
   {#if repos.length > 0}
     <div class="open-repos">
@@ -102,6 +139,32 @@
 
   .open-button:hover {
     background: rgba(122, 162, 247, 0.15);
+  }
+
+  .github-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .github-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .github-button:hover {
+    background: var(--color-surface-elevated);
+    border-color: var(--color-text-muted);
+    color: var(--color-text-primary);
   }
 
   .open-repos {

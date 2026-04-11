@@ -23,8 +23,20 @@ pub enum TwigError {
     #[error("Config error: {0}")]
     Config(String),
 
+    #[error("HTTP error: {0}")]
+    Http(String),
+
+    #[error("GitHub API error: {0}")]
+    GitHub(String),
+
     #[error("Lock error: failed to acquire state lock")]
     Lock,
+}
+
+impl From<reqwest::Error> for TwigError {
+    fn from(e: reqwest::Error) -> Self {
+        TwigError::Http(e.to_string())
+    }
 }
 
 // Tauri requires command errors to implement Serialize

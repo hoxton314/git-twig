@@ -13,8 +13,10 @@
     FileX,
     FilePen,
     Loader2,
+    GitPullRequest,
   } from "lucide-svelte";
   import StashPanel from "./StashPanel.svelte";
+  import CreatePullRequest from "../github/CreatePullRequest.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
   import {
     workingStatus,
@@ -39,6 +41,7 @@
   let loading = $state(false);
   let pushLoading = $state(false);
   let pullLoading = $state(false);
+  let showPrModal = $state(false);
 
   // Load working status when repo changes
   let lastLoadedPath: string | null = null;
@@ -213,6 +216,14 @@
       <span>Push</span>
     </button>
     <button
+      class="toolbar-btn"
+      onclick={() => (showPrModal = true)}
+      title="Create Pull Request"
+    >
+      <GitPullRequest size={14} />
+      <span>PR</span>
+    </button>
+    <button
       class="toolbar-btn icon-only"
       onclick={() => refreshStatus()}
       title="Refresh"
@@ -220,6 +231,14 @@
       <RefreshCw size={14} />
     </button>
   </div>
+
+  {#if repoPath}
+    <CreatePullRequest
+      open_={showPrModal}
+      onclose={() => (showPrModal = false)}
+      repoPath={repoPath}
+    />
+  {/if}
 
   <!-- Unstaged files -->
   <div class="file-section">

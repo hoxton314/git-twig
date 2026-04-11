@@ -1,16 +1,24 @@
 <script lang="ts">
-  import { X, Plus, GitBranch, House, Settings } from "lucide-svelte";
+  import { X, Plus, GitBranch, House, Settings, FolderOpen, GitFork } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath, removeRepo, addRepo } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
+  import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
+  import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
+  import type { RepoInfo } from "../../lib/types/git";
 
   const repos = $derived([...$openRepos.entries()]);
   const active = $derived($activeRepoPath);
   const view = $derived($currentView);
   const homeActive = $derived(active === null && view !== "settings");
 
+  let showMenu = $state(false);
+  let showCloneModal = $state(false);
+  let showCreateRepoModal = $state(false);
+
   async function handleOpenRepo() {
+    showMenu = false;
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
     if (!selected) return;
     try {
@@ -19,6 +27,16 @@
     } catch (err) {
       console.error("Failed to open repo:", err);
     }
+  }
+
+  function handleCloned(info: RepoInfo) {
+    addRepo(info);
+    $currentView = "repos";
+  }
+
+  function handleRepoCreated(info: RepoInfo) {
+    addRepo(info);
+    $currentView = "repos";
   }
 
   async function handleCloseTab(e: MouseEvent, path: string) {
@@ -77,9 +95,43 @@
     </div>
   {/each}
 
-  <button class="tab-new" onclick={handleOpenRepo} title="Open repository">
-    <Plus size={16} />
-  </button>
+  <div class="tab-new-wrapper">
+    <button
+      class="tab-new"
+      onclick={() => (showMenu = !showMenu)}
+      title="Add repository"
+    >
+      <Plus size={16} />
+    </button>
+    {#if showMenu}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="tab-menu" onmouseleave={() => (showMenu = false)}>
+        <button class="tab-menu-item" onclick={handleOpenRepo}>
+          <FolderOpen size={14} />
+          Open local...
+        </button>
+        <button class="tab-menu-item" onclick={() => { showMenu = false; showCloneModal = true; }}>
+          <GitFork size={14} />
+          Clone from GitHub...
+        </button>
+        <button class="tab-menu-item" onclick={() => { showMenu = false; showCreateRepoModal = true; }}>
+          <Plus size={14} />
+          New GitHub repo...
+        </button>
+      </div>
+    {/if}
+  </div>
+
+  <CloneFromGitHub
+    open_={showCloneModal}
+    onclose={() => (showCloneModal = false)}
+    oncloned={handleCloned}
+  />
+  <CreateRepoOnGitHub
+    open_={showCreateRepoModal}
+    onclose={() => (showCreateRepoModal = false)}
+    oncreated={handleRepoCreated}
+  />
 
   <div class="tab-spacer"></div>
 
@@ -191,6 +243,12 @@
     color: #f7768e;
   }
 
+  .tab-new-wrapper {
+    position: relative;
+    height: 100%;
+    -webkit-app-region: no-drag;
+  }
+
   .tab-new {
     display: flex;
     align-items: center;
@@ -207,6 +265,39 @@
   .tab-new:hover {
     color: var(--color-accent);
     background: var(--color-surface);
+  }
+
+  .tab-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    min-width: 200px;
+    padding: 4px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .tab-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+  }
+
+  .tab-menu-item:hover {
+    background: var(--color-surface-elevated);
   }
 
   .tab-spacer {

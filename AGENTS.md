@@ -40,6 +40,14 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |
 | `src-tauri/src/commands/stash.rs` | Stash operations: list, push, pop, apply, drop |
 | `src/components/staging/StashPanel.svelte` | Stash management UI (collapsible panel in staging area) |
+| `src-tauri/src/github.rs` | GitHub REST API client (types, HTTP calls, URL parsing) |
+| `src-tauri/src/commands/github.rs` | GitHub Tauri commands (validate, list, clone, create repo/PR) |
+| `src/lib/types/github.ts` | GitHub TypeScript interfaces |
+| `src/components/shared/Modal.svelte` | Reusable modal dialog component |
+| `src/components/github/CloneFromGitHub.svelte` | Clone from GitHub interactive repo list |
+| `src/components/github/CreateRepoOnGitHub.svelte` | Create new GitHub repository dialog |
+| `src/components/github/CreatePullRequest.svelte` | Create pull request dialog |
+| `src/components/settings/GitHubSettings.svelte` | GitHub PAT configuration in settings |
 
 ## Adding a New Feature
 
@@ -174,11 +182,11 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 ## V2 TODO
 
 - Authentication / credential manager
-- GitHub/GitLab API integration
+- ~~GitHub API integration~~ ✓ (clone from GitHub, create repo, create PR via PAT in Settings > GitHub)
 - SSH key management
 - Conflict resolution UI
 - Blame view
-- Git identity profiles (per-repo name/email switching)
+- ~~Git identity profiles~~ (use local git config directly, no extra abstraction needed)
 - ~~Light theme~~ ✓ (dark/light toggle in Appearance settings, `[data-theme="light"]` in `app.css`)
 - ~~Stash management UI~~ ✓ (list/push/pop/apply/drop via `StashPanel.svelte`, includes untracked files)
 - Interactive rebase UI

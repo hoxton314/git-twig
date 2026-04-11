@@ -51,6 +51,10 @@ pub struct AppSettings {
     /// Custom keybinding overrides: action_id -> shortcut string (e.g. "Ctrl+Enter")
     #[serde(default)]
     pub keybinding_overrides: HashMap<String, String>,
+
+    // ── GitHub ──────────────────────────────────────────────────────
+    #[serde(default)]
+    pub github_token: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -101,6 +105,7 @@ impl Default for AppSettings {
             external_diff_tool: None,
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
+            github_token: None,
         }
     }
 }

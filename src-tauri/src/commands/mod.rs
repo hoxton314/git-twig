@@ -1,6 +1,7 @@
 pub mod branches;
 pub mod diff;
 pub mod git_config;
+pub mod github;
 pub mod graph;
 pub mod repo;
 pub mod session;
