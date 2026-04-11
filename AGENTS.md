@@ -169,7 +169,7 @@ Global keybindings are managed by `src/lib/keybindings.ts`:
 
 Global actions (open repo, close tab, tab switching, settings, sidebar toggle, fetch/pull/push) are registered in `AppShell.svelte`. Component-specific actions (commit) are registered in their own component's `onMount`.
 
-## What NOT to Build (V1 Scope)
+## V2 TODO
 
 - Authentication / credential manager
 - GitHub/GitLab API integration
@@ -177,3 +177,8 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 - Conflict resolution UI
 - Blame view
 - Git identity profiles (per-repo name/email switching)
+- Light theme
+- Stash management UI
+- Interactive rebase UI
+- File history view
+- Submodule support
