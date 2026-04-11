@@ -107,8 +107,8 @@ pub async fn stash_push(
     message: Option<&str>,
 ) -> Result<GitOutput, TwigError> {
     match message {
-        Some(msg) => run_git(repo_path, &["stash", "push", "-m", msg]).await,
-        None => run_git(repo_path, &["stash", "push"]).await,
+        Some(msg) => run_git(repo_path, &["stash", "push", "--include-untracked", "-m", msg]).await,
+        None => run_git(repo_path, &["stash", "push", "--include-untracked"]).await,
     }
 }
 

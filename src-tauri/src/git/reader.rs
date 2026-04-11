@@ -480,6 +480,7 @@ pub fn read_unstaged_diff(
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
     opts.include_untracked(true);
+    opts.recurse_untracked_dirs(true);
     opts.show_untracked_content(true);
     if let Some(p) = file_path {
         opts.pathspec(p);
@@ -522,7 +523,7 @@ pub struct DiffLine {
 
 fn delta_status_str(delta: Delta) -> &'static str {
     match delta {
-        Delta::Added => "added",
+        Delta::Added | Delta::Untracked => "added",
         Delta::Deleted => "deleted",
         Delta::Modified => "modified",
         Delta::Renamed => "renamed",
@@ -615,6 +616,7 @@ pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> 
     let mut unstaged_opts = DiffOptions::new();
     unstaged_opts.context_lines(3);
     unstaged_opts.include_untracked(true);
+    unstaged_opts.recurse_untracked_dirs(true);
     unstaged_opts.show_untracked_content(true);
     let unstaged = repo.diff_index_to_workdir(None, Some(&mut unstaged_opts))?;
 
