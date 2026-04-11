@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { X, Plus, GitBranch } from "lucide-svelte";
+  import { X, Plus, GitBranch, House } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath, removeRepo, addRepo } from "../../lib/stores/repos";
   import * as tauri from "../../lib/tauri";
 
   const repos = $derived([...$openRepos.entries()]);
   const active = $derived($activeRepoPath);
+  const homeActive = $derived(active === null);
 
   async function handleOpenRepo() {
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
@@ -34,6 +35,15 @@
 </script>
 
 <div class="tab-bar">
+  <button
+    class="home-btn"
+    class:active={homeActive}
+    onclick={() => ($activeRepoPath = null)}
+    title="Home"
+  >
+    <House size={15} />
+  </button>
+
   {#each repos as [path, info]}
     <div
       class="tab"
@@ -75,6 +85,33 @@
     overflow-y: hidden;
     flex-shrink: 0;
     -webkit-app-region: drag;
+  }
+
+  .home-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--tab-height);
+    height: 100%;
+    border: none;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .home-btn:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+  }
+
+  .home-btn.active {
+    background: var(--color-surface-elevated);
+    color: var(--color-accent);
+    border-bottom: 2px solid var(--color-accent);
   }
 
   .tab {
