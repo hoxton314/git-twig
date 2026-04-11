@@ -14,6 +14,7 @@
     FilePen,
     Loader2,
   } from "lucide-svelte";
+  import StashPanel from "./StashPanel.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
   import {
     workingStatus,
@@ -333,6 +334,9 @@
       </div>
     {/if}
   </div>
+
+  <!-- Stash -->
+  <StashPanel />
 
   <!-- Commit box -->
   <div class="commit-box">

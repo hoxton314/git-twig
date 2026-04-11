@@ -28,8 +28,12 @@
         <span class="label-hint">Application color theme</span>
       </div>
       <div class="setting-control">
-        <select disabled>
-          <option>Dark</option>
+        <select
+          value={s.theme}
+          onchange={(e) => updateSettings({ theme: e.currentTarget.value as "dark" | "light" })}
+        >
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
         </select>
       </div>
     </div>

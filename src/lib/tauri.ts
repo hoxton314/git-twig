@@ -13,6 +13,7 @@ import type {
   Session,
   AppSettings,
   GitConfig,
+  StashEntry,
 } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
@@ -202,6 +203,40 @@ export function pull(
     remote: remote ?? null,
     branch: branch ?? null,
   });
+}
+
+// ── Stash ────────────────────────────────────────────────────
+
+export function stashList(path: string): Promise<StashEntry[]> {
+  return invoke<StashEntry[]>("stash_list", { path });
+}
+
+export function stashPush(
+  path: string,
+  message?: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_push", {
+    path,
+    message: message ?? null,
+  });
+}
+
+export function stashPop(path: string, index: number): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_pop", { path, index });
+}
+
+export function stashApply(
+  path: string,
+  index: number
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_apply", { path, index });
+}
+
+export function stashDrop(
+  path: string,
+  index: number
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_drop", { path, index });
 }
 
 // ── Settings ─────────────────────────────────────────────────────────

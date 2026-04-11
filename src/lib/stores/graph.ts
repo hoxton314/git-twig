@@ -4,6 +4,7 @@ import type {
   BranchInfo,
   DiffFile,
   WorkingStatus,
+  StashEntry,
 } from "../types/git";
 import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
@@ -42,6 +43,23 @@ export const selectedWorkingFile = writable<{
 
 /** Diff for the selected working directory file. */
 export const workingFileDiff = writable<DiffFile[]>([]);
+
+// ── Stash ────────────────────────────────────────────────────────────
+
+/** Stash entries for the active repo. */
+export const stashEntries = writable<StashEntry[]>([]);
+
+/** Refresh stash list for the active repo. */
+export async function refreshStash(path?: string) {
+  const p = path ?? get(activeRepoPath);
+  if (!p) return;
+  try {
+    const entries = await tauri.stashList(p);
+    stashEntries.set(entries);
+  } catch {
+    stashEntries.set([]);
+  }
+}
 
 // ── Refresh helpers ──────────────────────────────────────────────────
 
@@ -103,16 +121,18 @@ export async function refreshAll(path?: string) {
   if (!p) return;
   graphLoading.set(true);
   try {
-    const [graph, branchList, info, status] = await Promise.all([
+    const [graph, branchList, info, status, stash] = await Promise.all([
       tauri.getCommitGraph(p, 5000),
       tauri.getBranches(p),
       tauri.getRepoInfo(p),
       tauri.getWorkingStatus(p),
+      tauri.stashList(p),
     ]);
     commitGraph.set(graph);
     branches.set(branchList);
     updateRepo(info);
     workingStatus.set(status);
+    stashEntries.set(stash);
     await resyncSelectedFile(p, status);
   } catch (err) {
     console.error("Failed to refresh:", err);

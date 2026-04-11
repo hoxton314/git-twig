@@ -47,6 +47,12 @@ pub fn run() {
             // Git config
             commands::git_config::get_git_config,
             commands::git_config::set_git_config,
+            // Stash
+            commands::stash::stash_list,
+            commands::stash::stash_push,
+            commands::stash::stash_pop,
+            commands::stash::stash_apply,
+            commands::stash::stash_drop,
             // Window
             commands::window::is_tiling_wm,
         ])

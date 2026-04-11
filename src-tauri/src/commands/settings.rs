@@ -22,6 +22,8 @@ pub struct AppSettings {
     pub restore_tabs_on_startup: bool,
 
     // ── Appearance ───────────────────────────────────────────────────
+    #[serde(default = "default_theme")]
+    pub theme: String,
     #[serde(default = "default_accent_color")]
     pub accent_color: String,
     #[serde(default = "default_font_size")]
@@ -60,6 +62,9 @@ fn default_auto_fetch_interval() -> u32 {
 fn default_max_commits() -> u32 {
     5000
 }
+fn default_theme() -> String {
+    "dark".to_string()
+}
 fn default_accent_color() -> String {
     "#7aa2f7".to_string()
 }
@@ -84,6 +89,7 @@ impl Default for AppSettings {
             max_commits: default_max_commits(),
             confirm_destructive_ops: true,
             restore_tabs_on_startup: true,
+            theme: default_theme(),
             accent_color: default_accent_color(),
             font_size: default_font_size(),
             diff_font_size: default_font_size(),

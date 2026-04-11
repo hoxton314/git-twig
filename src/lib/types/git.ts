@@ -110,6 +110,15 @@ export interface Session {
   diff_panel_ratio: number | null;
 }
 
+// ── Stash ────────────────────────────────────────────────────────────
+
+export interface StashEntry {
+  index: number;
+  reference: string;
+  message: string;
+  timestamp: string;
+}
+
 // ── App Settings ─────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -120,6 +129,7 @@ export interface AppSettings {
   confirm_destructive_ops: boolean;
   restore_tabs_on_startup: boolean;
   // Appearance
+  theme: "dark" | "light";
   accent_color: string;
   font_size: number;
   diff_font_size: number;

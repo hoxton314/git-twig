@@ -9,6 +9,7 @@ const defaults: AppSettings = {
   max_commits: 5000,
   confirm_destructive_ops: true,
   restore_tabs_on_startup: true,
+  theme: "dark",
   accent_color: "#7aa2f7",
   font_size: 13,
   diff_font_size: 13,
@@ -52,6 +53,7 @@ function persistSettings() {
 /** Apply visual settings to CSS custom properties. */
 function applyVisualSettings(s: AppSettings) {
   const root = document.documentElement;
+  root.setAttribute("data-theme", s.theme);
   root.style.setProperty("--color-accent", s.accent_color);
   root.style.setProperty("font-size", `${s.font_size}px`);
   root.style.setProperty("--diff-font-size", `${s.diff_font_size}px`);
