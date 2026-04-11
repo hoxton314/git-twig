@@ -135,6 +135,50 @@ pub async fn create_commit(
     })
 }
 
+/// Discard unstaged changes. Tracked files are restored, untracked files are deleted.
+#[tauri::command]
+pub async fn discard_files(
+    state: State<'_, AppState>,
+    path: String,
+    tracked: Vec<String>,
+    untracked: Vec<String>,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = {
+        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        let open = repos
+            .get(&path)
+            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+        open.path.clone()
+    };
+
+    if !tracked.is_empty() {
+        let refs: Vec<&str> = tracked.iter().map(|s| s.as_str()).collect();
+        let output = writer::restore_files(&repo_path, &refs).await?;
+        if !output.success {
+            return Ok(CommandResult {
+                success: false,
+                message: output.stderr,
+            });
+        }
+    }
+
+    if !untracked.is_empty() {
+        let refs: Vec<&str> = untracked.iter().map(|s| s.as_str()).collect();
+        let output = writer::clean_files(&repo_path, &refs).await?;
+        if !output.success {
+            return Ok(CommandResult {
+                success: false,
+                message: output.stderr,
+            });
+        }
+    }
+
+    Ok(CommandResult {
+        success: true,
+        message: String::new(),
+    })
+}
+
 /// Pull from remote, auto-stashing uncommitted changes if present.
 #[tauri::command]
 pub async fn pull(

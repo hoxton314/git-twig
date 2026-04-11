@@ -14,6 +14,7 @@
     FilePen,
     Loader2,
     GitPullRequest,
+    Trash2,
   } from "lucide-svelte";
   import StashPanel from "./StashPanel.svelte";
   import CreatePullRequest from "../github/CreatePullRequest.svelte";
@@ -30,7 +31,7 @@
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
   import { onMount } from "svelte";
-  import { message } from "@tauri-apps/plugin-dialog";
+  import { message, ask } from "@tauri-apps/plugin-dialog";
 
   const repoPath = $derived($activeRepoPath);
   const status = $derived($workingStatus);
@@ -96,6 +97,28 @@
     if (!repoPath || status.staged.length === 0) return;
     const paths = status.staged.map((f) => f.path);
     await tauri.unstageFiles(repoPath, paths);
+    await refreshStatus();
+  }
+
+  async function discardFile(e: MouseEvent, file: FileStatus) {
+    e.stopPropagation();
+    if (!repoPath) return;
+    const tracked = file.is_new ? [] : [file.path];
+    const untracked = file.is_new ? [file.path] : [];
+    await tauri.discardFiles(repoPath, tracked, untracked);
+    await refreshStatus();
+  }
+
+  async function discardAll() {
+    if (!repoPath || status.unstaged.length === 0) return;
+    const ok = await ask("Discard all unstaged changes? This cannot be undone.", {
+      title: "Discard Changes",
+      kind: "warning",
+    });
+    if (!ok) return;
+    const tracked = status.unstaged.filter((f) => !f.is_new).map((f) => f.path);
+    const untracked = status.unstaged.filter((f) => f.is_new).map((f) => f.path);
+    await tauri.discardFiles(repoPath, tracked, untracked);
     await refreshStatus();
   }
 
@@ -261,6 +284,13 @@
       {#if status.unstaged.length > 0}
         <button
           class="stage-all-btn"
+          onclick={(e) => { e.stopPropagation(); discardAll(); }}
+          title="Discard all changes"
+        >
+          <Trash2 size={12} />
+        </button>
+        <button
+          class="stage-all-btn"
           onclick={(e) => { e.stopPropagation(); stageAll(); }}
           title="Stage all"
         >
@@ -283,6 +313,13 @@
           >
             <Icon size={13} color={statusColor(file.status)} />
             <span class="file-name" title={file.path}>{file.path}</span>
+            <button
+              class="action-btn discard-btn"
+              onclick={(e) => discardFile(e, file)}
+              title="Discard changes"
+            >
+              <Trash2 size={12} />
+            </button>
             <button
               class="action-btn stage-btn"
               onclick={(e) => stageFile(e, file)}
@@ -550,7 +587,8 @@
     color: var(--color-diff-add-text);
   }
 
-  .unstage-btn:hover {
+  .unstage-btn:hover,
+  .discard-btn:hover {
     background: rgba(247, 118, 142, 0.2);
     color: var(--color-diff-del-text);
   }

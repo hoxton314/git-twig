@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FolderOpen, GitBranch, Clock, GitFork, Plus } from "lucide-svelte";
+  import { FolderOpen, GitBranch, GitFork, Plus } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";

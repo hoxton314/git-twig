@@ -200,6 +200,14 @@ export function unstageFiles(
   return invoke<CommandResult>("unstage_files", { path, files });
 }
 
+export function discardFiles(
+  path: string,
+  tracked: string[],
+  untracked: string[]
+): Promise<CommandResult> {
+  return invoke<CommandResult>("discard_files", { path, tracked, untracked });
+}
+
 export function createCommit(
   path: string,
   message: string

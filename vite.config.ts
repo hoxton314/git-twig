@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [tailwindcss(), svelte()],
+  plugins: [svelte(), tailwindcss()],
   clearScreen: false,
   server: {
     port: 5173,
