@@ -308,8 +308,6 @@ pub struct BranchInfo {
 pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
     let mut branches = Vec::new();
 
-    let head_oid = repo.head().ok().and_then(|h| h.target());
-
     for branch_type in &[BranchType::Local, BranchType::Remote] {
         for branch_result in repo.branches(Some(*branch_type))? {
             let (branch, btype) = branch_result?;
