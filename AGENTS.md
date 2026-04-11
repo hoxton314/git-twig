@@ -38,6 +38,8 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging |
 | `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |
+| `src-tauri/src/commands/stash.rs` | Stash operations: list, push, pop, apply, drop |
+| `src/components/staging/StashPanel.svelte` | Stash management UI (collapsible panel in staging area) |
 
 ## Adding a New Feature
 
@@ -145,14 +147,14 @@ Settings are stored separately from session state:
 
 Both JSON files live in Tauri's `app_data_dir`. Settings auto-persist with a 300ms debounce on any change.
 
-Visual settings (accent color, font sizes) are applied as CSS custom properties on `document.documentElement` via `applyVisualSettings()` in the settings store subscription.
+Visual settings (accent color, font sizes, theme) are applied as CSS custom properties on `document.documentElement` via `applyVisualSettings()` in the settings store subscription. Theme switching sets `data-theme="light"` or `data-theme="dark"` on the root element; light theme colors are defined in `app.css` under the `[data-theme="light"]` selector.
 
 ### Settings Screen Sections
 
 | Section | Component | What it controls |
 |---------|-----------|------------------|
 | General | `GeneralSettings.svelte` | Default repo dir, auto-fetch interval, max commits, confirmations |
-| Appearance | `AppearanceSettings.svelte` | Accent color, interface/diff font sizes |
+| Appearance | `AppearanceSettings.svelte` | Theme (dark/light), accent color, interface/diff font sizes |
 | Editor & Diff | `EditorDiffSettings.svelte` | Diff view mode, tab size, context lines, whitespace, word wrap, external tools |
 | Git Configuration | `GitConfigSettings.svelte` | user.name/email, pull strategy, fetch.prune, GPG signing, LFS status |
 | Keybindings | `KeybindingsSettings.svelte` | View/rebind all keyboard shortcuts, reset to defaults |
@@ -177,8 +179,8 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 - Conflict resolution UI
 - Blame view
 - Git identity profiles (per-repo name/email switching)
-- Light theme
-- Stash management UI
+- ~~Light theme~~ ✓ (dark/light toggle in Appearance settings, `[data-theme="light"]` in `app.css`)
+- ~~Stash management UI~~ ✓ (list/push/pop/apply/drop via `StashPanel.svelte`, includes untracked files)
 - Interactive rebase UI
 - File history view
 - Submodule support
