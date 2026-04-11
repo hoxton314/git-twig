@@ -257,6 +257,122 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
     Ok(branches)
 }
 
+// ── Working directory status ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FileStatus {
+    pub path: String,
+    pub status: String,
+    pub is_new: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkingStatus {
+    pub staged: Vec<FileStatus>,
+    pub unstaged: Vec<FileStatus>,
+}
+
+/// Read the working directory status, split into staged and unstaged files.
+pub fn read_working_status(repo: &Repository) -> Result<WorkingStatus, TwigError> {
+    let mut staged = Vec::new();
+    let mut unstaged = Vec::new();
+
+    let statuses = repo.statuses(Some(
+        git2::StatusOptions::new()
+            .include_untracked(true)
+            .renames_head_to_index(true)
+            .renames_index_to_workdir(true),
+    ))?;
+
+    for entry in statuses.iter() {
+        let path = entry.path().unwrap_or("").to_string();
+        let s = entry.status();
+
+        // Staged (index) changes
+        if s.intersects(
+            git2::Status::INDEX_NEW
+                | git2::Status::INDEX_MODIFIED
+                | git2::Status::INDEX_DELETED
+                | git2::Status::INDEX_RENAMED
+                | git2::Status::INDEX_TYPECHANGE,
+        ) {
+            let status = if s.contains(git2::Status::INDEX_NEW) {
+                "added"
+            } else if s.contains(git2::Status::INDEX_DELETED) {
+                "deleted"
+            } else if s.contains(git2::Status::INDEX_RENAMED) {
+                "renamed"
+            } else {
+                "modified"
+            };
+            staged.push(FileStatus {
+                path: path.clone(),
+                status: status.to_string(),
+                is_new: s.contains(git2::Status::INDEX_NEW),
+            });
+        }
+
+        // Unstaged (workdir) changes
+        if s.intersects(
+            git2::Status::WT_NEW
+                | git2::Status::WT_MODIFIED
+                | git2::Status::WT_DELETED
+                | git2::Status::WT_RENAMED
+                | git2::Status::WT_TYPECHANGE,
+        ) {
+            let status = if s.contains(git2::Status::WT_NEW) {
+                "untracked"
+            } else if s.contains(git2::Status::WT_DELETED) {
+                "deleted"
+            } else if s.contains(git2::Status::WT_RENAMED) {
+                "renamed"
+            } else {
+                "modified"
+            };
+            unstaged.push(FileStatus {
+                path,
+                status: status.to_string(),
+                is_new: s.contains(git2::Status::WT_NEW),
+            });
+        }
+    }
+
+    Ok(WorkingStatus { staged, unstaged })
+}
+
+/// Get the staged diff (index vs HEAD) for a single file or all files.
+pub fn read_staged_diff(
+    repo: &Repository,
+    file_path: Option<&str>,
+) -> Result<Vec<DiffFile>, TwigError> {
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+
+    let mut opts = DiffOptions::new();
+    opts.context_lines(3);
+    if let Some(p) = file_path {
+        opts.pathspec(p);
+    }
+
+    let diff = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
+    parse_diff(&diff)
+}
+
+/// Get the unstaged diff (workdir vs index) for a single file or all files.
+pub fn read_unstaged_diff(
+    repo: &Repository,
+    file_path: Option<&str>,
+) -> Result<Vec<DiffFile>, TwigError> {
+    let mut opts = DiffOptions::new();
+    opts.context_lines(3);
+    opts.include_untracked(true);
+    if let Some(p) = file_path {
+        opts.pathspec(p);
+    }
+
+    let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
+    parse_diff(&diff)
+}
+
 // ── Diffs ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -347,34 +463,29 @@ pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile
 
     let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
 
-    parse_diff(&diff, repo)
+    parse_diff(&diff)
 }
 
-/// Get the diff of the working directory against HEAD.
+/// Get the combined diff of the working directory against HEAD (staged + unstaged).
 pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> {
-    let head_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
     opts.include_untracked(true);
 
-    // Staged changes
     let staged = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
-    // Unstaged changes
     let mut unstaged_opts = DiffOptions::new();
     unstaged_opts.context_lines(3);
     let unstaged = repo.diff_index_to_workdir(None, Some(&mut unstaged_opts))?;
 
-    let mut files = parse_diff(&staged, repo)?;
-    files.extend(parse_diff(&unstaged, repo)?);
+    let mut files = parse_diff(&staged)?;
+    files.extend(parse_diff(&unstaged)?);
 
     Ok(files)
 }
 
-fn parse_diff(diff: &Diff, _repo: &Repository) -> Result<Vec<DiffFile>, TwigError> {
+fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
     let mut files: Vec<DiffFile> = Vec::new();
 
     let num_deltas = diff.deltas().len();

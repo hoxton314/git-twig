@@ -3,8 +3,9 @@
   import Sidebar from "./Sidebar.svelte";
   import CommitGraph from "../graph/CommitGraph.svelte";
   import DiffViewer from "../diff/DiffViewer.svelte";
+  import StagingArea from "../staging/StagingArea.svelte";
   import { activeRepo } from "../../lib/stores/repos";
-  import { selectedCommitOid } from "../../lib/stores/graph";
+  import { selectedCommitOid, selectedWorkingFile, workingFileDiff } from "../../lib/stores/graph";
   import { diffPanelRatio } from "../../lib/stores/ui";
   import { FolderOpen } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -13,7 +14,16 @@
 
   const repo = $derived($activeRepo);
   const hasSelectedCommit = $derived($selectedCommitOid !== null);
+  const hasSelectedWorkingFile = $derived($selectedWorkingFile !== null);
+  const showDiff = $derived(hasSelectedCommit || hasSelectedWorkingFile);
   const panelRatio = $derived($diffPanelRatio);
+
+  // Clear working file selection when commit is selected, and vice versa
+  $effect(() => {
+    if ($selectedCommitOid !== null) {
+      $selectedWorkingFile = null;
+    }
+  });
 
   async function handleOpenRepo() {
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
@@ -36,17 +46,20 @@
       <main class="main-area">
         <div
           class="graph-panel"
-          style="flex: {hasSelectedCommit ? 1 - panelRatio : 1}"
+          style="flex: {showDiff ? 1 - panelRatio : 1}"
         >
           <CommitGraph />
         </div>
-        {#if hasSelectedCommit}
+        {#if showDiff}
           <div class="panel-divider"></div>
           <div class="diff-panel" style="flex: {panelRatio}">
             <DiffViewer />
           </div>
         {/if}
       </main>
+      <aside class="staging-panel">
+        <StagingArea />
+      </aside>
     </div>
   {:else}
     <div class="empty-state">
@@ -104,6 +117,15 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+  }
+
+  .staging-panel {
+    width: 300px;
+    min-width: 240px;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-surface);
+    overflow: hidden;
+    flex-shrink: 0;
   }
 
   .empty-state {

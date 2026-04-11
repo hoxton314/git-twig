@@ -30,6 +30,14 @@ pub fn run() {
             // Diffs
             commands::diff::get_commit_diff,
             commands::diff::get_working_diff,
+            // Staging & working directory
+            commands::staging::get_working_status,
+            commands::staging::get_staged_diff,
+            commands::staging::get_unstaged_diff,
+            commands::staging::stage_files,
+            commands::staging::unstage_files,
+            commands::staging::create_commit,
+            commands::staging::pull,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

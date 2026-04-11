@@ -9,6 +9,7 @@ import type {
   BranchInfo,
   DiffFile,
   CommandResult,
+  WorkingStatus,
 } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
@@ -111,4 +112,63 @@ export function getCommitDiff(
 
 export function getWorkingDiff(path: string): Promise<DiffFile[]> {
   return invoke<DiffFile[]>("get_working_diff", { path });
+}
+
+// ── Staging & working directory ───────────────────────────────────────
+
+export function getWorkingStatus(path: string): Promise<WorkingStatus> {
+  return invoke<WorkingStatus>("get_working_status", { path });
+}
+
+export function getStagedDiff(
+  path: string,
+  filePath?: string
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_staged_diff", {
+    path,
+    filePath: filePath ?? null,
+  });
+}
+
+export function getUnstagedDiff(
+  path: string,
+  filePath?: string
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_unstaged_diff", {
+    path,
+    filePath: filePath ?? null,
+  });
+}
+
+export function stageFiles(
+  path: string,
+  files: string[]
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stage_files", { path, files });
+}
+
+export function unstageFiles(
+  path: string,
+  files: string[]
+): Promise<CommandResult> {
+  return invoke<CommandResult>("unstage_files", { path, files });
+}
+
+export function createCommit(
+  path: string,
+  message: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("create_commit", { path, message });
+}
+
+export function pull(
+  path: string,
+  remote?: string,
+  branch?: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("pull", {
+    path,
+    remote: remote ?? null,
+    branch: branch ?? null,
+  });
 }

@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { selectedCommitOid, selectedDiff, diffLoading } from "../../lib/stores/graph";
+  import {
+    selectedCommitOid,
+    selectedDiff,
+    diffLoading,
+    selectedWorkingFile,
+    workingFileDiff,
+  } from "../../lib/stores/graph";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { diffViewMode } from "../../lib/stores/ui";
   import * as tauri from "../../lib/tauri";
@@ -9,9 +15,15 @@
 
   const repoPath = $derived($activeRepoPath);
   const commitOid = $derived($selectedCommitOid);
-  const diff = $derived($selectedDiff);
+  const commitDiff = $derived($selectedDiff);
+  const workingFile = $derived($selectedWorkingFile);
+  const workingDiff = $derived($workingFileDiff);
   const loading = $derived($diffLoading);
   const viewMode = $derived($diffViewMode);
+
+  // Show working file diff when a working file is selected, otherwise commit diff
+  const isWorkingMode = $derived(workingFile !== null);
+  const diff = $derived(isWorkingMode ? workingDiff : commitDiff);
 
   let expandedFiles = $state<Set<string>>(new Set());
 
@@ -26,13 +38,19 @@
     }
   });
 
+  // Auto-expand when working file diff loads
+  $effect(() => {
+    if (isWorkingMode && workingDiff.length > 0) {
+      expandedFiles = new Set(workingDiff.map(fileKey));
+    }
+  });
+
   async function loadDiff(path: string, oid: string) {
     $diffLoading = true;
     expandedFiles = new Set();
     try {
       const result = await tauri.getCommitDiff(path, oid);
       $selectedDiff = result;
-      // Auto-expand first file
       if (result.length > 0) {
         expandedFiles = new Set([fileKey(result[0])]);
       }
@@ -61,11 +79,17 @@
 
   function statusBadgeClass(status: string): string {
     switch (status) {
-      case "added": return "badge-added";
-      case "deleted": return "badge-deleted";
-      case "modified": return "badge-modified";
-      case "renamed": return "badge-renamed";
-      default: return "";
+      case "added":
+      case "untracked":
+        return "badge-added";
+      case "deleted":
+        return "badge-deleted";
+      case "modified":
+        return "badge-modified";
+      case "renamed":
+        return "badge-renamed";
+      default:
+        return "";
     }
   }
 
@@ -77,7 +101,10 @@
 <div class="diff-viewer">
   <div class="diff-header">
     <span class="diff-title">
-      {#if commitOid}
+      {#if isWorkingMode && workingFile}
+        <span class="label">{workingFile.area === "staged" ? "Staged" : "Unstaged"}</span>
+        — {workingFile.path}
+      {:else if commitOid}
         <span class="oid">{commitOid?.slice(0, 7)}</span>
         — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
       {/if}
@@ -136,6 +163,8 @@
                   <Binary size={16} />
                   Binary file
                 </div>
+              {:else if file.hunks.length === 0}
+                <div class="binary-notice">New file (empty diff)</div>
               {:else}
                 {#each file.hunks as hunk, hi (hi)}
                   <DiffHunk {hunk} mode={viewMode} />
@@ -145,6 +174,9 @@
           {/if}
         </div>
       {/each}
+      {#if diff.length === 0 && !loading}
+        <div class="empty-diff">No changes to display</div>
+      {/if}
     {/if}
   </div>
 </div>
@@ -170,6 +202,9 @@
   .diff-title {
     font-size: 12px;
     color: var(--color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .oid {
@@ -177,9 +212,15 @@
     color: var(--color-accent);
   }
 
+  .label {
+    color: var(--color-accent-secondary);
+    font-weight: 500;
+  }
+
   .view-toggle {
     display: flex;
     gap: 2px;
+    flex-shrink: 0;
   }
 
   .toggle-btn {
@@ -207,7 +248,8 @@
     overflow-y: auto;
   }
 
-  .loading {
+  .loading,
+  .empty-diff {
     display: flex;
     align-items: center;
     gap: 8px;

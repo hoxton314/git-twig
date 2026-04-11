@@ -78,6 +78,19 @@ export interface DiffLine {
   content: string;
 }
 
+// ── Working directory status ──────────────────────────────────────────
+
+export interface FileStatus {
+  path: string;
+  status: string;
+  is_new: boolean;
+}
+
+export interface WorkingStatus {
+  staged: FileStatus[];
+  unstaged: FileStatus[];
+}
+
 // ── Command results ───────────────────────────────────────────────────
 
 export interface CommandResult {
