@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     GitBranch,
+    GitMerge,
     Globe,
     Check,
     Plus,
@@ -12,9 +13,10 @@
     ArrowDown,
   } from "lucide-svelte";
   import { activeRepoPath, updateRepo } from "../../lib/stores/repos";
-  import { branches, commitGraph, graphLoading } from "../../lib/stores/graph";
+  import { branches, commitGraph, graphLoading, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import type { BranchInfo } from "../../lib/types/git";
+  import Modal from "../shared/Modal.svelte";
 
   const repoPath = $derived($activeRepoPath);
   const allBranches = $derived($branches);
@@ -22,11 +24,26 @@
   const localBranches = $derived(allBranches.filter((b) => !b.is_remote));
   const remoteBranches = $derived(allBranches.filter((b) => b.is_remote));
 
+  const currentBranch = $derived(localBranches.find((b) => b.is_head) ?? null);
+  const defaultBranch = $derived(
+    localBranches.find((b) => b.name === "main")?.name ??
+    localBranches.find((b) => b.name === "master")?.name ??
+    null
+  );
+
   let localExpanded = $state(true);
   let remoteExpanded = $state(true);
   let newBranchName = $state("");
   let showCreateInput = $state(false);
   let loading = $state(false);
+
+  // Drag-and-drop state
+  let dragSource = $state<string | null>(null);
+  let dragTarget = $state<string | null>(null);
+
+  // Merge dialog state
+  let mergeDialog = $state<{ source: string; target: string; targetIsHead: boolean } | null>(null);
+  let merging = $state(false);
 
   // Load branches when repo changes
   let lastLoadedPath: string | null = null;
@@ -131,6 +148,90 @@
       newBranchName = "";
     }
   }
+
+  // ── Merge default branch into current ─────────────────────────────────
+
+  function handleMergeDefault(e: MouseEvent) {
+    e.stopPropagation();
+    if (!defaultBranch || !currentBranch) return;
+    mergeDialog = {
+      source: defaultBranch,
+      target: currentBranch.name,
+      targetIsHead: true,
+    };
+  }
+
+  // ── Drag and drop ─────────────────────────────────────────────────────
+
+  function handleDragStart(e: DragEvent, branch: BranchInfo) {
+    if (!e.dataTransfer) return;
+    dragSource = branch.name;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", branch.name);
+  }
+
+  function handleDragOver(e: DragEvent, branch: BranchInfo) {
+    if (!dragSource || dragSource === branch.name || branch.is_remote) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dragTarget = branch.name;
+  }
+
+  function handleDragLeave() {
+    dragTarget = null;
+  }
+
+  function handleDrop(e: DragEvent, branch: BranchInfo) {
+    e.preventDefault();
+    if (!dragSource || dragSource === branch.name || branch.is_remote) return;
+
+    mergeDialog = {
+      source: dragSource,
+      target: branch.name,
+      targetIsHead: branch.is_head,
+    };
+
+    dragSource = null;
+    dragTarget = null;
+  }
+
+  function handleDragEnd() {
+    dragSource = null;
+    dragTarget = null;
+  }
+
+  // ── Execute merge ─────────────────────────────────────────────────────
+
+  async function executeMerge() {
+    if (!repoPath || !mergeDialog) return;
+    const { source, target, targetIsHead } = mergeDialog;
+    merging = true;
+
+    try {
+      // Checkout target first if it's not the current HEAD
+      if (!targetIsHead) {
+        const checkout = await tauri.checkoutBranch(repoPath, target);
+        if (!checkout.success) {
+          console.error("Checkout failed:", checkout.message);
+          merging = false;
+          return;
+        }
+      }
+
+      const result = await tauri.mergeBranch(repoPath, source);
+      mergeDialog = null;
+
+      if (!result.success) {
+        console.error("Merge failed:", result.message);
+      }
+
+      await refreshAll(repoPath);
+    } catch (err) {
+      console.error("Merge error:", err);
+    } finally {
+      merging = false;
+    }
+  }
 </script>
 
 <div class="branch-list">
@@ -174,6 +275,14 @@
       <div
         class="branch-item"
         class:active={branch.is_head}
+        class:drag-over={dragTarget === branch.name}
+        class:dragging={dragSource === branch.name}
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, branch)}
+        ondragover={(e) => handleDragOver(e, branch)}
+        ondragleave={() => handleDragLeave()}
+        ondrop={(e) => handleDrop(e, branch)}
+        ondragend={() => handleDragEnd()}
         onclick={() => handleCheckout(branch)}
         onkeydown={(e) => e.key === "Enter" && handleCheckout(branch)}
         role="button"
@@ -199,6 +308,15 @@
               </span>
             {/if}
           </span>
+        {/if}
+        {#if branch.is_head && defaultBranch && branch.name !== defaultBranch}
+          <button
+            class="merge-btn"
+            onclick={(e) => handleMergeDefault(e)}
+            title="Merge {defaultBranch} into {branch.name}"
+          >
+            <GitMerge size={12} />
+          </button>
         {/if}
         {#if !branch.is_head}
           <button
@@ -229,6 +347,9 @@
     {#each remoteBranches as branch (branch.name)}
       <button
         class="branch-item remote"
+        draggable="true"
+        ondragstart={(e) => handleDragStart(e, branch)}
+        ondragend={() => handleDragEnd()}
         onclick={() => handleCheckout(branch)}
         title="{branch.name} — {branch.last_commit_summary}"
       >
@@ -238,6 +359,28 @@
     {/each}
   {/if}
 </div>
+
+<!-- Merge confirmation modal -->
+<Modal open={!!mergeDialog} title="Merge Branch" onclose={() => (mergeDialog = null)} width="360px">
+  {#if mergeDialog}
+    <div class="merge-dialog">
+      <p class="merge-desc">
+        Merge <strong>{mergeDialog.source}</strong> into <strong>{mergeDialog.target}</strong>?
+      </p>
+      {#if !mergeDialog.targetIsHead}
+        <p class="merge-warning">This will checkout <strong>{mergeDialog.target}</strong> first.</p>
+      {/if}
+      <div class="merge-actions">
+        <button class="btn-merge" onclick={executeMerge} disabled={merging}>
+          {#if merging}Merging...{:else}Merge{/if}
+        </button>
+        <button class="btn-cancel" onclick={() => (mergeDialog = null)} disabled={merging}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  {/if}
+</Modal>
 
 <style>
   .branch-list {
@@ -358,6 +501,16 @@
     color: var(--color-text-muted);
   }
 
+  .branch-item.drag-over {
+    background: rgba(122, 162, 247, 0.15);
+    outline: 1px dashed var(--color-accent);
+    outline-offset: -1px;
+  }
+
+  .branch-item.dragging {
+    opacity: 0.4;
+  }
+
   .branch-item :global(.head-icon) {
     color: var(--color-accent);
     flex-shrink: 0;
@@ -408,7 +561,8 @@
     background: rgba(122, 162, 247, 0.15);
   }
 
-  .delete-btn {
+  .delete-btn,
+  .merge-btn {
     display: none;
     align-items: center;
     justify-content: center;
@@ -423,12 +577,90 @@
     flex-shrink: 0;
   }
 
-  .branch-item:hover .delete-btn {
+  .branch-item:hover .delete-btn,
+  .branch-item:hover .merge-btn {
     display: flex;
   }
 
   .delete-btn:hover {
     background: rgba(247, 118, 142, 0.2);
     color: #f7768e;
+  }
+
+  .merge-btn:hover {
+    background: rgba(122, 162, 247, 0.2);
+    color: var(--color-accent);
+  }
+
+  /* ── Merge dialog ─────────────────────────────────────────────────── */
+
+  .merge-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .merge-desc {
+    color: var(--color-text-primary);
+    font-size: 13px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .merge-desc strong {
+    color: var(--color-accent);
+  }
+
+  .merge-warning {
+    color: #e0af68;
+    font-size: 12px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .merge-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+
+  .btn-merge {
+    background: var(--color-accent);
+    color: #1a1b26;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-merge:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  .btn-merge:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .btn-cancel:hover:not(:disabled) {
+    color: var(--color-text-primary);
+  }
+
+  .btn-cancel:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>
