@@ -1,0 +1,126 @@
+# Agents Guide for Twig
+
+This file provides context for AI coding agents working on this codebase.
+
+## What is Twig?
+
+A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 frontend). Tagline: "Lighter than the rest." Primary target: Linux Wayland.
+
+## Quick Orientation
+
+- **Rust backend**: `src-tauri/src/` -- all git operations, app state, Tauri command handlers
+- **Svelte frontend**: `src/` -- UI components, stores, typed IPC wrappers
+- **No direct git logic in the frontend.** Everything goes through Tauri commands.
+
+## Architecture Rules
+
+1. **All git operations happen in Rust**, never in the frontend
+2. **Read operations** use `git2` crate (`src-tauri/src/git/reader.rs`)
+3. **Write operations** use system `git` CLI via `tokio::process` (`src-tauri/src/git/writer.rs`)
+4. **No `unwrap()` in Rust** -- use `TwigError` and return `Result` from all commands
+5. **All Tauri commands must be `async`**
+6. **TypeScript types** must mirror Rust structs exactly (see `src/lib/types/git.ts`)
+7. **Every Tauri command** gets a typed wrapper in `src/lib/tauri.ts` -- no direct `invoke()` elsewhere
+
+## Key Files to Understand First
+
+| File | Purpose |
+|------|---------|
+| `src-tauri/src/lib.rs` | Tauri builder -- all commands registered here |
+| `src-tauri/src/state.rs` | `AppState` with `Mutex<HashMap<String, OpenRepo>>` |
+| `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
+| `src-tauri/src/git/reader.rs` | git2-based reads: graph, branches, diffs, status |
+| `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
+| `src/lib/types/git.ts` | All shared TypeScript interfaces |
+| `src/lib/tauri.ts` | Typed `invoke()` wrappers for every command |
+| `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging |
+
+## Adding a New Feature
+
+### Adding a new Tauri command
+
+1. If it's a read, add a function to `src-tauri/src/git/reader.rs`
+2. If it's a write, add a function to `src-tauri/src/git/writer.rs`
+3. Create the `#[tauri::command]` handler in the appropriate `src-tauri/src/commands/*.rs`
+4. Register it in `src-tauri/src/lib.rs` `invoke_handler`
+5. Add the TypeScript interface to `src/lib/types/git.ts`
+6. Add the typed wrapper to `src/lib/tauri.ts`
+7. Use the wrapper from Svelte components -- never call `invoke()` directly
+
+### Adding a new component
+
+Components go in `src/components/<feature>/`. Use existing patterns:
+- Props via `$props()` (Svelte 5 runes)
+- Reactive state via `$state()` and `$derived()`
+- Side effects via `$effect()`
+- Stores from `src/lib/stores/`
+- Tauri calls from `src/lib/tauri.ts`
+
+## Build & Dev Commands
+
+```sh
+npm install              # Install frontend deps
+npm run tauri dev        # Dev mode (HMR + Rust rebuild on change)
+npm run tauri build      # Production build
+npm run build            # Frontend only build
+npm run check            # TypeScript + Svelte type checking
+```
+
+Rust-only check:
+
+```sh
+cd src-tauri && cargo check
+```
+
+## Coding Conventions
+
+### Rust
+
+- Error type: `TwigError` (in `error.rs`), uses `thiserror`
+- No `unwrap()`, no `expect()` in library code (main.rs `expect` on Tauri run is the one exception)
+- Async all commands, even if the body is sync (Tauri requirement for `State<>` access)
+- `serde::Serialize` on all types crossing the IPC boundary
+- Command results that are write operations return `CommandResult { success, message }`
+
+### Frontend
+
+- Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) -- no legacy `let` reactivity
+- TailwindCSS v4 with custom `@theme` tokens in `app.css` -- use `var(--color-*)` for colors
+- Dark theme only -- all colors defined in the design system
+- No nested `<button>` elements (Svelte 5 enforces valid HTML)
+- Font: system UI for interface, monospace for code/hashes/diffs
+
+### Design System Colors
+
+```
+Background:        #1a1b26 (--color-bg)
+Surface:           #1f2335 (--color-surface)
+Surface elevated:  #24283b (--color-surface-elevated)
+Border:            #292e42 (--color-border)
+Accent:            #7aa2f7 (--color-accent)
+Accent secondary:  #bb9af7 (--color-accent-secondary)
+Text primary:      #c0caf5 (--color-text-primary)
+Text muted:        #565f89 (--color-text-muted)
+Diff add:          #9ece6a
+Diff delete:       #f7768e
+Lane colors:       #7aa2f7, #9ece6a, #e0af68, #f7768e, #bb9af7, #2ac3de
+```
+
+## Platform Notes
+
+### Linux Wayland + NVIDIA
+
+`main.rs` detects NVIDIA GPUs at runtime via `/proc/driver/nvidia` and configures WebKitGTK accordingly. On NVIDIA, `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set before GTK init. On all Wayland GPUs, `GDK_GL=gles` is set. This is intentional -- do not remove it.
+
+### LFS
+
+LFS pointer files in diffs are detected by checking for `version https://git-lfs.github.com/spec/` in the diff content. They display as "LFS object -- [size]" instead of raw pointer text. All LFS operations go through the system git CLI.
+
+## What NOT to Build (V1 Scope)
+
+- Authentication / credential manager
+- GitHub/GitLab API integration
+- SSH key management
+- Conflict resolution UI
+- Blame view
+- Settings UI

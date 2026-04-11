@@ -365,6 +365,7 @@ pub fn read_unstaged_diff(
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
     opts.include_untracked(true);
+    opts.show_untracked_content(true);
     if let Some(p) = file_path {
         opts.pathspec(p);
     }
@@ -416,19 +417,40 @@ fn delta_status_str(delta: Delta) -> &'static str {
     }
 }
 
-/// Check if diff content is an LFS pointer and extract the size if so.
+/// Check if diff content is an actual LFS pointer file and extract the size.
+///
+/// Real LFS pointers are tiny (~130 bytes) with exactly this structure:
+///   version https://git-lfs.github.com/spec/v1
+///   oid sha256:<hash>
+///   size <bytes>
+///
+/// We require all three markers AND a small total size to avoid false
+/// positives on files that merely mention the LFS spec URL.
 fn check_lfs_pointer(content: &str) -> Option<String> {
-    if content.contains("version https://git-lfs.github.com/spec/") {
-        for line in content.lines() {
-            if let Some(size_str) = line.strip_prefix("size ") {
-                let bytes: u64 = size_str.trim().parse().unwrap_or(0);
-                return Some(format_bytes(bytes));
-            }
-        }
-        Some("unknown size".to_string())
-    } else {
-        None
+    // Real LFS pointers are under 256 bytes; anything larger is just a
+    // file that happens to reference the spec URL.
+    if content.len() > 512 {
+        return None;
     }
+
+    let has_version = content
+        .lines()
+        .any(|l| l.trim().starts_with("version https://git-lfs.github.com/spec/"));
+    let has_oid = content.lines().any(|l| l.trim().starts_with("oid sha256:"));
+
+    if !has_version || !has_oid {
+        return None;
+    }
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(size_str) = trimmed.strip_prefix("size ") {
+            let bytes: u64 = size_str.trim().parse().unwrap_or(0);
+            return Some(format_bytes(bytes));
+        }
+    }
+
+    Some("unknown size".to_string())
 }
 
 fn format_bytes(bytes: u64) -> String {
@@ -477,6 +499,8 @@ pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> 
     let staged = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
     let mut unstaged_opts = DiffOptions::new();
     unstaged_opts.context_lines(3);
+    unstaged_opts.include_untracked(true);
+    unstaged_opts.show_untracked_content(true);
     let unstaged = repo.diff_index_to_workdir(None, Some(&mut unstaged_opts))?;
 
     let mut files = parse_diff(&staged)?;

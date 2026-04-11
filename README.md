@@ -1,47 +1,159 @@
-# Svelte + TS + Vite
+# Twig
 
-This template should help get you started developing with Svelte and TypeScript in Vite.
+**Lighter than the rest.** A lightweight, fast Git GUI desktop application built with Tauri v2.
 
-## Recommended IDE Setup
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Overview
 
-## Need an official Svelte framework?
+Twig is a GitKraken-inspired Git GUI that prioritizes speed and native Linux Wayland support. It uses a hybrid git backend: **git2** (Rust) for all read operations and the **system git CLI** for all write operations and LFS, giving you both performance and full compatibility.
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+### Features
 
-## Technical considerations
+- **Multi-repo tabs** -- open multiple repositories in tabs with independent state
+- **Visual commit graph** -- branching graph with colored lanes, Gravatar avatars, virtualized scrolling (handles 10k+ commits)
+- **Branch management** -- local/remote branch listing, checkout, create, rename, delete, push, fetch
+- **Diff viewer** -- unified and split views, syntax-colored additions/deletions, LFS pointer detection, binary file handling
+- **Staging area** -- unstaged/staged file lists, per-file or bulk stage/unstage, inline diff preview
+- **Commit & sync** -- commit message editor (Ctrl+Enter), push, pull
 
-**Why use this over SvelteKit?**
+### Tech Stack
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+| Layer | Technology |
+|-------|-----------|
+| Framework | Tauri v2 (Rust + WebView) |
+| Frontend | Svelte 5, TypeScript, Vite |
+| Styling | TailwindCSS v4 (dark theme) |
+| Git reads | `git2` Rust crate |
+| Git writes | System `git` CLI via `tokio::process` |
+| Icons | Lucide Svelte |
 
-This template contains as little as possible to get started with Vite + TypeScript + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+### Target Platforms
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
+Primary: **Linux (Wayland via WebKitGTK)**. Also works on X11, macOS, and Windows.
 
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
+NVIDIA + Wayland is handled automatically at runtime (GPU detection in `main.rs`).
 
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
+## Getting Started
 
-**Why include `.vscode/extensions.json`?**
+### Prerequisites
 
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
+- **Rust** >= 1.77 (with `cargo`)
+- **Node.js** >= 20 (with `npm`)
+- **System dependencies** (Linux): `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libappindicator3-dev`, `librsvg2-dev`, `libssl-dev`
 
-**Why enable `allowJs` in the TS template?**
+On Arch/CachyOS:
 
-While `allowJs: false` would indeed prevent the use of `.js` files in the project, it does not prevent the use of JavaScript syntax in `.svelte` files. In addition, it would force `checkJs: false`, bringing the worst of both worlds: not being able to guarantee the entire codebase is TypeScript, and also having worse typechecking for the existing JavaScript. In addition, there are valid use cases in which a mixed codebase may be relevant.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/rixo/svelte-hmr#svelte-hmr).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```ts
-// store.ts
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```sh
+sudo pacman -S webkit2gtk-4.1 gtk3 libappindicator-gtk3
 ```
+
+On Ubuntu/Debian:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libssl-dev
+```
+
+### Development
+
+```sh
+npm install
+npm run tauri dev
+```
+
+This starts the Vite dev server with HMR and launches the Tauri app. Rust recompiles on changes to `src-tauri/`.
+
+### Production Build
+
+```sh
+npm run tauri build
+```
+
+Outputs a release binary and platform packages (.deb, .rpm, .AppImage) in `src-tauri/target/release/bundle/`.
+
+## Project Structure
+
+```
+twig/
+├── src-tauri/                  # Rust backend (Tauri)
+│   ├── src/
+│   │   ├── main.rs             # Entry point, Wayland GPU setup
+│   │   ├── lib.rs              # Tauri builder, command registration
+│   │   ├── state.rs            # AppState: thread-safe open repo map
+│   │   ├── error.rs            # TwigError enum (thiserror)
+│   │   ├── commands/           # Tauri command handlers
+│   │   │   ├── repo.rs         # Open, close, list repos
+│   │   │   ├── graph.rs        # Commit graph data
+│   │   │   ├── branches.rs     # Branch CRUD + push/fetch
+│   │   │   ├── diff.rs         # Commit and working diffs
+│   │   │   └── staging.rs      # Stage/unstage, commit, pull
+│   │   └── git/                # Git operations layer
+│   │       ├── reader.rs       # git2-based reads (graph, branches, diffs)
+│   │       └── writer.rs       # CLI-based writes (checkout, push, commit)
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── src/                        # Svelte frontend
+│   ├── main.ts                 # App mount
+│   ├── App.svelte              # Root component
+│   ├── app.css                 # TailwindCSS v4 + design system tokens
+│   ├── lib/
+│   │   ├── tauri.ts            # Typed invoke() wrappers
+│   │   ├── types/git.ts        # TypeScript interfaces
+│   │   └── stores/             # Svelte stores (repos, graph, ui)
+│   └── components/
+│       ├── layout/             # AppShell, TabBar, Sidebar
+│       ├── graph/              # CommitGraph, GraphCanvas, CommitRow
+│       ├── branches/           # BranchList
+│       ├── diff/               # DiffViewer, DiffHunk
+│       └── staging/            # StagingArea
+├── index.html
+├── package.json
+├── vite.config.ts
+└── tsconfig.json
+```
+
+## Architecture
+
+### Separation of Concerns
+
+All git operations happen in Rust. The frontend only calls Tauri commands and renders state.
+
+```
+Frontend (Svelte)  ──invoke()──>  Commands (Tauri)  ──>  Git Layer (git2 / CLI)
+    │                                                         │
+    └── Stores ◄── State updates ◄── Results ◄───────────────┘
+```
+
+### Git Backend (Hybrid)
+
+| Operation | Backend | Rationale |
+|-----------|---------|-----------|
+| Commit graph, branches, diffs, status | `git2` | Fast, in-process, no subprocess overhead |
+| Checkout, commit, push, pull, fetch, stage | System `git` CLI | Full compatibility, hooks, LFS, credential helpers |
+
+### Commit Graph Rendering
+
+The graph uses a lane assignment algorithm that:
+1. Walks commits in topological order
+2. Assigns each commit to a lane (column), reusing free lanes
+3. First parent inherits the lane (straight continuation), merge parents branch off
+4. Outputs per-row data: commit lane, pass-through rails, parent lane targets
+
+The frontend renders each row as an SVG with vertical rails, bezier curves for merges, and colored commit nodes. Rows are virtualized (only ~50 visible at a time) for performance with large repos.
+
+### Design System
+
+Dark theme only. Key tokens defined in `app.css` via `@theme`:
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--color-bg` | `#1a1b26` | Main background |
+| `--color-surface` | `#1f2335` | Panels, sidebar |
+| `--color-surface-elevated` | `#24283b` | Hover states, active items |
+| `--color-accent` | `#7aa2f7` | Primary accent (blue) |
+| `--color-accent-secondary` | `#bb9af7` | Tags, special branches (purple) |
+| `--color-lane-0..5` | Various | Git graph lane colors |
+
+## License
+
+[MIT](LICENSE)
