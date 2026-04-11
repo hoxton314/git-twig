@@ -94,7 +94,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.VERSION }}/" aur/twig-bin/PKGBUILD
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.2
         with:
           pkgname: twig-bin
           pkgbuild: ./aur/twig-bin/PKGBUILD
