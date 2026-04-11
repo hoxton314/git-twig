@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Twig
+Comment=Lightweight Git GUI — lighter than the rest
+Exec=twig
+Icon=twig
+Type=Application
+Categories=Development;RevisionControl;
+Keywords=git;vcs;version-control;
+StartupWMClass=twig

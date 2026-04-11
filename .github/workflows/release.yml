@@ -68,6 +68,14 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      - name: Upload AUR assets (desktop entry + icon)
+        if: matrix.os == 'ubuntu-22.04'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release upload "$TAG" twig.desktop src-tauri/icons/icon.png#twig.png --clobber
+
   publish-latest-json:
     needs: build-and-release
     runs-on: ubuntu-latest

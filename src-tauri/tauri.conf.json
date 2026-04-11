@@ -31,7 +31,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "YOUR_PUBLIC_KEY_HERE",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI3Q0ZBNDhCMkY2QjUxMjQKUldRa1VXc3ZpNlRQSi9GRjZsRnFNTlNoU1Z3TE15WVdsczV0TVREbFpqeFY2RTdXaGw0WnNORnkK",
       "endpoints": [
         "https://github.com/hoxton314/git-twig/releases/latest/download/latest.json"
       ],
