@@ -78,6 +78,11 @@ pub async fn pull(repo_path: &Path, remote: &str, branch: &str) -> Result<GitOut
     run_git(repo_path, &["pull", remote, branch]).await
 }
 
+pub async fn has_uncommitted_changes(repo_path: &Path) -> Result<bool, TwigError> {
+    let output = run_git(repo_path, &["status", "--porcelain"]).await?;
+    Ok(!output.stdout.trim().is_empty())
+}
+
 pub async fn fetch_all(repo_path: &Path) -> Result<GitOutput, TwigError> {
     run_git(repo_path, &["fetch", "--all", "--prune"]).await
 }

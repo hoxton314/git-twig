@@ -135,7 +135,7 @@ pub async fn create_commit(
     })
 }
 
-/// Pull from remote.
+/// Pull from remote, auto-stashing uncommitted changes if present.
 #[tauri::command]
 pub async fn pull(
     state: State<'_, AppState>,
@@ -151,15 +151,63 @@ pub async fn pull(
         open.path.clone()
     };
 
+    let dirty = writer::has_uncommitted_changes(&repo_path).await?;
+
+    // Auto-stash if the working tree is dirty
+    if dirty {
+        let stash = writer::stash_push(&repo_path, Some("autostash before pull")).await?;
+        if !stash.success {
+            return Ok(CommandResult {
+                success: false,
+                message: format!("Failed to stash changes before pull: {}", stash.stderr),
+            });
+        }
+    }
+
     let remote_name = remote.as_deref().unwrap_or("origin");
     let branch_name = branch.as_deref().unwrap_or("HEAD");
     let output = writer::pull(&repo_path, remote_name, branch_name).await?;
+
+    if !output.success {
+        // Pull failed — restore stash if we created one
+        if dirty {
+            let pop = writer::stash_pop(&repo_path, 0).await?;
+            if !pop.success {
+                return Ok(CommandResult {
+                    success: false,
+                    message: format!(
+                        "Pull failed: {}\nAlso failed to restore stashed changes: {}\nYour changes are still in the stash.",
+                        output.stderr, pop.stderr
+                    ),
+                });
+            }
+        }
+        return Ok(CommandResult {
+            success: false,
+            message: output.stderr,
+        });
+    }
+
+    // Pull succeeded — pop stash if we created one
+    if dirty {
+        let pop = writer::stash_pop(&repo_path, 0).await?;
+        if !pop.success {
+            return Ok(CommandResult {
+                success: true,
+                message: format!(
+                    "Pulled successfully, but conflicts when restoring local changes.\nYour changes are saved in the stash.\n{}",
+                    pop.stderr
+                ),
+            });
+        }
+        return Ok(CommandResult {
+            success: true,
+            message: format!("Pulled successfully (local changes auto-stashed and restored)\n{}", output.stdout),
+        });
+    }
+
     Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            format!("Pulled successfully\n{}", output.stdout)
-        } else {
-            output.stderr
-        },
+        success: true,
+        message: format!("Pulled successfully\n{}", output.stdout),
     })
 }

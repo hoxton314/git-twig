@@ -13,7 +13,7 @@
   import { loadSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
   import { installKeybindings, onAction } from "../../lib/keybindings";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, message as dialogMessage } from "@tauri-apps/plugin-dialog";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
@@ -84,9 +84,17 @@
       }),
       onAction("pull", async () => {
         const path = get(activeRepoPath);
-        if (path) {
-          try { await tauri.pull(path); refreshAll(); } catch {}
-        }
+        if (!path) return;
+        try {
+          const result = await tauri.pull(path);
+          refreshAll();
+          if (!result.success || result.message.includes("conflicts")) {
+            await dialogMessage(result.message, {
+              title: result.success ? "Pull — Stash Conflicts" : "Pull Failed",
+              kind: result.success ? "warning" : "error",
+            });
+          }
+        } catch {}
       }),
       onAction("push", async () => {
         const path = get(activeRepoPath);

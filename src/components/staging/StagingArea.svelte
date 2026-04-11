@@ -30,6 +30,7 @@
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
   import { onMount } from "svelte";
+  import { message } from "@tauri-apps/plugin-dialog";
 
   const repoPath = $derived($activeRepoPath);
   const status = $derived($workingStatus);
@@ -141,10 +142,11 @@
     pullLoading = true;
     try {
       const result = await tauri.pull(repoPath);
-      if (result.success) {
-        await refreshAll();
-      } else {
-        console.error("Pull failed:", result.message);
+      await refreshAll();
+      if (!result.success) {
+        await message(result.message, { title: "Pull Failed", kind: "error" });
+      } else if (result.message.includes("conflicts")) {
+        await message(result.message, { title: "Pull — Stash Conflicts", kind: "warning" });
       }
     } catch (err) {
       console.error("Pull error:", err);
