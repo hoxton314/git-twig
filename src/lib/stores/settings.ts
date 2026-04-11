@@ -1,5 +1,6 @@
 import { writable, get } from "svelte/store";
 import type { AppSettings } from "../types/git";
+import { setOverrides } from "../keybindings";
 import * as tauri from "../tauri";
 
 const defaults: AppSettings = {
@@ -18,6 +19,7 @@ const defaults: AppSettings = {
   context_lines: 3,
   external_diff_tool: null,
   external_merge_tool: null,
+  keybinding_overrides: {},
 };
 
 export const settings = writable<AppSettings>({ ...defaults });
@@ -58,6 +60,7 @@ function applyVisualSettings(s: AppSettings) {
 settings.subscribe((s) => {
   persistSettings();
   applyVisualSettings(s);
+  setOverrides(s.keybinding_overrides);
 });
 
 /** Update one or more settings fields and auto-save. */

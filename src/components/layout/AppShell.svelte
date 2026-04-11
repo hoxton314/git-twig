@@ -7,14 +7,17 @@
   import StagingArea from "../staging/StagingArea.svelte";
   import HomeScreen from "./HomeScreen.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
-  import { activeRepo, restoreSession, activeRepoPath } from "../../lib/stores/repos";
+  import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, workingFileDiff, refreshAll } from "../../lib/stores/graph";
-  import { diffPanelRatio, sidebarWidth, stagingWidth, currentView } from "../../lib/stores/ui";
+  import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
   import { loadSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
+  import { installKeybindings, onAction } from "../../lib/keybindings";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
 
   let showTitleBar = $state(false);
 
@@ -22,6 +25,81 @@
     restoreSession();
     loadSettings();
     initAutoFetch();
+    installKeybindings();
+
+    // ── Keybinding action handlers ─────────────────────────────────
+    const unsubs = [
+      onAction("open_repo", async () => {
+        const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
+        if (!selected) return;
+        try {
+          const info = await tauri.openRepo(selected as string);
+          addRepo(info);
+          $currentView = "repos";
+        } catch (err) {
+          console.error("Failed to open repo:", err);
+        }
+      }),
+      onAction("close_tab", () => {
+        const path = get(activeRepoPath);
+        if (path) {
+          removeRepo(path);
+          tauri.closeRepo(path).catch(() => {});
+        }
+      }),
+      onAction("next_tab", () => {
+        const repos = [...get(openRepos).keys()];
+        if (repos.length === 0) return;
+        const current = get(activeRepoPath);
+        const idx = current ? repos.indexOf(current) : -1;
+        const next = repos[(idx + 1) % repos.length];
+        $activeRepoPath = next;
+        $currentView = "repos";
+      }),
+      onAction("prev_tab", () => {
+        const repos = [...get(openRepos).keys()];
+        if (repos.length === 0) return;
+        const current = get(activeRepoPath);
+        const idx = current ? repos.indexOf(current) : repos.length;
+        const prev = repos[(idx - 1 + repos.length) % repos.length];
+        $activeRepoPath = prev;
+        $currentView = "repos";
+      }),
+      onAction("go_home", () => {
+        $activeRepoPath = null;
+        $currentView = "repos";
+      }),
+      onAction("go_settings", () => {
+        $currentView = "settings";
+        $activeRepoPath = null;
+      }),
+      onAction("toggle_sidebar", () => {
+        $sidebarOpen = !get(sidebarOpen);
+      }),
+      onAction("fetch", async () => {
+        const path = get(activeRepoPath);
+        if (path) {
+          try { await tauri.fetchAll(path); refreshAll(); } catch {}
+        }
+      }),
+      onAction("pull", async () => {
+        const path = get(activeRepoPath);
+        if (path) {
+          try { await tauri.pull(path); refreshAll(); } catch {}
+        }
+      }),
+      onAction("push", async () => {
+        const path = get(activeRepoPath);
+        if (!path) return;
+        try {
+          const info = await tauri.getRepoInfo(path);
+          const branch = info.head_name ?? "HEAD";
+          await tauri.pushBranch(path, branch);
+          refreshAll();
+        } catch {}
+      }),
+      // commit is handled inside StagingArea via the textarea exception in keybindings.ts
+    ];
 
     tauri.isTilingWm().then((tiling) => {
       showTitleBar = !tiling;
@@ -34,6 +112,7 @@
     });
 
     return () => {
+      unsubs.forEach((fn) => fn());
       unlisten.then((fn) => fn());
     };
   });

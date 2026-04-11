@@ -23,8 +23,10 @@
     refreshStatus,
     refreshAll,
   } from "../../lib/stores/graph";
+  import { onAction } from "../../lib/keybindings";
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
+  import { onMount } from "svelte";
 
   const repoPath = $derived($activeRepoPath);
   const status = $derived($workingStatus);
@@ -175,11 +177,9 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      handleCommit();
-    }
-  }
+  onMount(() => {
+    return onAction("commit", handleCommit);
+  });
 </script>
 
 <div class="staging-area">
@@ -340,7 +340,6 @@
       class="commit-input"
       placeholder="Commit message..."
       bind:value={commitMessage}
-      onkeydown={handleKeydown}
       rows="3"
     ></textarea>
     <button

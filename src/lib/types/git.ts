@@ -131,6 +131,8 @@ export interface AppSettings {
   context_lines: number;
   external_diff_tool: string | null;
   external_merge_tool: string | null;
+  // Keybindings
+  keybinding_overrides: Record<string, string>;
 }
 
 // ── Git Config ───────────────────────────────────────────────────

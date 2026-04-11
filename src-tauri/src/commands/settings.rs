@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -43,6 +44,11 @@ pub struct AppSettings {
     pub external_diff_tool: Option<String>,
     #[serde(default)]
     pub external_merge_tool: Option<String>,
+
+    // ── Keybindings ─────────────────────────────────────────────────
+    /// Custom keybinding overrides: action_id -> shortcut string (e.g. "Ctrl+Enter")
+    #[serde(default)]
+    pub keybinding_overrides: HashMap<String, String>,
 }
 
 fn default_true() -> bool {
@@ -88,6 +94,7 @@ impl Default for AppSettings {
             context_lines: default_context_lines(),
             external_diff_tool: None,
             external_merge_tool: None,
+            keybinding_overrides: HashMap::new(),
         }
     }
 }

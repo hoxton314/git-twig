@@ -4,15 +4,17 @@
   import AppearanceSettings from "./AppearanceSettings.svelte";
   import EditorDiffSettings from "./EditorDiffSettings.svelte";
   import GitConfigSettings from "./GitConfigSettings.svelte";
+  import KeybindingsSettings from "./KeybindingsSettings.svelte";
   import { currentView } from "../../lib/stores/ui";
 
-  type Section = "general" | "appearance" | "editor" | "git";
+  type Section = "general" | "appearance" | "editor" | "git" | "keybindings";
 
   const sections: { id: Section; label: string }[] = [
     { id: "general", label: "General" },
     { id: "appearance", label: "Appearance" },
     { id: "editor", label: "Editor & Diff" },
     { id: "git", label: "Git Configuration" },
+    { id: "keybindings", label: "Keybindings" },
   ];
 
   let activeSection = $state<Section>("general");
@@ -53,6 +55,8 @@
       <EditorDiffSettings />
     {:else if activeSection === "git"}
       <GitConfigSettings />
+    {:else if activeSection === "keybindings"}
+      <KeybindingsSettings />
     {/if}
   </div>
 </div>

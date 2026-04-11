@@ -31,9 +31,13 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
 | `src-tauri/src/git/reader.rs` | git2-based reads: graph, branches, diffs, status |
 | `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
+| `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
+| `src-tauri/src/commands/git_config.rs` | Read/write global `~/.gitconfig` values, detect LFS |
 | `src/lib/types/git.ts` | All shared TypeScript interfaces |
 | `src/lib/tauri.ts` | Typed `invoke()` wrappers for every command |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging |
+| `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
+| `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |
 
 ## Adding a New Feature
 
@@ -46,6 +50,21 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 5. Add the TypeScript interface to `src/lib/types/git.ts`
 6. Add the typed wrapper to `src/lib/tauri.ts`
 7. Use the wrapper from Svelte components -- never call `invoke()` directly
+
+### Adding a new setting
+
+1. Add the field to `AppSettings` in `src-tauri/src/commands/settings.rs` (with `#[serde(default)]`)
+2. Update the `Default` impl
+3. Add the field to `AppSettings` in `src/lib/types/git.ts`
+4. Update defaults in `src/lib/stores/settings.ts`
+5. Add UI control in the appropriate `src/components/settings/*.svelte` section
+6. If the setting needs a CSS variable, apply it in `applyVisualSettings()` in `settings.ts`
+
+### Adding a new keybinding
+
+1. Add the action to `ACTIONS` array in `src/lib/keybindings.ts` with `id`, `label`, `category`, `defaultShortcut`
+2. Register a handler with `onAction(actionId, handler)` in the component where the action logic lives
+3. Handlers registered in `AppShell.svelte` for global actions; component-specific actions register in their own `onMount`
 
 ### Adding a new component
 
@@ -116,6 +135,40 @@ Lane colors:       #7aa2f7, #9ece6a, #e0af68, #f7768e, #bb9af7, #2ac3de
 
 LFS pointer files in diffs are detected by checking for `version https://git-lfs.github.com/spec/` in the diff content. They display as "LFS object -- [size]" instead of raw pointer text. All LFS operations go through the system git CLI.
 
+## Settings Architecture
+
+Settings are stored separately from session state:
+
+- **Session** (`session.json`): ephemeral layout state -- open repos, active tab, panel sizes. Managed by `src/lib/stores/repos.ts`.
+- **Settings** (`settings.json`): durable user preferences -- UI options, diff preferences, keybinding overrides. Managed by `src/lib/stores/settings.ts`.
+- **Git config** (`~/.gitconfig`): identity, pull strategy, signing. Read/written via `git config --global` CLI commands in `src-tauri/src/commands/git_config.rs`.
+
+Both JSON files live in Tauri's `app_data_dir`. Settings auto-persist with a 300ms debounce on any change.
+
+Visual settings (accent color, font sizes) are applied as CSS custom properties on `document.documentElement` via `applyVisualSettings()` in the settings store subscription.
+
+### Settings Screen Sections
+
+| Section | Component | What it controls |
+|---------|-----------|------------------|
+| General | `GeneralSettings.svelte` | Default repo dir, auto-fetch interval, max commits, confirmations |
+| Appearance | `AppearanceSettings.svelte` | Accent color, interface/diff font sizes |
+| Editor & Diff | `EditorDiffSettings.svelte` | Diff view mode, tab size, context lines, whitespace, word wrap, external tools |
+| Git Configuration | `GitConfigSettings.svelte` | user.name/email, pull strategy, fetch.prune, GPG signing, LFS status |
+| Keybindings | `KeybindingsSettings.svelte` | View/rebind all keyboard shortcuts, reset to defaults |
+
+## Keybinding System
+
+Global keybindings are managed by `src/lib/keybindings.ts`:
+
+- **Actions**: defined in `ACTIONS` array with id, label, category, default shortcut
+- **Handlers**: registered with `onAction(id, fn)`, returning an unsubscribe function
+- **Overrides**: stored in `AppSettings.keybinding_overrides` as `Record<actionId, shortcutString>`
+- **Shortcuts**: strings like `"Ctrl+Enter"`, `"Ctrl+Shift+P"`. Modifiers: `Ctrl`, `Shift`, `Alt`
+- **Input exception**: shortcuts are suppressed when focused on input/textarea/select, except `commit` which works in the commit message textarea
+
+Global actions (open repo, close tab, tab switching, settings, sidebar toggle, fetch/pull/push) are registered in `AppShell.svelte`. Component-specific actions (commit) are registered in their own component's `onMount`.
+
 ## What NOT to Build (V1 Scope)
 
 - Authentication / credential manager
@@ -123,4 +176,4 @@ LFS pointer files in diffs are detected by checking for `version https://git-lfs
 - SSH key management
 - Conflict resolution UI
 - Blame view
-- Settings UI
+- Git identity profiles (per-repo name/email switching)
