@@ -133,6 +133,19 @@ export interface AppSettings {
   external_merge_tool: string | null;
 }
 
+// ── Git Config ───────────────────────────────────────────────────
+
+export interface GitConfig {
+  user_name: string;
+  user_email: string;
+  /** "false" = merge, "true" = rebase, "ff-only" = fast-forward only */
+  pull_rebase: "false" | "true" | "ff-only";
+  fetch_prune: boolean;
+  gpg_sign: boolean;
+  signing_key: string;
+  lfs_installed: boolean;
+}
+
 // ── Command results ───────────────────────────────────────────────────
 
 export interface CommandResult {

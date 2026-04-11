@@ -11,6 +11,7 @@
   import { selectedCommitOid, selectedWorkingFile, workingFileDiff, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, stagingWidth, currentView } from "../../lib/stores/ui";
   import { loadSettings } from "../../lib/stores/settings";
+  import { initAutoFetch } from "../../lib/stores/autofetch";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
@@ -20,6 +21,7 @@
   onMount(() => {
     restoreSession();
     loadSettings();
+    initAutoFetch();
 
     tauri.isTilingWm().then((tiling) => {
       showTitleBar = !tiling;

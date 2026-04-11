@@ -47,7 +47,18 @@ function persistSettings() {
   }, 300);
 }
 
-settings.subscribe(() => persistSettings());
+/** Apply visual settings to CSS custom properties. */
+function applyVisualSettings(s: AppSettings) {
+  const root = document.documentElement;
+  root.style.setProperty("--color-accent", s.accent_color);
+  root.style.setProperty("font-size", `${s.font_size}px`);
+  root.style.setProperty("--diff-font-size", `${s.diff_font_size}px`);
+}
+
+settings.subscribe((s) => {
+  persistSettings();
+  applyVisualSettings(s);
+});
 
 /** Update one or more settings fields and auto-save. */
 export function updateSettings(patch: Partial<AppSettings>) {

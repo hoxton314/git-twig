@@ -178,7 +178,6 @@
     white-space: nowrap;
   }
 
-  select,
   input[type="number"] {
     padding: 6px 10px;
     border: 1px solid var(--color-border);
@@ -189,12 +188,10 @@
     font-family: inherit;
   }
 
-  select:hover,
   input[type="number"]:hover {
     border-color: var(--color-text-muted);
   }
 
-  select:focus,
   input[type="number"]:focus {
     outline: none;
     border-color: var(--color-accent);

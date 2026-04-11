@@ -40,7 +40,7 @@
   // Adjust scroll offset to account for the WIP row above the virtual scroll
   const graphScrollTop = $derived(Math.max(0, scrollTop - (hasWip ? ROW_HEIGHT : 0)));
   const visibleStart = $derived(Math.max(0, Math.floor(graphScrollTop / ROW_HEIGHT) - OVERSCAN));
-  const visibleCount = $derived(
+  const visibleCount = $derived.by(() =>
     containerEl
       ? Math.min(graphEntryCount - visibleStart, Math.ceil(containerEl.clientHeight / ROW_HEIGHT) + 2 * OVERSCAN)
       : 50

@@ -226,7 +226,6 @@
     color: var(--color-text-primary);
   }
 
-  select,
   input[type="number"],
   .text-input {
     padding: 6px 10px;
@@ -238,13 +237,11 @@
     font-family: inherit;
   }
 
-  select:hover,
   input[type="number"]:hover,
   .text-input:hover {
     border-color: var(--color-text-muted);
   }
 
-  select:focus,
   input[type="number"]:focus,
   .text-input:focus {
     outline: none;

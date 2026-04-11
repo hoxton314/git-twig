@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-
-  // Git config values are read from the system git config, not from app settings.
-  // These will be wired up to Rust commands once git config read/write is implemented.
+  import * as tauri from "../../lib/tauri";
+  import type { GitConfig } from "../../lib/types/git";
 
   let userName = $state("");
   let userEmail = $state("");
@@ -12,12 +11,50 @@
   let signingKey = $state("");
   let loading = $state(true);
   let lfsInstalled = $state(false);
+  let saving = $state(false);
+  let saveError = $state<string | null>(null);
 
   onMount(async () => {
-    // TODO: Wire to Rust commands (get_git_config / set_git_config)
-    // For now, placeholder values indicating the feature needs backend support
+    try {
+      const cfg = await tauri.getGitConfig();
+      userName = cfg.user_name;
+      userEmail = cfg.user_email;
+      pullRebase = cfg.pull_rebase;
+      fetchPrune = cfg.fetch_prune;
+      gpgSign = cfg.gpg_sign;
+      signingKey = cfg.signing_key;
+      lfsInstalled = cfg.lfs_installed;
+    } catch (e) {
+      console.error("Failed to load git config:", e);
+    }
     loading = false;
   });
+
+  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleGitConfigSave() {
+    saveError = null;
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(async () => {
+      saving = true;
+      try {
+        const config: GitConfig = {
+          user_name: userName,
+          user_email: userEmail,
+          pull_rebase: pullRebase,
+          fetch_prune: fetchPrune,
+          gpg_sign: gpgSign,
+          signing_key: signingKey,
+          lfs_installed: lfsInstalled,
+        };
+        await tauri.setGitConfig(config);
+      } catch (e) {
+        saveError = String(e);
+        console.error("Failed to save git config:", e);
+      }
+      saving = false;
+    }, 500);
+  }
 
   const pullOptions = [
     { value: "false", label: "Merge (default)" },
@@ -50,7 +87,7 @@
             class="text-input"
             placeholder="Your Name"
             value={userName}
-            onchange={(e) => { userName = e.currentTarget.value; }}
+            onchange={(e) => { userName = e.currentTarget.value; scheduleGitConfigSave(); }}
           />
         </div>
       </div>
@@ -66,7 +103,7 @@
             class="text-input"
             placeholder="you@example.com"
             value={userEmail}
-            onchange={(e) => { userEmail = e.currentTarget.value; }}
+            onchange={(e) => { userEmail = e.currentTarget.value; scheduleGitConfigSave(); }}
           />
         </div>
       </div>
@@ -83,7 +120,7 @@
         <div class="setting-control">
           <select
             value={pullRebase}
-            onchange={(e) => { pullRebase = e.currentTarget.value as typeof pullRebase; }}
+            onchange={(e) => { pullRebase = e.currentTarget.value as typeof pullRebase; scheduleGitConfigSave(); }}
           >
             {#each pullOptions as opt (opt.value)}
               <option value={opt.value}>{opt.label}</option>
@@ -102,7 +139,7 @@
             <input
               type="checkbox"
               checked={fetchPrune}
-              onchange={() => { fetchPrune = !fetchPrune; }}
+              onchange={() => { fetchPrune = !fetchPrune; scheduleGitConfigSave(); }}
             />
             <span class="toggle-slider"></span>
           </label>
@@ -123,7 +160,7 @@
             <input
               type="checkbox"
               checked={gpgSign}
-              onchange={() => { gpgSign = !gpgSign; }}
+              onchange={() => { gpgSign = !gpgSign; scheduleGitConfigSave(); }}
             />
             <span class="toggle-slider"></span>
           </label>
@@ -142,7 +179,7 @@
               class="text-input"
               placeholder="Key ID"
               value={signingKey}
-              onchange={(e) => { signingKey = e.currentTarget.value; }}
+              onchange={(e) => { signingKey = e.currentTarget.value; scheduleGitConfigSave(); }}
             />
           </div>
         </div>
@@ -165,9 +202,11 @@
       </div>
     </div>
 
-    <div class="notice">
-      Git config read/write commands are not yet wired up. Changes on this page are not persisted.
-    </div>
+    {#if saveError}
+      <div class="notice error">{saveError}</div>
+    {:else if saving}
+      <div class="notice saving">Saving to git config...</div>
+    {/if}
   {/if}
 </div>
 
@@ -255,7 +294,6 @@
     flex-shrink: 0;
   }
 
-  select,
   .text-input {
     padding: 6px 10px;
     border: 1px solid var(--color-border);
@@ -266,12 +304,10 @@
     font-family: inherit;
   }
 
-  select:hover,
   .text-input:hover {
     border-color: var(--color-text-muted);
   }
 
-  select:focus,
   .text-input:focus {
     outline: none;
     border-color: var(--color-accent);
@@ -302,10 +338,19 @@
     margin-top: 16px;
     padding: 10px 14px;
     border-radius: 4px;
-    background: rgba(224, 175, 104, 0.1);
-    color: #e0af68;
     font-size: 12px;
-    border: 1px solid rgba(224, 175, 104, 0.2);
+  }
+
+  .notice.saving {
+    background: rgba(122, 162, 247, 0.1);
+    color: var(--color-accent);
+    border: 1px solid rgba(122, 162, 247, 0.2);
+  }
+
+  .notice.error {
+    background: rgba(247, 118, 142, 0.1);
+    color: var(--color-diff-del-text);
+    border: 1px solid rgba(247, 118, 142, 0.2);
   }
 
   /* Toggle switch */

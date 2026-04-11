@@ -109,7 +109,7 @@
 <style>
   .hunk {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: var(--diff-font-size);
     line-height: 1.5;
   }
 

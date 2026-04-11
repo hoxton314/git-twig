@@ -15,12 +15,7 @@
 
   function handleAccentChange(color: string) {
     updateSettings({ accent_color: color });
-    document.documentElement.style.setProperty("--color-accent", color);
   }
-
-  $effect(() => {
-    document.documentElement.style.setProperty("--color-accent", s.accent_color);
-  });
 </script>
 
 <div class="section">
@@ -149,20 +144,6 @@
     flex-shrink: 0;
   }
 
-  select {
-    padding: 6px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 4px;
-    background: var(--color-surface);
-    color: var(--color-text-primary);
-    font-size: 12px;
-    font-family: inherit;
-  }
-
-  select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 
   .color-swatches {
     display: flex;

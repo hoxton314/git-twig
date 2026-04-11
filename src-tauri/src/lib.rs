@@ -44,6 +44,9 @@ pub fn run() {
             // Settings
             commands::settings::load_settings,
             commands::settings::save_settings,
+            // Git config
+            commands::git_config::get_git_config,
+            commands::git_config::set_git_config,
             // Window
             commands::window::is_tiling_wm,
         ])

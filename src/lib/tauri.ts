@@ -12,6 +12,7 @@ import type {
   WorkingStatus,
   Session,
   AppSettings,
+  GitConfig,
 } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
@@ -211,4 +212,14 @@ export function loadSettings(): Promise<AppSettings> {
 
 export function saveSettings(settings: AppSettings): Promise<void> {
   return invoke<void>("save_settings", { settings });
+}
+
+// ── Git Config ───────────────────────────────────────────────────────
+
+export function getGitConfig(): Promise<GitConfig> {
+  return invoke<GitConfig>("get_git_config");
+}
+
+export function setGitConfig(config: GitConfig): Promise<void> {
+  return invoke<void>("set_git_config", { config });
 }
