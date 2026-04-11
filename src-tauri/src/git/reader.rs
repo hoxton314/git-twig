@@ -425,6 +425,16 @@ pub fn read_working_status(repo: &Repository) -> Result<WorkingStatus, TwigError
             });
         }
 
+        // Conflicted files (unresolved merge conflicts)
+        if s.contains(git2::Status::CONFLICTED) {
+            unstaged.push(FileStatus {
+                path,
+                status: "conflicted".to_string(),
+                is_new: false,
+            });
+            continue;
+        }
+
         // Unstaged (workdir) changes
         if s.intersects(
             git2::Status::WT_NEW

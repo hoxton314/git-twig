@@ -91,6 +91,12 @@ pub async fn merge_branch(repo_path: &Path, branch_name: &str) -> Result<GitOutp
     run_git(repo_path, &["merge", branch_name]).await
 }
 
+// ── Undo operations ──────────────────────────────────────────────────
+
+pub async fn undo_last_commit(repo_path: &Path) -> Result<GitOutput, TwigError> {
+    run_git(repo_path, &["reset", "--soft", "HEAD~1"]).await
+}
+
 // ── Discard operations ────────────────────────────────────────────────
 
 pub async fn restore_files(repo_path: &Path, paths: &[&str]) -> Result<GitOutput, TwigError> {

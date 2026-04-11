@@ -208,6 +208,10 @@ export function discardFiles(
   return invoke<CommandResult>("discard_files", { path, tracked, untracked });
 }
 
+export function undoCommit(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("undo_commit", { path });
+}
+
 export function createCommit(
   path: string,
   message: string

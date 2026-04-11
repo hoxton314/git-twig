@@ -40,6 +40,7 @@ pub fn run() {
             commands::staging::get_unstaged_diff,
             commands::staging::stage_files,
             commands::staging::unstage_files,
+            commands::staging::undo_commit,
             commands::staging::discard_files,
             commands::staging::create_commit,
             commands::staging::pull,

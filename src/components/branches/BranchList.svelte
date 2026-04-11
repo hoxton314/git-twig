@@ -16,6 +16,7 @@
   import { branches, commitGraph, graphLoading, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import type { BranchInfo } from "../../lib/types/git";
+  import { message } from "@tauri-apps/plugin-dialog";
   import Modal from "../shared/Modal.svelte";
 
   const repoPath = $derived($activeRepoPath);
@@ -80,7 +81,7 @@
         $commitGraph = graph;
         $graphLoading = false;
       } else {
-        console.error("Checkout failed:", result.message);
+        await message(result.message, { title: "Checkout Failed", kind: "error" });
       }
     } catch (err) {
       console.error("Checkout error:", err);

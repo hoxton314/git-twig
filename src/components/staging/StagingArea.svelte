@@ -15,6 +15,8 @@
     Loader2,
     GitPullRequest,
     Trash2,
+    Undo2,
+    AlertTriangle,
   } from "lucide-svelte";
   import StashPanel from "./StashPanel.svelte";
   import CreatePullRequest from "../github/CreatePullRequest.svelte";
@@ -24,6 +26,8 @@
     selectedWorkingFile,
     workingFileDiff,
     selectedCommitOid,
+    commitGraph,
+    branches,
     refreshStatus,
     refreshAll,
   } from "../../lib/stores/graph";
@@ -36,6 +40,11 @@
   const repoPath = $derived($activeRepoPath);
   const status = $derived($workingStatus);
   const selectedFile = $derived($selectedWorkingFile);
+  const currentHead = $derived($branches.find((b) => b.is_head && !b.is_remote));
+  const hasUnpushed = $derived(
+    ($commitGraph?.unpushed_oids?.length ?? 0) > 0 ||
+    (currentHead != null && (currentHead.upstream == null || currentHead.ahead > 0))
+  );
 
   let unstagedExpanded = $state(true);
   let stagedExpanded = $state(true);
@@ -122,6 +131,25 @@
     await refreshStatus();
   }
 
+  async function handleUndoCommit() {
+    if (!repoPath) return;
+    const ok = await ask("Undo the last commit? Changes will be kept staged.", {
+      title: "Undo Commit",
+      kind: "warning",
+    });
+    if (!ok) return;
+    try {
+      const result = await tauri.undoCommit(repoPath);
+      if (result.success) {
+        await refreshAll();
+      } else {
+        await message(result.message, { title: "Undo Failed", kind: "error" });
+      }
+    } catch (err) {
+      console.error("Undo commit error:", err);
+    }
+  }
+
   async function handleCommit() {
     if (!repoPath || !commitMessage.trim() || status.staged.length === 0)
       return;
@@ -187,6 +215,8 @@
         return FileX;
       case "modified":
         return FilePen;
+      case "conflicted":
+        return AlertTriangle;
       default:
         return FileText;
     }
@@ -201,6 +231,8 @@
         return "var(--color-diff-del-text)";
       case "modified":
         return "#e0af68";
+      case "conflicted":
+        return "#f7768e";
       default:
         return "var(--color-text-muted)";
     }
@@ -404,18 +436,29 @@
       bind:value={commitMessage}
       rows="3"
     ></textarea>
-    <button
-      class="commit-btn"
-      onclick={handleCommit}
-      disabled={loading || !commitMessage.trim() || status.staged.length === 0}
-    >
-      {#if loading}
-        <Loader2 size={14} class="spinner" />
-      {:else}
-        <Send size={14} />
+    <div class="commit-actions">
+      <button
+        class="commit-btn"
+        onclick={handleCommit}
+        disabled={loading || !commitMessage.trim() || status.staged.length === 0}
+      >
+        {#if loading}
+          <Loader2 size={14} class="spinner" />
+        {:else}
+          <Send size={14} />
+        {/if}
+        <span>Commit{status.staged.length > 0 ? ` (${status.staged.length})` : ""}</span>
+      </button>
+      {#if hasUnpushed}
+        <button
+          class="undo-btn"
+          onclick={handleUndoCommit}
+          title="Undo last commit (keep changes staged)"
+        >
+          <Undo2 size={14} />
+        </button>
       {/if}
-      <span>Commit{status.staged.length > 0 ? ` (${status.staged.length})` : ""}</span>
-    </button>
+    </div>
   </div>
 </div>
 
@@ -634,6 +677,11 @@
     color: var(--color-text-muted);
   }
 
+  .commit-actions {
+    display: flex;
+    gap: 4px;
+  }
+
   .commit-btn {
     display: flex;
     align-items: center;
@@ -648,6 +696,28 @@
     font-weight: 500;
     cursor: pointer;
     transition: opacity 0.15s;
+    flex: 1;
+  }
+
+  .undo-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .undo-btn:hover {
+    background: rgba(247, 118, 142, 0.15);
+    color: #f7768e;
+    border-color: rgba(247, 118, 142, 0.4);
   }
 
   .commit-btn:hover {

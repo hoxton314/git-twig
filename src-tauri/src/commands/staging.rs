@@ -1,9 +1,11 @@
 use serde::Serialize;
 use tauri::State;
 
+use git2::Repository;
+
 use crate::error::TwigError;
 use crate::git::{reader, writer};
-use crate::state::AppState;
+use crate::state::{AppState, OpenRepo};
 
 #[derive(Debug, Serialize)]
 pub struct CommandResult {
@@ -125,6 +127,45 @@ pub async fn create_commit(
     };
 
     let output = writer::commit(&repo_path, &message).await?;
+    Ok(CommandResult {
+        success: output.success,
+        message: if output.success {
+            output.stdout
+        } else {
+            output.stderr
+        },
+    })
+}
+
+/// Undo the last commit, keeping changes staged.
+#[tauri::command]
+pub async fn undo_commit(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = {
+        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        let open = repos
+            .get(&path)
+            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+        open.path.clone()
+    };
+
+    let output = writer::undo_last_commit(&repo_path).await?;
+
+    if output.success {
+        // Re-open the repository so git2 sees the new HEAD
+        let fresh = Repository::discover(&repo_path)
+            .map_err(|_| TwigError::NotARepo(path.clone()))?;
+        let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        if let Some(open) = repos.get_mut(&path) {
+            *open = OpenRepo {
+                repository: fresh,
+                path: repo_path,
+            };
+        }
+    }
+
     Ok(CommandResult {
         success: output.success,
         message: if output.success {
