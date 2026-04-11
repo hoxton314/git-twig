@@ -1,0 +1,114 @@
+/**
+ * Typed wrappers for all Tauri invoke() calls.
+ * One function per Tauri command — no direct invoke() elsewhere in the frontend.
+ */
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  RepoInfo,
+  CommitGraph,
+  BranchInfo,
+  DiffFile,
+  CommandResult,
+} from "./types/git";
+
+// ── Repo management ───────────────────────────────────────────────────
+
+export function openRepo(path: string): Promise<RepoInfo> {
+  return invoke<RepoInfo>("open_repo", { path });
+}
+
+export function closeRepo(path: string): Promise<void> {
+  return invoke<void>("close_repo", { path });
+}
+
+export function getRepoInfo(path: string): Promise<RepoInfo> {
+  return invoke<RepoInfo>("get_repo_info", { path });
+}
+
+export function listOpenRepos(): Promise<string[]> {
+  return invoke<string[]>("list_open_repos");
+}
+
+// ── Commit graph ──────────────────────────────────────────────────────
+
+export function getCommitGraph(
+  path: string,
+  maxCommits?: number
+): Promise<CommitGraph> {
+  return invoke<CommitGraph>("get_commit_graph", {
+    path,
+    maxCommits: maxCommits ?? null,
+  });
+}
+
+// ── Branches ──────────────────────────────────────────────────────────
+
+export function getBranches(path: string): Promise<BranchInfo[]> {
+  return invoke<BranchInfo[]>("get_branches", { path });
+}
+
+export function checkoutBranch(
+  path: string,
+  branchName: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("checkout_branch", { path, branchName });
+}
+
+export function createBranch(
+  path: string,
+  branchName: string,
+  startPoint?: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("create_branch", {
+    path,
+    branchName,
+    startPoint: startPoint ?? null,
+  });
+}
+
+export function renameBranch(
+  path: string,
+  oldName: string,
+  newName: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("rename_branch", { path, oldName, newName });
+}
+
+export function deleteBranch(
+  path: string,
+  branchName: string,
+  force: boolean = false
+): Promise<CommandResult> {
+  return invoke<CommandResult>("delete_branch", { path, branchName, force });
+}
+
+export function pushBranch(
+  path: string,
+  branchName: string,
+  remote?: string,
+  setUpstream: boolean = false
+): Promise<CommandResult> {
+  return invoke<CommandResult>("push_branch", {
+    path,
+    remote: remote ?? null,
+    branchName,
+    setUpstream,
+  });
+}
+
+export function fetchAll(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("fetch_all", { path });
+}
+
+// ── Diffs ─────────────────────────────────────────────────────────────
+
+export function getCommitDiff(
+  path: string,
+  oid: string
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_commit_diff", { path, oid });
+}
+
+export function getWorkingDiff(path: string): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_working_diff", { path });
+}

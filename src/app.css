@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  /* Background */
+  --color-bg: #1a1b26;
+  --color-surface: #1f2335;
+  --color-surface-elevated: #24283b;
+  --color-border: #292e42;
+
+  /* Accent */
+  --color-accent: #7aa2f7;
+  --color-accent-secondary: #bb9af7;
+
+  /* Text */
+  --color-text-primary: #c0caf5;
+  --color-text-muted: #565f89;
+
+  /* Git branch lane colors */
+  --color-lane-0: #7aa2f7;
+  --color-lane-1: #9ece6a;
+  --color-lane-2: #e0af68;
+  --color-lane-3: #f7768e;
+  --color-lane-4: #bb9af7;
+  --color-lane-5: #2ac3de;
+
+  /* Diff colors */
+  --color-diff-add-bg: rgba(158, 206, 106, 0.15);
+  --color-diff-add-text: #9ece6a;
+  --color-diff-del-bg: rgba(247, 118, 142, 0.15);
+  --color-diff-del-text: #f7768e;
+  --color-diff-hunk-bg: rgba(122, 162, 247, 0.1);
+
+  /* Sizing */
+  --tab-height: 36px;
+  --sidebar-width: 260px;
+
+  /* Font */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+::selection {
+  background-color: rgba(122, 162, 247, 0.3);
+  color: var(--color-text-primary);
+}
