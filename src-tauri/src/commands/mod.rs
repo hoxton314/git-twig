@@ -4,3 +4,4 @@ pub mod graph;
 pub mod repo;
 pub mod session;
 pub mod staging;
+pub mod window;

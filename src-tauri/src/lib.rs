@@ -41,6 +41,8 @@ pub fn run() {
             // Session persistence
             commands::session::save_session,
             commands::session::load_session,
+            // Window
+            commands::window::is_tiling_wm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

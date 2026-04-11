@@ -1,5 +1,6 @@
 <script lang="ts">
   import TabBar from "./TabBar.svelte";
+  import TitleBar from "./TitleBar.svelte";
   import Sidebar from "./Sidebar.svelte";
   import CommitGraph from "../graph/CommitGraph.svelte";
   import DiffViewer from "../diff/DiffViewer.svelte";
@@ -14,8 +15,14 @@
   import { addRepo } from "../../lib/stores/repos";
   import { onMount } from "svelte";
 
+  let showTitleBar = $state(false);
+
   onMount(() => {
     restoreSession();
+
+    tauri.isTilingWm().then((tiling) => {
+      showTitleBar = !tiling;
+    });
 
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused && $activeRepoPath) {
@@ -96,6 +103,9 @@
 </script>
 
 <div class="app-shell">
+  {#if showTitleBar}
+    <TitleBar />
+  {/if}
   <TabBar />
 
   {#if repo}

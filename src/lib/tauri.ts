@@ -53,6 +53,12 @@ export function loadSession(): Promise<Session> {
   return invoke<Session>("load_session");
 }
 
+// ── Window ────────────────────────────────────────────────────────────
+
+export function isTilingWm(): Promise<boolean> {
+  return invoke<boolean>("is_tiling_wm");
+}
+
 // ── Commit graph ──────────────────────────────────────────────────────
 
 export function getCommitGraph(
