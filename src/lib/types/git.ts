@@ -22,17 +22,14 @@ export interface CommitInfo {
   parent_oids: string[];
 }
 
-export interface GraphEdge {
-  from_lane: number;
-  to_lane: number;
-  parent_oid: string;
-}
-
 export interface GraphEntry {
   commit: CommitInfo;
   lane: number;
-  /** Each edge is [from_lane, to_lane, parent_oid] */
-  edges: [number, number, string][];
+  has_incoming: boolean;
+  /** Lane indices with pass-through lines (straight vertical) */
+  rails: number[];
+  /** Lane index for each parent (lines from node downward) */
+  parent_lanes: number[];
 }
 
 export interface CommitGraph {

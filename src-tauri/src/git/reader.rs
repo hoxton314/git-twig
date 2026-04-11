@@ -2,7 +2,6 @@
 
 use git2::{BranchType, Delta, Diff, DiffOptions, Oid, Repository, Sort};
 use serde::Serialize;
-use std::collections::HashMap;
 
 use crate::error::TwigError;
 
@@ -24,10 +23,17 @@ pub struct CommitInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphEntry {
     pub commit: CommitInfo,
-    /// Index of the lane this commit occupies.
+    /// Lane this commit sits on.
     pub lane: usize,
-    /// Edges from this row to parent rows: (from_lane, to_lane, parent_oid).
-    pub edges: Vec<(usize, usize, String)>,
+    /// True if a child reserved this lane (line enters from above).
+    pub has_incoming: bool,
+    /// Lanes with active pass-through lines (straight vertical, full row height).
+    /// Does NOT include the commit's own lane.
+    pub rails: Vec<usize>,
+    /// Lane index for each parent. First parent usually continues on `lane`;
+    /// merge parents branch to different lanes. Used to draw lines from the
+    /// commit node downward.
+    pub parent_lanes: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,79 +94,83 @@ pub fn read_commit_graph(repo: &Repository, max_commits: usize) -> Result<Commit
     Ok(graph)
 }
 
-/// Simple lane assignment: tracks which OID is expected in each lane.
+/// Lane assignment algorithm.
+///
+/// Walks commits in topological order, assigning each to a lane (column).
+/// For every row it records:
+///   - which lane the commit sits on
+///   - whether there was a line entering from above (child reserved the lane)
+///   - which other lanes carry pass-through lines (rails)
+///   - which lanes the parents are assigned to (for drawing outgoing lines)
 fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
-    // Map oid -> row index for quick lookup
-    let _oid_to_row: HashMap<&str, usize> = commits
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (c.oid.as_str(), i))
-        .collect();
-
-    // Active lanes: each slot is either Some(oid we're expecting) or None (free)
+    // Each slot is Some(oid) when a child has reserved that lane for a future
+    // commit, or None when the lane is free.
     let mut lanes: Vec<Option<String>> = Vec::new();
-    let mut entries: Vec<GraphEntry> = Vec::new();
+    let mut entries: Vec<GraphEntry> = Vec::with_capacity(commits.len());
     let mut max_lanes: usize = 0;
 
     for commit in &commits {
-        // Find which lane this commit occupies (it was reserved by a child, or we allocate new)
-        let my_lane = lanes
+        // ── 1. Find or allocate lane for this commit ──────────────────
+        let reserved = lanes
             .iter()
-            .position(|slot| slot.as_deref() == Some(&commit.oid))
-            .unwrap_or_else(|| {
-                // Allocate a new lane
-                let free = lanes.iter().position(|s| s.is_none());
-                match free {
-                    Some(idx) => {
-                        lanes[idx] = Some(commit.oid.clone());
-                        idx
-                    }
-                    None => {
-                        lanes.push(Some(commit.oid.clone()));
-                        lanes.len() - 1
-                    }
-                }
-            });
+            .position(|slot| slot.as_deref() == Some(&commit.oid));
 
-        // This lane is now consumed by this commit
+        let (my_lane, has_incoming) = match reserved {
+            Some(lane) => (lane, true),
+            None => {
+                let lane = lanes
+                    .iter()
+                    .position(|s| s.is_none())
+                    .unwrap_or_else(|| {
+                        lanes.push(None);
+                        lanes.len() - 1
+                    });
+                (lane, false)
+            }
+        };
+
+        // ── 2. Consume the lane ───────────────────────────────────────
         lanes[my_lane] = None;
 
-        let mut edges: Vec<(usize, usize, String)> = Vec::new();
+        // ── 3. Snapshot pass-through rails ────────────────────────────
+        // These are lanes still occupied by other branches — they draw
+        // straight vertical lines through this row.
+        let rails: Vec<usize> = lanes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| if s.is_some() { Some(i) } else { None })
+            .collect();
 
-        // Assign parents to lanes
+        // ── 4. Assign parents to lanes ────────────────────────────────
+        let mut parent_lanes: Vec<usize> = Vec::with_capacity(commit.parent_oids.len());
+
         for (pi, parent_oid) in commit.parent_oids.iter().enumerate() {
-            // Check if parent already has a lane reserved
-            let parent_lane =
-                if let Some(existing) = lanes.iter().position(|s| s.as_deref() == Some(parent_oid))
-                {
-                    existing
-                } else if pi == 0 {
-                    // First parent takes our lane (straight line)
-                    lanes[my_lane] = Some(parent_oid.clone());
-                    my_lane
-                } else {
-                    // Merge parent — find a free lane
-                    let free = lanes.iter().position(|s| s.is_none());
-                    match free {
-                        Some(idx) => {
-                            lanes[idx] = Some(parent_oid.clone());
-                            idx
-                        }
-                        None => {
-                            lanes.push(Some(parent_oid.clone()));
-                            lanes.len() - 1
-                        }
-                    }
-                };
-
-            edges.push((my_lane, parent_lane, parent_oid.clone()));
+            // Parent may already have a lane (reserved by another child's merge)
+            if let Some(existing) = lanes.iter().position(|s| s.as_deref() == Some(parent_oid)) {
+                parent_lanes.push(existing);
+            } else if pi == 0 {
+                // First parent inherits our lane (straight continuation)
+                lanes[my_lane] = Some(parent_oid.clone());
+                parent_lanes.push(my_lane);
+            } else {
+                // Merge parent — allocate a lane
+                let lane = lanes
+                    .iter()
+                    .position(|s| s.is_none())
+                    .unwrap_or_else(|| {
+                        lanes.push(None);
+                        lanes.len() - 1
+                    });
+                lanes[lane] = Some(parent_oid.clone());
+                parent_lanes.push(lane);
+            }
         }
 
         if lanes.len() > max_lanes {
             max_lanes = lanes.len();
         }
 
-        // Trim trailing empty lanes
+        // Trim trailing empty lanes to keep the graph compact
         while lanes.last() == Some(&None) {
             lanes.pop();
         }
@@ -168,7 +178,9 @@ fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
         entries.push(GraphEntry {
             commit: commit.clone(),
             lane: my_lane,
-            edges,
+            has_incoming,
+            rails,
+            parent_lanes,
         });
     }
 
