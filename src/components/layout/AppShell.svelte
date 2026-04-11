@@ -6,9 +6,11 @@
   import DiffViewer from "../diff/DiffViewer.svelte";
   import StagingArea from "../staging/StagingArea.svelte";
   import HomeScreen from "./HomeScreen.svelte";
+  import SettingsScreen from "../settings/SettingsScreen.svelte";
   import { activeRepo, restoreSession, activeRepoPath } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, workingFileDiff, refreshAll } from "../../lib/stores/graph";
-  import { diffPanelRatio, sidebarWidth, stagingWidth } from "../../lib/stores/ui";
+  import { diffPanelRatio, sidebarWidth, stagingWidth, currentView } from "../../lib/stores/ui";
+  import { loadSettings } from "../../lib/stores/settings";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
@@ -17,6 +19,7 @@
 
   onMount(() => {
     restoreSession();
+    loadSettings();
 
     tauri.isTilingWm().then((tiling) => {
       showTitleBar = !tiling;
@@ -34,6 +37,7 @@
   });
 
   const repo = $derived($activeRepo);
+  const view = $derived($currentView);
   const hasSelectedCommit = $derived($selectedCommitOid !== null);
   const hasSelectedWorkingFile = $derived($selectedWorkingFile !== null);
   const showDiff = $derived(hasSelectedCommit || hasSelectedWorkingFile);
@@ -96,7 +100,9 @@
   {/if}
   <TabBar />
 
-  {#if repo}
+  {#if view === "settings"}
+    <SettingsScreen />
+  {:else if repo}
     <div class="content" bind:this={contentEl}>
       <Sidebar />
       <!-- svelte-ignore a11y_no_static_element_interactions -->

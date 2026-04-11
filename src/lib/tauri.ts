@@ -11,6 +11,7 @@ import type {
   CommandResult,
   WorkingStatus,
   Session,
+  AppSettings,
 } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
@@ -200,4 +201,14 @@ export function pull(
     remote: remote ?? null,
     branch: branch ?? null,
   });
+}
+
+// ── Settings ─────────────────────────────────────────────────────────
+
+export function loadSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>("load_settings");
+}
+
+export function saveSettings(settings: AppSettings): Promise<void> {
+  return invoke<void>("save_settings", { settings });
 }

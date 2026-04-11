@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { X, Plus, GitBranch, House } from "lucide-svelte";
+  import { X, Plus, GitBranch, House, Settings } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath, removeRepo, addRepo } from "../../lib/stores/repos";
+  import { currentView } from "../../lib/stores/ui";
   import * as tauri from "../../lib/tauri";
 
   const repos = $derived([...$openRepos.entries()]);
   const active = $derived($activeRepoPath);
-  const homeActive = $derived(active === null);
+  const view = $derived($currentView);
+  const homeActive = $derived(active === null && view !== "settings");
 
   async function handleOpenRepo() {
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
@@ -31,6 +33,12 @@
 
   function handleSelectTab(path: string) {
     $activeRepoPath = path;
+    $currentView = "repos";
+  }
+
+  function handleOpenSettings() {
+    $currentView = "settings";
+    $activeRepoPath = null;
   }
 </script>
 
@@ -38,7 +46,7 @@
   <button
     class="home-btn"
     class:active={homeActive}
-    onclick={() => ($activeRepoPath = null)}
+    onclick={() => { $activeRepoPath = null; $currentView = "repos"; }}
     title="Home"
   >
     <House size={15} />
@@ -71,6 +79,17 @@
 
   <button class="tab-new" onclick={handleOpenRepo} title="Open repository">
     <Plus size={16} />
+  </button>
+
+  <div class="tab-spacer"></div>
+
+  <button
+    class="settings-btn"
+    class:active={view === "settings"}
+    onclick={handleOpenSettings}
+    title="Settings"
+  >
+    <Settings size={15} />
   </button>
 </div>
 
@@ -188,5 +207,37 @@
   .tab-new:hover {
     color: var(--color-accent);
     background: var(--color-surface);
+  }
+
+  .tab-spacer {
+    flex: 1;
+    -webkit-app-region: drag;
+  }
+
+  .settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--tab-height);
+    height: 100%;
+    border: none;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    -webkit-app-region: no-drag;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .settings-btn:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+  }
+
+  .settings-btn.active {
+    background: var(--color-surface-elevated);
+    color: var(--color-accent);
+    border-bottom: 2px solid var(--color-accent);
   }
 </style>

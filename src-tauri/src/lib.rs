@@ -41,6 +41,9 @@ pub fn run() {
             // Session persistence
             commands::session::save_session,
             commands::session::load_session,
+            // Settings
+            commands::settings::load_settings,
+            commands::settings::save_settings,
             // Window
             commands::window::is_tiling_wm,
         ])

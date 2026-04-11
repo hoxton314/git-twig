@@ -110,6 +110,29 @@ export interface Session {
   diff_panel_ratio: number | null;
 }
 
+// ── App Settings ─────────────────────────────────────────────────
+
+export interface AppSettings {
+  // General
+  default_repo_dir: string | null;
+  auto_fetch_interval: number;
+  max_commits: number;
+  confirm_destructive_ops: boolean;
+  restore_tabs_on_startup: boolean;
+  // Appearance
+  accent_color: string;
+  font_size: number;
+  diff_font_size: number;
+  // Editor & Diff
+  diff_view_mode: "unified" | "split";
+  tab_size: number;
+  show_whitespace_changes: boolean;
+  word_wrap_in_diffs: boolean;
+  context_lines: number;
+  external_diff_tool: string | null;
+  external_merge_tool: string | null;
+}
+
 // ── Command results ───────────────────────────────────────────────────
 
 export interface CommandResult {

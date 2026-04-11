@@ -14,3 +14,6 @@ export const diffPanelRatio = writable(0.4);
 
 /** Diff view mode. */
 export const diffViewMode = writable<"unified" | "split">("unified");
+
+/** Current top-level view. */
+export const currentView = writable<"repos" | "settings">("repos");
