@@ -14,15 +14,14 @@
     FilePen,
     Loader2,
   } from "lucide-svelte";
-  import { activeRepoPath, updateRepo } from "../../lib/stores/repos";
+  import { activeRepoPath } from "../../lib/stores/repos";
   import {
     workingStatus,
     selectedWorkingFile,
     workingFileDiff,
-    commitGraph,
-    graphLoading,
-    branches,
     selectedCommitOid,
+    refreshStatus,
+    refreshAll,
   } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
@@ -47,17 +46,6 @@
       refreshStatus(path);
     }
   });
-
-  async function refreshStatus(path?: string) {
-    const p = path ?? repoPath;
-    if (!p) return;
-    try {
-      const result = await tauri.getWorkingStatus(p);
-      $workingStatus = result;
-    } catch (err) {
-      console.error("Failed to load working status:", err);
-    }
-  }
 
   async function selectFile(file: FileStatus, area: "staged" | "unstaged") {
     if (!repoPath) return;
@@ -112,8 +100,7 @@
       const result = await tauri.createCommit(repoPath, commitMessage.trim());
       if (result.success) {
         commitMessage = "";
-        await refreshStatus();
-        await refreshGraph();
+        await refreshAll();
       } else {
         console.error("Commit failed:", result.message);
       }
@@ -131,7 +118,9 @@
       const info = await tauri.getRepoInfo(repoPath);
       const branch = info.head_name ?? "HEAD";
       const result = await tauri.pushBranch(repoPath, branch, undefined, true);
-      if (!result.success) {
+      if (result.success) {
+        await refreshAll();
+      } else {
         console.error("Push failed:", result.message);
       }
     } catch (err) {
@@ -147,8 +136,7 @@
     try {
       const result = await tauri.pull(repoPath);
       if (result.success) {
-        await refreshStatus();
-        await refreshGraph();
+        await refreshAll();
       } else {
         console.error("Pull failed:", result.message);
       }
@@ -156,23 +144,6 @@
       console.error("Pull error:", err);
     } finally {
       pullLoading = false;
-    }
-  }
-
-  async function refreshGraph() {
-    if (!repoPath) return;
-    $graphLoading = true;
-    try {
-      const [graph, branchList, info] = await Promise.all([
-        tauri.getCommitGraph(repoPath, 5000),
-        tauri.getBranches(repoPath),
-        tauri.getRepoInfo(repoPath),
-      ]);
-      $commitGraph = graph;
-      $branches = branchList;
-      updateRepo(info);
-    } finally {
-      $graphLoading = false;
     }
   }
 

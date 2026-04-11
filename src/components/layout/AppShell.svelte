@@ -4,17 +4,28 @@
   import CommitGraph from "../graph/CommitGraph.svelte";
   import DiffViewer from "../diff/DiffViewer.svelte";
   import StagingArea from "../staging/StagingArea.svelte";
-  import { activeRepo, restoreSession } from "../../lib/stores/repos";
-  import { selectedCommitOid, selectedWorkingFile, workingFileDiff } from "../../lib/stores/graph";
+  import { activeRepo, restoreSession, activeRepoPath } from "../../lib/stores/repos";
+  import { selectedCommitOid, selectedWorkingFile, workingFileDiff, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, stagingWidth } from "../../lib/stores/ui";
   import { FolderOpen } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import * as tauri from "../../lib/tauri";
   import { addRepo } from "../../lib/stores/repos";
   import { onMount } from "svelte";
 
   onMount(() => {
     restoreSession();
+
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused && $activeRepoPath) {
+        refreshAll();
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   });
 
   const repo = $derived($activeRepo);
