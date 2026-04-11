@@ -16,6 +16,15 @@
   let showMenu = $state(false);
   let showCloneModal = $state(false);
   let showCreateRepoModal = $state(false);
+  let plusBtnEl: HTMLButtonElement | undefined = $state(undefined);
+  let menuLeft = $state(0);
+
+  function toggleMenu() {
+    showMenu = !showMenu;
+    if (showMenu && plusBtnEl) {
+      menuLeft = plusBtnEl.getBoundingClientRect().left;
+    }
+  }
 
   async function handleOpenRepo() {
     showMenu = false;
@@ -95,43 +104,14 @@
     </div>
   {/each}
 
-  <div class="tab-new-wrapper">
-    <button
-      class="tab-new"
-      onclick={() => (showMenu = !showMenu)}
-      title="Add repository"
-    >
-      <Plus size={16} />
-    </button>
-    {#if showMenu}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="tab-menu" onmouseleave={() => (showMenu = false)}>
-        <button class="tab-menu-item" onclick={handleOpenRepo}>
-          <FolderOpen size={14} />
-          Open local...
-        </button>
-        <button class="tab-menu-item" onclick={() => { showMenu = false; showCloneModal = true; }}>
-          <GitFork size={14} />
-          Clone from GitHub...
-        </button>
-        <button class="tab-menu-item" onclick={() => { showMenu = false; showCreateRepoModal = true; }}>
-          <Plus size={14} />
-          New GitHub repo...
-        </button>
-      </div>
-    {/if}
-  </div>
-
-  <CloneFromGitHub
-    open_={showCloneModal}
-    onclose={() => (showCloneModal = false)}
-    oncloned={handleCloned}
-  />
-  <CreateRepoOnGitHub
-    open_={showCreateRepoModal}
-    onclose={() => (showCreateRepoModal = false)}
-    oncreated={handleRepoCreated}
-  />
+  <button
+    class="tab-new"
+    bind:this={plusBtnEl}
+    onclick={toggleMenu}
+    title="Add repository"
+  >
+    <Plus size={16} />
+  </button>
 
   <div class="tab-spacer"></div>
 
@@ -144,6 +124,40 @@
     <Settings size={15} />
   </button>
 </div>
+
+{#if showMenu}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="tab-menu-backdrop" onclick={() => (showMenu = false)}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="tab-menu" style="left: {menuLeft}px" onclick={(e) => e.stopPropagation()}>
+      <button class="tab-menu-item" onclick={handleOpenRepo}>
+        <FolderOpen size={14} />
+        Open local...
+      </button>
+      <button class="tab-menu-item" onclick={() => { showMenu = false; showCloneModal = true; }}>
+        <GitFork size={14} />
+        Clone from GitHub...
+      </button>
+      <button class="tab-menu-item" onclick={() => { showMenu = false; showCreateRepoModal = true; }}>
+        <Plus size={14} />
+        New GitHub repo...
+      </button>
+    </div>
+  </div>
+{/if}
+
+<CloneFromGitHub
+  open_={showCloneModal}
+  onclose={() => (showCloneModal = false)}
+  oncloned={handleCloned}
+/>
+<CreateRepoOnGitHub
+  open_={showCreateRepoModal}
+  onclose={() => (showCreateRepoModal = false)}
+  oncreated={handleRepoCreated}
+/>
 
 <style>
   .tab-bar {
@@ -243,12 +257,6 @@
     color: #f7768e;
   }
 
-  .tab-new-wrapper {
-    position: relative;
-    height: 100%;
-    -webkit-app-region: no-drag;
-  }
-
   .tab-new {
     display: flex;
     align-items: center;
@@ -267,11 +275,16 @@
     background: var(--color-surface);
   }
 
-  .tab-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
+  .tab-menu-backdrop {
+    position: fixed;
+    inset: 0;
     z-index: 100;
+  }
+
+  .tab-menu {
+    position: fixed;
+    top: var(--tab-height);
+    z-index: 101;
     min-width: 200px;
     padding: 4px;
     background: var(--color-surface);
