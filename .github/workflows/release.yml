@@ -79,22 +79,6 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           gh release upload "$TAG" twig.desktop src-tauri/icons/icon.png#twig.png --clobber
 
-  publish-latest-json:
-    needs: build-and-release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Generate latest.json for Tauri updater
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
-        with:
-          tagName: v__VERSION__
-          updaterJsonPreferNsis: true
-          updaterJsonKeepUniversal: true
-
   update-aur:
     needs: build-and-release
     runs-on: ubuntu-latest
@@ -110,7 +94,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${{ steps.version.outputs.VERSION }}/" aur/twig-bin/PKGBUILD
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4
         with:
           pkgname: twig-bin
           pkgbuild: ./aur/twig-bin/PKGBUILD

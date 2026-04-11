@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Twig
+Upstream-Contact: Igor Kalicinski <igorkalicinski@gmail.com>
+Source: https://github.com/hoxton314/git-twig
+
+Files: *
+Copyright: 2026 Igor Kalicinski
+License: AGPL-3.0-only

@@ -2,7 +2,7 @@
 
 **Lighter than the rest.** A lightweight, fast Git GUI desktop application built with Tauri v2.
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 ## Overview
 
@@ -154,6 +154,10 @@ Dark theme only. Key tokens defined in `app.css` via `@theme`:
 | `--color-accent-secondary` | `#bb9af7` | Tags, special branches (purple) |
 | `--color-lane-0..5` | Various | Git graph lane colors |
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE) - Copyright 2026 Igor Kalicinski
