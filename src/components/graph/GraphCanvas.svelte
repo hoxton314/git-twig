@@ -11,17 +11,18 @@
 
   let { entry, totalLanes, height, isUnpushed = false }: Props = $props();
 
+  const LEFT_PAD = 12;
   const LANE_WIDTH = 20;
   const NODE_RADIUS = 5;
   const STROKE_WIDTH = 2;
   const OPACITY = 0.7;
 
-  const svgWidth = $derived(Math.max((totalLanes + 1) * LANE_WIDTH, 48));
+  const svgWidth = $derived(Math.max((totalLanes + 1) * LANE_WIDTH + LEFT_PAD, 48 + LEFT_PAD));
   const cy = $derived(height / 2);
 
   /** X center for a given lane index. */
   function lx(lane: number): number {
-    return lane * LANE_WIDTH + LANE_WIDTH / 2;
+    return LEFT_PAD + lane * LANE_WIDTH + LANE_WIDTH / 2;
   }
 </script>
 

@@ -78,7 +78,7 @@
     align-items: center;
     gap: 8px;
     flex: 1;
-    padding: 0 12px;
+    padding: 0 12px 0 4px;
     height: 100%;
     border: none;
     background: transparent;
