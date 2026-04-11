@@ -316,6 +316,7 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
             let name = branch.name()?.unwrap_or("").to_string();
             let is_remote = btype == BranchType::Remote;
 
+            let is_head = branch.is_head();
             let reference = branch.into_reference();
             let oid = match reference.target() {
                 Some(o) => o,
@@ -323,7 +324,6 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
             };
 
             let commit = repo.find_commit(oid)?;
-            let is_head = head_oid == Some(oid);
 
             let (upstream, ahead, behind) = if !is_remote {
                 match repo.find_branch(&name, BranchType::Local) {

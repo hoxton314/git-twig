@@ -136,6 +136,13 @@ export function pushBranch(
   });
 }
 
+export function mergeBranch(
+  path: string,
+  branchName: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("merge_branch", { path, branchName });
+}
+
 export function fetchAll(path: string): Promise<CommandResult> {
   return invoke<CommandResult>("fetch_all", { path });
 }

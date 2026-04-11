@@ -82,6 +82,10 @@ pub async fn fetch_all(repo_path: &Path) -> Result<GitOutput, TwigError> {
     run_git(repo_path, &["fetch", "--all", "--prune"]).await
 }
 
+pub async fn merge_branch(repo_path: &Path, branch_name: &str) -> Result<GitOutput, TwigError> {
+    run_git(repo_path, &["merge", branch_name]).await
+}
+
 // ── Commit operations ─────────────────────────────────────────────────
 
 pub async fn stage_files(repo_path: &Path, paths: &[&str]) -> Result<GitOutput, TwigError> {

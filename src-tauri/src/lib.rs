@@ -29,6 +29,7 @@ pub fn run() {
             commands::branches::rename_branch,
             commands::branches::delete_branch,
             commands::branches::push_branch,
+            commands::branches::merge_branch,
             commands::branches::fetch_all,
             // Diffs
             commands::diff::get_commit_diff,

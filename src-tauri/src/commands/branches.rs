@@ -162,6 +162,32 @@ pub async fn push_branch(
     })
 }
 
+/// Merge a branch into the current HEAD.
+#[tauri::command]
+pub async fn merge_branch(
+    state: State<'_, AppState>,
+    path: String,
+    branch_name: String,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = {
+        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        let open = repos
+            .get(&path)
+            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+        open.path.clone()
+    };
+
+    let output = writer::merge_branch(&repo_path, &branch_name).await?;
+    Ok(CommandResult {
+        success: output.success,
+        message: if output.success {
+            output.stdout
+        } else {
+            output.stderr
+        },
+    })
+}
+
 /// Fetch from all remotes.
 #[tauri::command]
 pub async fn fetch_all(
