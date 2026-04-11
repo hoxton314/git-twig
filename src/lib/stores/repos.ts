@@ -1,6 +1,7 @@
 import { writable, derived, get } from "svelte/store";
 import type { RepoInfo } from "../types/git";
 import * as tauri from "../tauri";
+import { sidebarWidth, stagingWidth, diffPanelRatio } from "./ui";
 
 /** All open repos, keyed by path. */
 export const openRepos = writable<Map<string, RepoInfo>>(new Map());
@@ -60,7 +61,13 @@ function persistSession() {
   saveTimeout = setTimeout(() => {
     const repos = get(openRepos);
     const active = get(activeRepoPath);
-    tauri.saveSession([...repos.keys()], active).catch((e) => {
+    tauri.saveSession(
+      [...repos.keys()],
+      active,
+      get(sidebarWidth),
+      get(stagingWidth),
+      get(diffPanelRatio),
+    ).catch((e) => {
       console.error("Failed to save session:", e);
     });
   }, 300);
@@ -68,11 +75,20 @@ function persistSession() {
 
 openRepos.subscribe(() => persistSession());
 activeRepoPath.subscribe(() => persistSession());
+sidebarWidth.subscribe(() => persistSession());
+stagingWidth.subscribe(() => persistSession());
+diffPanelRatio.subscribe(() => persistSession());
 
 /** Restore previously open repos from disk. Call once at startup. */
 export async function restoreSession() {
   try {
     const session = await tauri.loadSession();
+
+    // Restore layout values before opening repos
+    if (session.sidebar_width != null) sidebarWidth.set(session.sidebar_width);
+    if (session.staging_width != null) stagingWidth.set(session.staging_width);
+    if (session.diff_panel_ratio != null) diffPanelRatio.set(session.diff_panel_ratio);
+
     if (session.paths.length === 0) {
       sessionReady = true;
       return;

@@ -1,5 +1,7 @@
 //! git2-based read operations — commit graph, branches, diffs, file contents.
 
+use std::collections::HashMap;
+
 use git2::{BranchType, Delta, Diff, DiffOptions, Oid, Repository, Sort};
 use serde::Serialize;
 
@@ -37,9 +39,17 @@ pub struct GraphEntry {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct RefLabel {
+    pub name: String,
+    pub ref_type: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct CommitGraph {
     pub entries: Vec<GraphEntry>,
     pub total_lanes: usize,
+    pub refs: HashMap<String, Vec<RefLabel>>,
+    pub unpushed_oids: Vec<String>,
 }
 
 /// Read the full commit graph for the repo, computing lane assignments.
@@ -90,7 +100,9 @@ pub fn read_commit_graph(repo: &Repository, max_commits: usize) -> Result<Commit
     }
 
     // Lane assignment algorithm
-    let graph = compute_lanes(commits);
+    let mut graph = compute_lanes(commits);
+    graph.refs = build_refs_map(repo)?;
+    graph.unpushed_oids = compute_unpushed_oids(repo);
     Ok(graph)
 }
 
@@ -187,7 +199,94 @@ fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
     CommitGraph {
         entries,
         total_lanes: max_lanes,
+        refs: HashMap::new(),
+        unpushed_oids: vec![],
     }
+}
+
+/// Build a map from commit OID -> list of branch/tag labels pointing at it.
+fn build_refs_map(repo: &Repository) -> Result<HashMap<String, Vec<RefLabel>>, TwigError> {
+    let mut map: HashMap<String, Vec<RefLabel>> = HashMap::new();
+
+    for reference_result in repo.references()? {
+        let reference = reference_result?;
+
+        if reference.name() == Some("HEAD") {
+            continue;
+        }
+
+        let ref_type = if reference.is_tag() {
+            "tag"
+        } else if reference.is_remote() {
+            "remote"
+        } else if reference.is_branch() {
+            "local"
+        } else {
+            continue;
+        };
+
+        let target_oid = match reference.peel(git2::ObjectType::Commit) {
+            Ok(obj) => obj.id().to_string(),
+            Err(_) => continue,
+        };
+
+        let name = reference.shorthand().unwrap_or("").to_string();
+
+        map.entry(target_oid)
+            .or_default()
+            .push(RefLabel {
+                name,
+                ref_type: ref_type.to_string(),
+            });
+    }
+
+    Ok(map)
+}
+
+/// Compute the set of commit OIDs on HEAD that are not yet on its upstream.
+fn compute_unpushed_oids(repo: &Repository) -> Vec<String> {
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return vec![],
+    };
+
+    let head_oid = match head.target() {
+        Some(oid) => oid,
+        None => return vec![],
+    };
+
+    let branch_name = match head.shorthand() {
+        Some(name) => name.to_string(),
+        None => return vec![],
+    };
+
+    let branch = match repo.find_branch(&branch_name, BranchType::Local) {
+        Ok(b) => b,
+        Err(_) => return vec![],
+    };
+
+    let upstream = match branch.upstream() {
+        Ok(u) => u,
+        Err(_) => return vec![],
+    };
+
+    let upstream_oid = match upstream.get().target() {
+        Some(oid) => oid,
+        None => return vec![],
+    };
+
+    let mut revwalk = match repo.revwalk() {
+        Ok(rw) => rw,
+        Err(_) => return vec![],
+    };
+
+    if revwalk.push(head_oid).is_err() || revwalk.hide(upstream_oid).is_err() {
+        return vec![];
+    }
+
+    revwalk
+        .filter_map(|oid| oid.ok().map(|o| o.to_string()))
+        .collect()
 }
 
 // ── Branches ──────────────────────────────────────────────────────────
@@ -198,6 +297,8 @@ pub struct BranchInfo {
     pub is_remote: bool,
     pub is_head: bool,
     pub upstream: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
     pub oid: String,
     pub short_oid: String,
     pub last_commit_summary: String,
@@ -224,13 +325,25 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
             let commit = repo.find_commit(oid)?;
             let is_head = head_oid == Some(oid);
 
-            let upstream = if !is_remote {
-                repo.find_branch(&name, BranchType::Local)
-                    .ok()
-                    .and_then(|b| b.upstream().ok())
-                    .and_then(|u| u.name().ok().flatten().map(String::from))
+            let (upstream, ahead, behind) = if !is_remote {
+                match repo.find_branch(&name, BranchType::Local) {
+                    Ok(local_branch) => match local_branch.upstream() {
+                        Ok(upstream_branch) => {
+                            let upstream_name =
+                                upstream_branch.name().ok().flatten().map(String::from);
+                            let (a, b) = upstream_branch
+                                .get()
+                                .target()
+                                .and_then(|uoid| repo.graph_ahead_behind(oid, uoid).ok())
+                                .unwrap_or((0, 0));
+                            (upstream_name, a, b)
+                        }
+                        Err(_) => (None, 0, 0),
+                    },
+                    Err(_) => (None, 0, 0),
+                }
             } else {
-                None
+                (None, 0, 0)
             };
 
             branches.push(BranchInfo {
@@ -238,6 +351,8 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
                 is_remote,
                 is_head,
                 upstream,
+                ahead,
+                behind,
                 oid: oid.to_string(),
                 short_oid: oid.to_string()[..7.min(oid.to_string().len())].to_string(),
                 last_commit_summary: commit.summary().unwrap_or("").to_string(),

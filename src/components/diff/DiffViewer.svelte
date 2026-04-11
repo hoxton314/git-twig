@@ -21,8 +21,9 @@
   const loading = $derived($diffLoading);
   const viewMode = $derived($diffViewMode);
 
-  // Show working file diff when a working file is selected, otherwise commit diff
-  const isWorkingMode = $derived(workingFile !== null);
+  // Show working file diff when a working file is selected or WIP row clicked, otherwise commit diff
+  const isWipMode = $derived(commitOid === "__wip__");
+  const isWorkingMode = $derived(workingFile !== null || isWipMode);
   const diff = $derived(isWorkingMode ? workingDiff : commitDiff);
 
   let expandedFiles = $state<Set<string>>(new Set());
@@ -32,7 +33,7 @@
   $effect(() => {
     const oid = commitOid;
     const path = repoPath;
-    if (path && oid && oid !== lastLoadedOid) {
+    if (path && oid && oid !== "__wip__" && oid !== lastLoadedOid) {
       lastLoadedOid = oid;
       loadDiff(path, oid);
     }
@@ -101,7 +102,10 @@
 <div class="diff-viewer">
   <div class="diff-header">
     <span class="diff-title">
-      {#if isWorkingMode && workingFile}
+      {#if isWipMode}
+        <span class="label">Working changes</span>
+        — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
+      {:else if isWorkingMode && workingFile}
         <span class="label">{workingFile.area === "staged" ? "Staged" : "Unstaged"}</span>
         — {workingFile.path}
       {:else if commitOid}

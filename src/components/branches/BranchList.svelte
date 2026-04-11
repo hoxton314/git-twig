@@ -8,6 +8,8 @@
     Trash2,
     ChevronDown,
     ChevronRight,
+    ArrowUp,
+    ArrowDown,
   } from "lucide-svelte";
   import { activeRepoPath, updateRepo } from "../../lib/stores/repos";
   import { branches, commitGraph, graphLoading } from "../../lib/stores/graph";
@@ -184,6 +186,20 @@
           <span class="dot"></span>
         {/if}
         <span class="branch-name">{branch.name}</span>
+        {#if branch.ahead > 0 || branch.behind > 0}
+          <span class="ahead-behind">
+            {#if branch.ahead > 0}
+              <span class="ab-badge ab-ahead" title="{branch.ahead} ahead of remote">
+                <ArrowUp size={10} />{branch.ahead}
+              </span>
+            {/if}
+            {#if branch.behind > 0}
+              <span class="ab-badge ab-behind" title="{branch.behind} behind remote">
+                <ArrowDown size={10} />{branch.behind}
+              </span>
+            {/if}
+          </span>
+        {/if}
         {#if !branch.is_head}
           <button
             class="delete-btn"
@@ -362,6 +378,34 @@
     background: var(--color-text-muted);
     flex-shrink: 0;
     opacity: 0.4;
+  }
+
+  .ahead-behind {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .ab-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 0 3px;
+    border-radius: 3px;
+    line-height: 16px;
+  }
+
+  .ab-ahead {
+    color: #e0af68;
+    background: rgba(224, 175, 104, 0.15);
+  }
+
+  .ab-behind {
+    color: #7aa2f7;
+    background: rgba(122, 162, 247, 0.15);
   }
 
   .delete-btn {

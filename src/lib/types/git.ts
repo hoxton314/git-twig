@@ -32,9 +32,16 @@ export interface GraphEntry {
   parent_lanes: number[];
 }
 
+export interface RefLabel {
+  name: string;
+  ref_type: "local" | "remote" | "tag";
+}
+
 export interface CommitGraph {
   entries: GraphEntry[];
   total_lanes: number;
+  refs: Record<string, RefLabel[]>;
+  unpushed_oids: string[];
 }
 
 // ── Branches ──────────────────────────────────────────────────────────
@@ -44,6 +51,8 @@ export interface BranchInfo {
   is_remote: boolean;
   is_head: boolean;
   upstream: string | null;
+  ahead: number;
+  behind: number;
   oid: string;
   short_oid: string;
   last_commit_summary: string;
@@ -96,6 +105,9 @@ export interface WorkingStatus {
 export interface Session {
   paths: string[];
   active: string | null;
+  sidebar_width: number | null;
+  staging_width: number | null;
+  diff_panel_ratio: number | null;
 }
 
 // ── Command results ───────────────────────────────────────────────────

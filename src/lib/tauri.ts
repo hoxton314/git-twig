@@ -35,9 +35,18 @@ export function listOpenRepos(): Promise<string[]> {
 
 export function saveSession(
   paths: string[],
-  active: string | null
+  active: string | null,
+  sidebarWidth: number | null,
+  stagingWidth: number | null,
+  diffPanelRatio: number | null,
 ): Promise<void> {
-  return invoke<void>("save_session", { paths, active });
+  return invoke<void>("save_session", {
+    paths,
+    active,
+    sidebarWidth,
+    stagingWidth,
+    diffPanelRatio,
+  });
 }
 
 export function loadSession(): Promise<Session> {

@@ -6,9 +6,10 @@
     entry: GraphEntry;
     totalLanes: number;
     height: number;
+    isUnpushed?: boolean;
   }
 
-  let { entry, totalLanes, height }: Props = $props();
+  let { entry, totalLanes, height, isUnpushed = false }: Props = $props();
 
   const LANE_WIDTH = 20;
   const NODE_RADIUS = 5;
@@ -79,12 +80,23 @@
   {/each}
 
   <!-- Commit node -->
-  <circle
-    cx={lx(entry.lane)}
-    cy={cy}
-    r={NODE_RADIUS}
-    fill={laneColor(entry.lane)}
-  />
+  {#if isUnpushed}
+    <circle
+      cx={lx(entry.lane)}
+      cy={cy}
+      r={NODE_RADIUS}
+      fill="none"
+      stroke={laneColor(entry.lane)}
+      stroke-width={STROKE_WIDTH}
+    />
+  {:else}
+    <circle
+      cx={lx(entry.lane)}
+      cy={cy}
+      r={NODE_RADIUS}
+      fill={laneColor(entry.lane)}
+    />
+  {/if}
 </svg>
 
 <style>
