@@ -4,13 +4,18 @@
   import CommitGraph from "../graph/CommitGraph.svelte";
   import DiffViewer from "../diff/DiffViewer.svelte";
   import StagingArea from "../staging/StagingArea.svelte";
-  import { activeRepo } from "../../lib/stores/repos";
+  import { activeRepo, restoreSession } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, workingFileDiff } from "../../lib/stores/graph";
   import { diffPanelRatio } from "../../lib/stores/ui";
   import { FolderOpen } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import * as tauri from "../../lib/tauri";
   import { addRepo } from "../../lib/stores/repos";
+  import { onMount } from "svelte";
+
+  onMount(() => {
+    restoreSession();
+  });
 
   const repo = $derived($activeRepo);
   const hasSelectedCommit = $derived($selectedCommitOid !== null);

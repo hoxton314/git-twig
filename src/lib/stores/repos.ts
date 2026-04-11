@@ -1,5 +1,6 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type { RepoInfo } from "../types/git";
+import * as tauri from "../tauri";
 
 /** All open repos, keyed by path. */
 export const openRepos = writable<Map<string, RepoInfo>>(new Map());
@@ -46,4 +47,58 @@ export function updateRepo(info: RepoInfo) {
     m.set(info.path, info);
     return m;
   });
+}
+
+// ── Session persistence ──────────────────────────────────────────────
+
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+let sessionReady = false;
+
+function persistSession() {
+  if (!sessionReady) return;
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    const repos = get(openRepos);
+    const active = get(activeRepoPath);
+    tauri.saveSession([...repos.keys()], active).catch((e) => {
+      console.error("Failed to save session:", e);
+    });
+  }, 300);
+}
+
+openRepos.subscribe(() => persistSession());
+activeRepoPath.subscribe(() => persistSession());
+
+/** Restore previously open repos from disk. Call once at startup. */
+export async function restoreSession() {
+  try {
+    const session = await tauri.loadSession();
+    if (session.paths.length === 0) {
+      sessionReady = true;
+      return;
+    }
+
+    for (const path of session.paths) {
+      try {
+        const info = await tauri.openRepo(path);
+        openRepos.update((m) => {
+          m.set(info.path, info);
+          return m;
+        });
+      } catch {
+        // Repo no longer exists or isn't accessible — skip it
+      }
+    }
+
+    // Restore active tab (fall back to first open repo)
+    const repos = get(openRepos);
+    if (session.active && repos.has(session.active)) {
+      activeRepoPath.set(session.active);
+    } else if (repos.size > 0) {
+      activeRepoPath.set([...repos.keys()][0]);
+    }
+  } catch {
+    // No saved session or corrupt file — start fresh
+  }
+  sessionReady = true;
 }

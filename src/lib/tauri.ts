@@ -10,6 +10,7 @@ import type {
   DiffFile,
   CommandResult,
   WorkingStatus,
+  Session,
 } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
@@ -28,6 +29,19 @@ export function getRepoInfo(path: string): Promise<RepoInfo> {
 
 export function listOpenRepos(): Promise<string[]> {
   return invoke<string[]>("list_open_repos");
+}
+
+// ── Session persistence ───────────────────────────────────────────────
+
+export function saveSession(
+  paths: string[],
+  active: string | null
+): Promise<void> {
+  return invoke<void>("save_session", { paths, active });
+}
+
+export function loadSession(): Promise<Session> {
+  return invoke<Session>("load_session");
 }
 
 // ── Commit graph ──────────────────────────────────────────────────────

@@ -91,6 +91,13 @@ export interface WorkingStatus {
   unstaged: FileStatus[];
 }
 
+// ── Session persistence ──────────────────────────────────────────────
+
+export interface Session {
+  paths: string[];
+  active: string | null;
+}
+
 // ── Command results ───────────────────────────────────────────────────
 
 export interface CommandResult {

@@ -38,6 +38,9 @@ pub fn run() {
             commands::staging::unstage_files,
             commands::staging::create_commit,
             commands::staging::pull,
+            // Session persistence
+            commands::session::save_session,
+            commands::session::load_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");
