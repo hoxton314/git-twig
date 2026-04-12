@@ -14,6 +14,8 @@ pub struct RepoInfo {
     pub head_name: Option<String>,
     pub is_bare: bool,
     pub is_empty: bool,
+    /// Unix timestamp of the HEAD commit (0 if unavailable).
+    pub last_commit_time: i64,
 }
 
 /// Open a repository by path and add it to the app state.
@@ -56,12 +58,20 @@ pub async fn open_repo(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".to_string());
 
+    let last_commit_time = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .map(|c| c.time().seconds())
+        .unwrap_or(0);
+
     let info = RepoInfo {
         path: key.clone(),
         name,
         head_name,
         is_bare: repo.is_bare(),
         is_empty: repo.is_empty().unwrap_or(true),
+        last_commit_time,
     };
 
     let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
@@ -117,12 +127,20 @@ pub async fn get_repo_info(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".to_string());
 
+    let last_commit_time = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .map(|c| c.time().seconds())
+        .unwrap_or(0);
+
     Ok(RepoInfo {
         path,
         name,
         head_name,
         is_bare: repo.is_bare(),
         is_empty: repo.is_empty().unwrap_or(true),
+        last_commit_time,
     })
 }
 
@@ -182,6 +200,7 @@ pub async fn list_repos_in_dir(dir: String) -> Result<Vec<RepoInfo>, TwigError> 
                 head_name,
                 is_bare: repo.is_bare(),
                 is_empty: repo.is_empty().unwrap_or(true),
+                last_commit_time: head_time,
             }))
         })
         .collect();

@@ -103,12 +103,20 @@ pub async fn github_clone_repo(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".to_string());
 
+    let last_commit_time = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .map(|c| c.time().seconds())
+        .unwrap_or(0);
+
     let info = RepoInfo {
         path: key.clone(),
         name,
         head_name,
         is_bare: repo.is_bare(),
         is_empty: repo.is_empty().unwrap_or(true),
+        last_commit_time,
     };
 
     let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;

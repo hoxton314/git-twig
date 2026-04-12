@@ -9,11 +9,21 @@
   import * as tauri from "../../lib/tauri";
   import type { RepoInfo } from "../../lib/types/git";
 
+  type SortMode = "recent" | "name";
+
   const repos = $derived([...$openRepos.entries()]);
   const openPaths = $derived(new Set(repos.map(([p]) => p)));
   let showCloneModal = $state(false);
   let showCreateRepoModal = $state(false);
   let discoveredRepos = $state<RepoInfo[]>([]);
+  let sortMode = $state<SortMode>("recent");
+
+  const sortedDiscoveredRepos = $derived(
+    [...discoveredRepos].sort((a, b) => {
+      if (sortMode === "recent") return b.last_commit_time - a.last_commit_time;
+      return a.name.localeCompare(b.name);
+    }),
+  );
 
   $effect(() => {
     const dir = $settings.default_repo_dir;
@@ -112,12 +122,18 @@
 
   {#if discoveredRepos.length > 0}
     <div class="open-repos">
-      <h2 class="section-title">
-        <FolderGit2 size={13} />
-        {$settings.default_repo_dir}
-      </h2>
+      <div class="section-header">
+        <h2 class="section-title">
+          <FolderGit2 size={13} />
+          {$settings.default_repo_dir}
+        </h2>
+        <select class="sort-select" bind:value={sortMode}>
+          <option value="recent">Recent</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
       <div class="repo-list">
-        {#each discoveredRepos as repo (repo.path)}
+        {#each sortedDiscoveredRepos as repo (repo.path)}
           {#if openPaths.has(repo.path)}
             <button class="repo-card repo-card-open" onclick={() => switchToRepo(repo.path)}>
               <GitBranch size={16} class="repo-icon" />
@@ -229,6 +245,13 @@
     max-width: 480px;
   }
 
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 10px;
+  }
+
   .section-title {
     display: flex;
     align-items: center;
@@ -238,11 +261,29 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--color-text-muted);
-    margin: 0 0 10px;
+    margin: 0;
   }
 
   .section-title :global(svg) {
     flex-shrink: 0;
+  }
+
+  .sort-select {
+    padding: 2px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .sort-select:hover,
+  .sort-select:focus {
+    border-color: var(--color-text-muted);
+    color: var(--color-text-primary);
   }
 
   .repo-list {

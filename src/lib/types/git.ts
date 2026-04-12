@@ -6,6 +6,7 @@ export interface RepoInfo {
   head_name: string | null;
   is_bare: boolean;
   is_empty: boolean;
+  last_commit_time: number;
 }
 
 // ── Commit Graph ──────────────────────────────────────────────────────
