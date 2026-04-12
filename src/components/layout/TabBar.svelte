@@ -88,7 +88,7 @@
   }
 </script>
 
-<div class="tab-bar">
+<div class="tab-bar" data-tauri-drag-region>
   <button
     class="home-btn"
     class:active={homeActive}
@@ -132,7 +132,7 @@
     <Plus size={16} />
   </button>
 
-  <div class="tab-spacer"></div>
+  <div class="tab-spacer" data-tauri-drag-region></div>
 
   <button
     class="settings-btn"
@@ -213,7 +213,6 @@
     overflow-x: auto;
     overflow-y: hidden;
     flex-shrink: 0;
-    -webkit-app-region: drag;
   }
 
   .home-btn {
@@ -228,7 +227,6 @@
     color: var(--color-text-muted);
     cursor: pointer;
     flex-shrink: 0;
-    -webkit-app-region: no-drag;
     transition: background 0.1s, color 0.1s;
   }
 
@@ -256,7 +254,6 @@
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
-    -webkit-app-region: no-drag;
     transition: background 0.1s, color 0.1s;
   }
 
@@ -311,7 +308,6 @@
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    -webkit-app-region: no-drag;
   }
 
   .tab-new:hover {
@@ -397,7 +393,6 @@
 
   .tab-spacer {
     flex: 1;
-    -webkit-app-region: drag;
   }
 
   .settings-btn {
@@ -412,7 +407,6 @@
     color: var(--color-text-muted);
     cursor: pointer;
     flex-shrink: 0;
-    -webkit-app-region: no-drag;
     transition: background 0.1s, color 0.1s;
   }
 

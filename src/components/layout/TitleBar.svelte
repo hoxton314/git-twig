@@ -17,7 +17,7 @@
   }
 </script>
 
-<div class="title-bar">
+<div class="title-bar" data-tauri-drag-region>
   <span class="title">Twig</span>
   <span class="spacer"></span>
   <button class="win-btn" onclick={minimize} title="Minimize">
@@ -39,7 +39,6 @@
     padding: 0 8px;
     background: var(--color-bg);
     border-bottom: 1px solid var(--color-border);
-    -webkit-app-region: drag;
     flex-shrink: 0;
     user-select: none;
   }
@@ -65,7 +64,6 @@
     background: transparent;
     color: var(--color-text-muted);
     cursor: pointer;
-    -webkit-app-region: no-drag;
     transition: background 0.1s, color 0.1s;
   }
 
