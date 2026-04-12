@@ -1,6 +1,6 @@
 [package]
 name = "twig"
-version = "0.1.0"
+version = "0.1.1"
 description = "Twig — A lightweight Git GUI. Lighter than the rest."
 authors = ["Igor Kalicinski"]
 license = "AGPL-3.0-only"

@@ -15,11 +15,13 @@
   import { installKeybindings, onAction } from "../../lib/keybindings";
   import { open, message as dialogMessage } from "@tauri-apps/plugin-dialog";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { getVersion } from "@tauri-apps/api/app";
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
 
   let showTitleBar = $state(false);
+  let appVersion = $state("");
 
   onMount(() => {
     restoreSession();
@@ -112,6 +114,8 @@
     tauri.isTilingWm().then((tiling) => {
       showTitleBar = !tiling;
     });
+
+    getVersion().then((v) => (appVersion = v));
 
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused && $activeRepoPath) {
@@ -232,6 +236,10 @@
   {:else}
     <HomeScreen />
   {/if}
+
+  {#if !showTitleBar && appVersion}
+    <span class="version-badge">v{appVersion}</span>
+  {/if}
 </div>
 
 <style>
@@ -298,5 +306,17 @@
     background: var(--color-surface);
     overflow: hidden;
     flex-shrink: 0;
+  }
+
+  .version-badge {
+    position: fixed;
+    bottom: 4px;
+    left: 6px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    opacity: 0.4;
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
   }
 </style>

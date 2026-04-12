@@ -1,8 +1,12 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { getVersion } from "@tauri-apps/api/app";
   import { Minus, Square, X } from "lucide-svelte";
 
   const win = getCurrentWindow();
+  let version = $state("");
+
+  getVersion().then((v) => (version = v));
 
   function minimize() {
     win.minimize();
@@ -18,7 +22,7 @@
 </script>
 
 <div class="title-bar" data-tauri-drag-region>
-  <span class="title">Twig</span>
+  <span class="title">Twig</span>{#if version}<span class="version">v{version}</span>{/if}
   <span class="spacer"></span>
   <button class="win-btn" onclick={minimize} title="Minimize">
     <Minus size={14} />
@@ -48,6 +52,13 @@
     font-weight: 600;
     color: var(--color-text-muted);
     padding-left: 4px;
+  }
+
+  .version {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    opacity: 0.6;
+    margin-left: 6px;
   }
 
   .spacer {
