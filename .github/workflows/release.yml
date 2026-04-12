@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            args: --bundles deb,rpm,pacman
+            args: --bundles deb,rpm
           - os: macos-latest
             args: --target universal-apple-darwin --bundles dmg
           - os: windows-latest
@@ -64,7 +64,7 @@ jobs:
           releaseBody: |
             See the assets below to download and install Twig v__VERSION__.
 
-            **Linux**: Download the `.deb`, `.rpm`, or `.pacman` (Arch)
+            **Linux**: Download the `.deb` or `.rpm`
             **macOS**: Download the `.dmg`
             **Windows**: Download the `.exe` installer
           releaseDraft: true
