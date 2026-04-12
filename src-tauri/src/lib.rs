@@ -20,6 +20,7 @@ pub fn run() {
             commands::repo::close_repo,
             commands::repo::get_repo_info,
             commands::repo::list_open_repos,
+            commands::repo::list_repos_in_dir,
             // Commit graph
             commands::graph::get_commit_graph,
             // Branches

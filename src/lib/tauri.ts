@@ -41,6 +41,10 @@ export function listOpenRepos(): Promise<string[]> {
   return invoke<string[]>("list_open_repos");
 }
 
+export function listReposInDir(dir: string): Promise<RepoInfo[]> {
+  return invoke<RepoInfo[]>("list_repos_in_dir", { dir });
+}
+
 // ── Session persistence ───────────────────────────────────────────────
 
 export function saveSession(

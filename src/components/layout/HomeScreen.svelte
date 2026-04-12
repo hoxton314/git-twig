@@ -1,22 +1,43 @@
 <script lang="ts">
-  import { FolderOpen, GitBranch, GitFork, Plus } from "lucide-svelte";
+  import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2 } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
+  import { settings } from "../../lib/stores/settings";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
   import type { RepoInfo } from "../../lib/types/git";
 
   const repos = $derived([...$openRepos.entries()]);
+  const openPaths = $derived(new Set(repos.map(([p]) => p)));
   let showCloneModal = $state(false);
   let showCreateRepoModal = $state(false);
+  let discoveredRepos = $state<RepoInfo[]>([]);
+
+  $effect(() => {
+    const dir = $settings.default_repo_dir;
+    if (dir) {
+      tauri.listReposInDir(dir).then((r) => (discoveredRepos = r)).catch(() => (discoveredRepos = []));
+    } else {
+      discoveredRepos = [];
+    }
+  });
 
   async function handleOpenRepo() {
     const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
     if (!selected) return;
     try {
       const info = await tauri.openRepo(selected as string);
+      addRepo(info);
+    } catch (err) {
+      console.error("Failed to open repo:", err);
+    }
+  }
+
+  async function openDiscoveredRepo(path: string) {
+    try {
+      const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
       console.error("Failed to open repo:", err);
@@ -69,7 +90,7 @@
     oncreated={handleRepoCreated}
   />
 
-  {#if repos.length > 0}
+  {#if repos.length > 0 && !$settings.default_repo_dir}
     <div class="open-repos">
       <h2 class="section-title">Open repositories</h2>
       <div class="repo-list">
@@ -84,6 +105,42 @@
               <span class="repo-branch">{info.head_name}</span>
             {/if}
           </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if discoveredRepos.length > 0}
+    <div class="open-repos">
+      <h2 class="section-title">
+        <FolderGit2 size={13} />
+        {$settings.default_repo_dir}
+      </h2>
+      <div class="repo-list">
+        {#each discoveredRepos as repo (repo.path)}
+          {#if openPaths.has(repo.path)}
+            <button class="repo-card repo-card-open" onclick={() => switchToRepo(repo.path)}>
+              <GitBranch size={16} class="repo-icon" />
+              <div class="repo-info">
+                <span class="repo-name">{repo.name}</span>
+                <span class="repo-path">{repo.path}</span>
+              </div>
+              {#if repo.head_name}
+                <span class="repo-branch">{repo.head_name}</span>
+              {/if}
+            </button>
+          {:else}
+            <button class="repo-card" onclick={() => openDiscoveredRepo(repo.path)}>
+              <GitBranch size={16} class="repo-icon" />
+              <div class="repo-info">
+                <span class="repo-name">{repo.name}</span>
+                <span class="repo-path">{repo.path}</span>
+              </div>
+              {#if repo.head_name}
+                <span class="repo-branch">{repo.head_name}</span>
+              {/if}
+            </button>
+          {/if}
         {/each}
       </div>
     </div>
@@ -173,12 +230,19 @@
   }
 
   .section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--color-text-muted);
     margin: 0 0 10px;
+  }
+
+  .section-title :global(svg) {
+    flex-shrink: 0;
   }
 
   .repo-list {
@@ -241,5 +305,9 @@
     padding: 2px 8px;
     border-radius: 3px;
     background: rgba(122, 162, 247, 0.1);
+  }
+
+  .repo-card-open {
+    opacity: 0.5;
   }
 </style>

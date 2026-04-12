@@ -134,3 +134,59 @@ pub async fn list_open_repos(
     let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
     Ok(repos.keys().cloned().collect())
 }
+
+/// Scan a directory for git repositories (immediate children only).
+/// Returns RepoInfo for each discovered repo, sorted by most recent commit (newest first).
+#[tauri::command]
+pub async fn list_repos_in_dir(dir: String) -> Result<Vec<RepoInfo>, TwigError> {
+    let dir_path = PathBuf::from(&dir);
+    if !dir_path.is_dir() {
+        return Ok(vec![]);
+    }
+
+    let entries: Vec<_> = std::fs::read_dir(&dir_path)?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+        .collect();
+
+    let mut repos: Vec<(i64, RepoInfo)> = entries
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let repo = Repository::open(&path).ok()?;
+            let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+
+            let head_time = repo
+                .head()
+                .ok()
+                .and_then(|h| h.peel_to_commit().ok())
+                .map(|c| c.time().seconds())
+                .unwrap_or(0);
+
+            let head_name = repo.head().ok().and_then(|h| {
+                if h.is_branch() {
+                    h.shorthand().map(String::from)
+                } else {
+                    h.target().map(|o| o.to_string()[..7].to_string())
+                }
+            });
+
+            let name = canonical
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "repo".to_string());
+
+            Some((head_time, RepoInfo {
+                path: canonical.to_string_lossy().to_string(),
+                name,
+                head_name,
+                is_bare: repo.is_bare(),
+                is_empty: repo.is_empty().unwrap_or(true),
+            }))
+        })
+        .collect();
+
+    repos.sort_by(|a, b| b.0.cmp(&a.0));
+
+    Ok(repos.into_iter().map(|(_, info)| info).collect())
+}

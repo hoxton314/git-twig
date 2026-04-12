@@ -3,12 +3,14 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath, removeRepo, addRepo } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
+  import { settings } from "../../lib/stores/settings";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
   import type { RepoInfo } from "../../lib/types/git";
 
   const repos = $derived([...$openRepos.entries()]);
+  const openPaths = $derived(new Set(repos.map(([p]) => p)));
   const active = $derived($activeRepoPath);
   const view = $derived($currentView);
   const homeActive = $derived(active === null && view !== "settings");
@@ -18,11 +20,18 @@
   let showCreateRepoModal = $state(false);
   let plusBtnEl: HTMLButtonElement | undefined = $state(undefined);
   let menuLeft = $state(0);
+  let suggestedRepos = $state<RepoInfo[]>([]);
 
   function toggleMenu() {
     showMenu = !showMenu;
     if (showMenu && plusBtnEl) {
       menuLeft = plusBtnEl.getBoundingClientRect().left;
+      const dir = $settings.default_repo_dir;
+      if (dir) {
+        tauri.listReposInDir(dir).then((r) => (suggestedRepos = r)).catch(() => (suggestedRepos = []));
+      } else {
+        suggestedRepos = [];
+      }
     }
   }
 
@@ -32,6 +41,16 @@
     if (!selected) return;
     try {
       const info = await tauri.openRepo(selected as string);
+      addRepo(info);
+    } catch (err) {
+      console.error("Failed to open repo:", err);
+    }
+  }
+
+  async function openSuggestedRepo(path: string) {
+    showMenu = false;
+    try {
+      const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
       console.error("Failed to open repo:", err);
@@ -132,6 +151,31 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="tab-menu" style="left: {menuLeft}px" onclick={(e) => e.stopPropagation()}>
+      {#if suggestedRepos.length > 0}
+        <div class="tab-menu-section">Repositories</div>
+        <div class="tab-menu-suggestions">
+          {#each suggestedRepos as repo (repo.path)}
+            {#if openPaths.has(repo.path)}
+              <button class="tab-menu-item tab-menu-item-open" onclick={() => { showMenu = false; $activeRepoPath = repo.path; $currentView = "repos"; }}>
+                <GitBranch size={14} />
+                <span class="tab-menu-repo-name">{repo.name}</span>
+                {#if repo.head_name}
+                  <span class="tab-menu-repo-branch">{repo.head_name}</span>
+                {/if}
+              </button>
+            {:else}
+              <button class="tab-menu-item" onclick={() => openSuggestedRepo(repo.path)}>
+                <GitBranch size={14} />
+                <span class="tab-menu-repo-name">{repo.name}</span>
+                {#if repo.head_name}
+                  <span class="tab-menu-repo-branch">{repo.head_name}</span>
+                {/if}
+              </button>
+            {/if}
+          {/each}
+        </div>
+        <div class="tab-menu-divider"></div>
+      {/if}
       <button class="tab-menu-item" onclick={handleOpenRepo}>
         <FolderOpen size={14} />
         Open local...
@@ -311,6 +355,44 @@
 
   .tab-menu-item:hover {
     background: var(--color-surface-elevated);
+  }
+
+  .tab-menu-item-open {
+    opacity: 0.5;
+  }
+
+  .tab-menu-section {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    padding: 6px 10px 4px;
+  }
+
+  .tab-menu-suggestions {
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  .tab-menu-repo-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-menu-repo-branch {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--color-accent);
+    flex-shrink: 0;
+  }
+
+  .tab-menu-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: 4px 0;
   }
 
   .tab-spacer {
