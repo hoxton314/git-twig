@@ -15,6 +15,14 @@ dist
 dist-ssr
 *.local
 
+# AUR build artifacts
+aur/*/pkg/
+aur/*/src/
+aur/*/*.pkg.tar*
+aur/*/*.deb
+aur/*/*.desktop
+aur/*/*.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
