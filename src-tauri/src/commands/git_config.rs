@@ -51,28 +51,9 @@ async fn git_config_set(key: &str, value: &str) -> Result<(), TwigError> {
 }
 
 async fn git_config_set_bool(key: &str, value: bool) -> Result<(), TwigError> {
-    if value {
-        git_config_set(key, "true").await
-    } else {
-        // Unset to revert to default rather than setting "false"
-        let output = Command::new("git")
-            .args(["config", "--global", "--unset", key])
-            .output()
-            .await
-            .map_err(|e| TwigError::GitCli(format!("Failed to execute git config: {e}")))?;
-
-        // --unset returns error code 5 if the key doesn't exist, which is fine
-        if !output.status.success() {
-            let code = output.status.code().unwrap_or(-1);
-            if code != 5 {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                return Err(TwigError::GitCli(format!(
-                    "git config --global --unset {key} failed: {stderr}"
-                )));
-            }
-        }
-        Ok(())
-    }
+    // Explicitly set "true"/"false" rather than unsetting, because unsetting
+    // from ~/.gitconfig won't override values in ~/.config/git/config (XDG).
+    git_config_set(key, if value { "true" } else { "false" }).await
 }
 
 async fn detect_lfs() -> bool {
@@ -125,21 +106,19 @@ pub async fn set_git_config(config: GitConfig) -> Result<(), TwigError> {
         git_config_set("user.email", &config.user_email).await?;
     }
 
-    // pull.rebase
+    // pull.rebase — explicitly set all values to override any XDG config
     match config.pull_rebase.as_str() {
-        "true" => git_config_set("pull.rebase", "true").await?,
+        "true" => {
+            git_config_set("pull.rebase", "true").await?;
+            git_config_set("pull.ff", "false").await?;
+        }
         "ff-only" => {
-            // Unset pull.rebase, set pull.ff = only
-            git_config_set_bool("pull.rebase", false).await.ok();
+            git_config_set("pull.rebase", "false").await?;
             git_config_set("pull.ff", "only").await?;
         }
         _ => {
-            // "false" / merge — unset pull.rebase and pull.ff to get default behavior
-            git_config_set_bool("pull.rebase", false).await.ok();
-            let _ = Command::new("git")
-                .args(["config", "--global", "--unset", "pull.ff"])
-                .output()
-                .await;
+            git_config_set("pull.rebase", "false").await?;
+            git_config_set("pull.ff", "false").await?;
         }
     }
 

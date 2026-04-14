@@ -74,8 +74,11 @@ pub async fn push_branch(
     }
 }
 
-pub async fn pull(repo_path: &Path, remote: &str, branch: &str) -> Result<GitOutput, TwigError> {
-    run_git(repo_path, &["pull", remote, branch]).await
+pub async fn pull(repo_path: &Path, remote: &str, branch: Option<&str>) -> Result<GitOutput, TwigError> {
+    match branch {
+        Some(b) => run_git(repo_path, &["pull", remote, b]).await,
+        None => run_git(repo_path, &["pull", remote]).await,
+    }
 }
 
 pub async fn has_uncommitted_changes(repo_path: &Path) -> Result<bool, TwigError> {

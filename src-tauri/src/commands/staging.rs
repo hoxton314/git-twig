@@ -250,8 +250,7 @@ pub async fn pull(
     }
 
     let remote_name = remote.as_deref().unwrap_or("origin");
-    let branch_name = branch.as_deref().unwrap_or("HEAD");
-    let output = writer::pull(&repo_path, remote_name, branch_name).await?;
+    let output = writer::pull(&repo_path, remote_name, branch.as_deref()).await?;
 
     if !output.success {
         // Pull failed — restore stash if we created one
