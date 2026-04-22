@@ -1,7 +1,17 @@
 <script lang="ts">
   import AppShell from "./components/layout/AppShell.svelte";
-  import UpdateChecker from "./components/updater/UpdateChecker.svelte";
+  import { onMount } from "svelte";
+  import type { Component } from "svelte";
+
+  let UpdateChecker = $state<Component | null>(null);
+
+  onMount(async () => {
+    const mod = await import("./components/updater/UpdateChecker.svelte");
+    UpdateChecker = mod.default;
+  });
 </script>
 
 <AppShell />
-<UpdateChecker />
+{#if UpdateChecker}
+  <UpdateChecker />
+{/if}
