@@ -4,6 +4,8 @@
 
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
+![Twig screenshot](docs/screenshots/twig.png)
+
 ## Overview
 
 Twig is a GitKraken-inspired Git GUI that prioritizes speed and native Linux Wayland support. It uses a hybrid git backend: **git2** (Rust) for all read operations and the **system git CLI** for all write operations and LFS, giving you both performance and full compatibility.

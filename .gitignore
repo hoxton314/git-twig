@@ -33,3 +33,6 @@ aur/*/*.png
 *.njsproj
 *.sln
 *.sw?
+
+# AI
+.claude/
