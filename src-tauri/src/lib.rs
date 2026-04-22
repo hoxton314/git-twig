@@ -35,6 +35,7 @@ pub fn run() {
             // Diffs
             commands::diff::get_commit_diff,
             commands::diff::get_working_diff,
+            commands::diff::get_file_blob,
             // Staging & working directory
             commands::staging::get_working_status,
             commands::staging::get_staged_diff,

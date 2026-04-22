@@ -5,13 +5,19 @@
     diffLoading,
     selectedWorkingFile,
     workingFileDiff,
+    commitGraph,
   } from "../../lib/stores/graph";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { diffViewMode } from "../../lib/stores/ui";
   import * as tauri from "../../lib/tauri";
   import DiffHunk from "./DiffHunk.svelte";
-  import { FileText, Binary, Package, Loader2, Columns2, AlignJustify } from "lucide-svelte";
+  import ImageDiff from "./ImageDiff.svelte";
+  import { FileText, Binary, Package, Loader2, Columns2, AlignJustify, Image } from "lucide-svelte";
   import type { DiffFile } from "../../lib/types/git";
+
+  const IMAGE_EXTENSIONS = new Set([
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "tiff", "tif",
+  ]);
 
   const repoPath = $derived($activeRepoPath);
   const commitOid = $derived($selectedCommitOid);
@@ -27,6 +33,9 @@
   const diff = $derived(isWorkingMode ? workingDiff : commitDiff);
 
   let expandedFiles = $state<Set<string>>(new Set());
+
+  // Image blob cache: fileKey -> { old, new, loading }
+  let imageBlobs = $state<Record<string, { old: string | null; new: string | null; loading: boolean }>>({});
 
   // Load diff when selected commit changes
   let lastLoadedOid: string | null = null;
@@ -49,6 +58,7 @@
   async function loadDiff(path: string, oid: string) {
     $diffLoading = true;
     expandedFiles = new Set();
+    imageBlobs = {};
     try {
       const result = await tauri.getCommitDiff(path, oid);
       $selectedDiff = result;
@@ -67,6 +77,12 @@
     return f.new_path ?? f.old_path ?? "unknown";
   }
 
+  function isImageFile(f: DiffFile): boolean {
+    const path = f.new_path ?? f.old_path ?? "";
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    return IMAGE_EXTENSIONS.has(ext);
+  }
+
   function toggleFile(f: DiffFile) {
     const key = fileKey(f);
     const next = new Set(expandedFiles);
@@ -74,9 +90,77 @@
       next.delete(key);
     } else {
       next.add(key);
+      if (isImageFile(f) && !imageBlobs[key]) {
+        loadImageBlobs(f);
+      }
     }
     expandedFiles = next;
   }
+
+  async function loadImageBlobs(f: DiffFile) {
+    const path = repoPath;
+    if (!path) return;
+
+    const key = fileKey(f);
+    imageBlobs[key] = { old: null, new: null, loading: true };
+
+    try {
+      const filePath = f.new_path ?? f.old_path ?? "";
+      const oldFilePath = f.old_path ?? f.new_path ?? "";
+
+      let oldSource: string | null = null;
+      let newSource: string | null = null;
+
+      if (isWorkingMode && workingFile) {
+        // Single file selected in staging area
+        if (workingFile.area === "staged") {
+          // staged: old=HEAD, new=index
+          oldSource = f.status !== "added" ? "head" : null;
+          newSource = f.status !== "deleted" ? "index" : null;
+        } else {
+          // unstaged: old=index, new=workdir
+          oldSource = f.status !== "added" ? "index" : null;
+          newSource = f.status !== "deleted" ? "workdir" : null;
+        }
+      } else if (isWipMode) {
+        // WIP row clicked — combined working changes: old=HEAD, new=workdir
+        oldSource = f.status !== "added" ? "head" : null;
+        newSource = f.status !== "deleted" ? "workdir" : null;
+      } else if (commitOid && commitOid !== "__wip__") {
+        // Commit diff: old=parent, new=commit
+        let parentOid: string | null = null;
+        const g = $commitGraph;
+        if (g) {
+          const entry = g.entries.find((e) => e.commit.oid === commitOid);
+          if (entry && entry.commit.parent_oids.length > 0) {
+            parentOid = entry.commit.parent_oids[0];
+          }
+        }
+        oldSource = f.status !== "added" && parentOid ? parentOid : null;
+        newSource = f.status !== "deleted" ? commitOid : null;
+      }
+
+      const [oldData, newData] = await Promise.all([
+        oldSource ? tauri.getFileBlob(path, oldFilePath, oldSource) : Promise.resolve(null),
+        newSource ? tauri.getFileBlob(path, filePath, newSource) : Promise.resolve(null),
+      ]);
+
+      imageBlobs[key] = { old: oldData, new: newData, loading: false };
+    } catch (err) {
+      console.error("Failed to load image blobs:", err);
+      imageBlobs[key] = { old: null, new: null, loading: false };
+    }
+  }
+
+  // Auto-load image blobs for any expanded image file (works for all modes)
+  $effect(() => {
+    for (const f of diff) {
+      const key = fileKey(f);
+      if (isImageFile(f) && expandedFiles.has(key) && !imageBlobs[key]) {
+        loadImageBlobs(f);
+      }
+    }
+  });
 
   function statusBadgeClass(status: string): string {
     switch (status) {
@@ -145,7 +229,9 @@
         <div class="file-section">
           <button class="file-header" onclick={() => toggleFile(file)}>
             <span class="status-badge {statusBadgeClass(file.status)}">{statusLabel(file.status)}</span>
-            {#if file.is_binary}
+            {#if isImageFile(file)}
+              <Image size={14} />
+            {:else if file.is_binary}
               <Binary size={14} />
             {:else if file.is_lfs}
               <Package size={14} />
@@ -162,6 +248,14 @@
                   <Package size={16} />
                   LFS object — {file.lfs_size ?? "unknown size"}
                 </div>
+              {:else if isImageFile(file)}
+                {@const blob = imageBlobs[fileKey(file)]}
+                <ImageDiff
+                  oldData={blob?.old ?? null}
+                  newData={blob?.new ?? null}
+                  filePath={file.new_path ?? file.old_path ?? ""}
+                  loading={blob?.loading ?? true}
+                />
               {:else if file.is_binary}
                 <div class="binary-notice">
                   <Binary size={16} />

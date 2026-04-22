@@ -164,6 +164,14 @@ export function getWorkingDiff(path: string): Promise<DiffFile[]> {
   return invoke<DiffFile[]>("get_working_diff", { path });
 }
 
+export function getFileBlob(
+  path: string,
+  filePath: string,
+  source: string,
+): Promise<string | null> {
+  return invoke<string | null>("get_file_blob", { path, filePath, source });
+}
+
 // ── Staging & working directory ───────────────────────────────────────
 
 export function getWorkingStatus(path: string): Promise<WorkingStatus> {

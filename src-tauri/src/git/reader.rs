@@ -634,6 +634,77 @@ pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> 
     Ok(files)
 }
 
+/// Read raw file content from a given source.
+///
+/// `source` is one of:
+///   - `"workdir"` — read from the working directory
+///   - `"index"`   — read from the staging area (index)
+///   - `"head"`    — read from the HEAD commit tree
+///   - any other string is treated as a commit OID
+///
+/// Returns `None` if the file doesn't exist in that source.
+pub fn read_file_blob(
+    repo: &Repository,
+    file_path: &str,
+    source: &str,
+) -> Result<Option<Vec<u8>>, TwigError> {
+    match source {
+        "workdir" => {
+            let workdir = repo
+                .workdir()
+                .ok_or_else(|| TwigError::Git(git2::Error::from_str("bare repository")))?;
+            let full_path = workdir.join(file_path);
+            match std::fs::read(&full_path) {
+                Ok(data) => Ok(Some(data)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(TwigError::Io(e)),
+            }
+        }
+        "index" => {
+            let index = repo.index()?;
+            let entry = index
+                .iter()
+                .find(|e| {
+                    let name = std::str::from_utf8(&e.path).unwrap_or("");
+                    name == file_path
+                });
+            match entry {
+                Some(e) => {
+                    let blob = repo.find_blob(e.id)?;
+                    Ok(Some(blob.content().to_vec()))
+                }
+                None => Ok(None),
+            }
+        }
+        "head" => {
+            let head = match repo.head() {
+                Ok(h) => h,
+                Err(_) => return Ok(None), // no HEAD (empty repo)
+            };
+            let tree = head.peel_to_tree()?;
+            match tree.get_path(std::path::Path::new(file_path)) {
+                Ok(entry) => {
+                    let blob = repo.find_blob(entry.id())?;
+                    Ok(Some(blob.content().to_vec()))
+                }
+                Err(_) => Ok(None),
+            }
+        }
+        oid_str => {
+            let oid = Oid::from_str(oid_str)?;
+            let commit = repo.find_commit(oid)?;
+            let tree = commit.tree()?;
+            match tree.get_path(std::path::Path::new(file_path)) {
+                Ok(entry) => {
+                    let blob = repo.find_blob(entry.id())?;
+                    Ok(Some(blob.content().to_vec()))
+                }
+                Err(_) => Ok(None),
+            }
+        }
+    }
+}
+
 fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
     let mut files: Vec<DiffFile> = Vec::new();
 
