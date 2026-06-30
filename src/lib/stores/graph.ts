@@ -49,15 +49,24 @@ export const workingFileDiff = writable<DiffFile[]>([]);
 /** Stash entries for the active repo. */
 export const stashEntries = writable<StashEntry[]>([]);
 
+/**
+ * True if `p` is still the active repo. Used to discard results from a refresh
+ * that the user navigated away from before it resolved, so a slow response for
+ * repo A can't clobber the freshly-loaded state of repo B.
+ */
+function stillActive(p: string): boolean {
+  return get(activeRepoPath) === p;
+}
+
 /** Refresh stash list for the active repo. */
 export async function refreshStash(path?: string) {
   const p = path ?? get(activeRepoPath);
   if (!p) return;
   try {
     const entries = await tauri.stashList(p);
-    stashEntries.set(entries);
+    if (stillActive(p)) stashEntries.set(entries);
   } catch {
-    stashEntries.set([]);
+    if (stillActive(p)) stashEntries.set([]);
   }
 }
 
@@ -108,6 +117,7 @@ export async function refreshStatus(path?: string) {
   if (!p) return;
   try {
     const result = await tauri.getWorkingStatus(p);
+    if (!stillActive(p)) return;
     workingStatus.set(result);
     await resyncSelectedFile(p, result);
   } catch (err) {
@@ -128,6 +138,8 @@ export async function refreshAll(path?: string) {
       tauri.getWorkingStatus(p),
       tauri.stashList(p),
     ]);
+    // Discard if the user switched repos while this was in flight.
+    if (!stillActive(p)) return;
     commitGraph.set(graph);
     branches.set(branchList);
     updateRepo(info);
@@ -137,6 +149,6 @@ export async function refreshAll(path?: string) {
   } catch (err) {
     console.error("Failed to refresh:", err);
   } finally {
-    graphLoading.set(false);
+    if (stillActive(p)) graphLoading.set(false);
   }
 }

@@ -57,7 +57,11 @@
   }
 
   function formatSize(data: string): string {
-    const bytes = Math.ceil((data.length * 3) / 4);
+    // Decode the byte count from the base64 payload, accounting for the data-URL
+    // prefix (if any) and `=` padding so the size isn't over-reported.
+    const base64 = data.includes(",") ? data.slice(data.indexOf(",") + 1) : data;
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+    const bytes = Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
     if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;

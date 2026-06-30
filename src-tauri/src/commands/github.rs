@@ -71,8 +71,15 @@ pub async fn github_clone_repo(
 ) -> Result<RepoInfo, TwigError> {
     let dest = PathBuf::from(&destination);
 
+    // Guard against arguments git would treat as flags (`--` ends option parsing).
+    if clone_url.starts_with('-') || destination.starts_with('-') {
+        return Err(TwigError::GitCli(
+            "clone URL and destination must not start with '-'".to_string(),
+        ));
+    }
+
     let output = Command::new("git")
-        .args(["clone", &clone_url, &destination])
+        .args(["clone", "--", &clone_url, &destination])
         .output()
         .await
         .map_err(|e| TwigError::GitCli(format!("Failed to execute git clone: {e}")))?;
@@ -94,7 +101,10 @@ pub async fn github_clone_repo(
         if h.is_branch() {
             h.shorthand().map(String::from)
         } else {
-            h.target().map(|o| o.to_string()[..7].to_string())
+            h.target().map(|o| {
+                let s = o.to_string();
+                s[..7.min(s.len())].to_string()
+            })
         }
     });
 
@@ -115,7 +125,7 @@ pub async fn github_clone_repo(
         name,
         head_name,
         is_bare: repo.is_bare(),
-        is_empty: repo.is_empty().unwrap_or(true),
+        is_empty: repo.is_empty().unwrap_or(false),
         last_commit_time,
     };
 

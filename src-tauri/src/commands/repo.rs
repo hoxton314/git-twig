@@ -49,7 +49,10 @@ pub async fn open_repo(
                 h.shorthand().map(String::from)
             } else {
                 // Detached HEAD — show short OID
-                h.target().map(|o| o.to_string()[..7].to_string())
+                h.target().map(|o| {
+                    let s = o.to_string();
+                    s[..7.min(s.len())].to_string()
+                })
             }
         });
 
@@ -70,7 +73,7 @@ pub async fn open_repo(
         name,
         head_name,
         is_bare: repo.is_bare(),
-        is_empty: repo.is_empty().unwrap_or(true),
+        is_empty: repo.is_empty().unwrap_or(false),
         last_commit_time,
     };
 
@@ -117,7 +120,10 @@ pub async fn get_repo_info(
             if h.is_branch() {
                 h.shorthand().map(String::from)
             } else {
-                h.target().map(|o| o.to_string()[..7].to_string())
+                h.target().map(|o| {
+                    let s = o.to_string();
+                    s[..7.min(s.len())].to_string()
+                })
             }
         });
 
@@ -139,7 +145,7 @@ pub async fn get_repo_info(
         name,
         head_name,
         is_bare: repo.is_bare(),
-        is_empty: repo.is_empty().unwrap_or(true),
+        is_empty: repo.is_empty().unwrap_or(false),
         last_commit_time,
     })
 }
@@ -185,7 +191,10 @@ pub async fn list_repos_in_dir(dir: String) -> Result<Vec<RepoInfo>, TwigError> 
                 if h.is_branch() {
                     h.shorthand().map(String::from)
                 } else {
-                    h.target().map(|o| o.to_string()[..7].to_string())
+                    h.target().map(|o| {
+                    let s = o.to_string();
+                    s[..7.min(s.len())].to_string()
+                })
                 }
             });
 
@@ -199,7 +208,7 @@ pub async fn list_repos_in_dir(dir: String) -> Result<Vec<RepoInfo>, TwigError> 
                 name,
                 head_name,
                 is_bare: repo.is_bare(),
-                is_empty: repo.is_empty().unwrap_or(true),
+                is_empty: repo.is_empty().unwrap_or(false),
                 last_commit_time: head_time,
             }))
         })

@@ -44,6 +44,7 @@
   });
 
   async function loadRepos() {
+    if (loading) return; // guard against overlapping loads
     loading = true;
     error = "";
     try {

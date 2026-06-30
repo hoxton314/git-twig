@@ -664,10 +664,9 @@ pub fn read_file_blob(
             let index = repo.index()?;
             let entry = index
                 .iter()
-                .find(|e| {
-                    let name = std::str::from_utf8(&e.path).unwrap_or("");
-                    name == file_path
-                });
+                // Compare raw bytes so non-UTF-8 index paths still match instead
+                // of silently collapsing to "" and reporting the file as missing.
+                .find(|e| e.path == file_path.as_bytes());
             match entry {
                 Some(e) => {
                     let blob = repo.find_blob(e.id)?;
@@ -711,7 +710,9 @@ fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
     let num_deltas = diff.deltas().len();
 
     for delta_idx in 0..num_deltas {
-        let delta = diff.get_delta(delta_idx).expect("delta in range");
+        let Some(delta) = diff.get_delta(delta_idx) else {
+            continue;
+        };
         let old_path = delta.old_file().path().map(|p| p.to_string_lossy().to_string());
         let new_path = delta.new_file().path().map(|p| p.to_string_lossy().to_string());
         let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();

@@ -42,11 +42,15 @@ pub async fn stash_list(
             continue;
         }
         let reference = parts[0].to_string();
-        let index = reference
+        // Skip entries whose index can't be parsed rather than defaulting to 0 —
+        // a wrong index here would make a later pop/drop act on the wrong stash.
+        let Ok(index) = reference
             .trim_start_matches("stash@{")
             .trim_end_matches('}')
             .parse::<u32>()
-            .unwrap_or(0);
+        else {
+            continue;
+        };
         entries.push(StashEntry {
             index,
             reference,

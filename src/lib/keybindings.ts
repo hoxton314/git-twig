@@ -109,9 +109,10 @@ function rebuildParsedBindings() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  // Don't intercept when focused on an input/textarea/select
-  const tag = (e.target as HTMLElement)?.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+  // Don't intercept when focused on an input/textarea/select/contenteditable
+  const target = e.target as HTMLElement | null;
+  const tag = target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
     // Exception: allow Ctrl+Enter for commit even in textarea
     const commitBinding = parsedBindings.get("commit");
     if (commitBinding && matchesEvent(commitBinding, e)) {

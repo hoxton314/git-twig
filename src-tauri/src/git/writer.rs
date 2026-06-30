@@ -27,9 +27,25 @@ async fn run_git(repo_path: &Path, args: &[&str]) -> Result<GitOutput, TwigError
     })
 }
 
+/// Reject arguments that git would otherwise interpret as command-line flags.
+/// Branch names, refs and remote names never legitimately begin with `-`
+/// (git itself forbids it), so a leading dash means a crafted/invalid value.
+fn safe_ref(value: &str) -> Result<(), TwigError> {
+    if value.is_empty() {
+        return Err(TwigError::GitCli("empty git ref/name argument".to_string()));
+    }
+    if value.starts_with('-') {
+        return Err(TwigError::GitCli(format!(
+            "invalid name '{value}': must not start with '-'"
+        )));
+    }
+    Ok(())
+}
+
 // ── Branch operations ─────────────────────────────────────────────────
 
 pub async fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<GitOutput, TwigError> {
+    safe_ref(branch_name)?;
     run_git(repo_path, &["checkout", branch_name]).await
 }
 
@@ -38,8 +54,12 @@ pub async fn create_branch(
     branch_name: &str,
     start_point: Option<&str>,
 ) -> Result<GitOutput, TwigError> {
+    safe_ref(branch_name)?;
     match start_point {
-        Some(sp) => run_git(repo_path, &["checkout", "-b", branch_name, sp]).await,
+        Some(sp) => {
+            safe_ref(sp)?;
+            run_git(repo_path, &["checkout", "-b", branch_name, sp]).await
+        }
         None => run_git(repo_path, &["checkout", "-b", branch_name]).await,
     }
 }
@@ -49,6 +69,8 @@ pub async fn rename_branch(
     old_name: &str,
     new_name: &str,
 ) -> Result<GitOutput, TwigError> {
+    safe_ref(old_name)?;
+    safe_ref(new_name)?;
     run_git(repo_path, &["branch", "-m", old_name, new_name]).await
 }
 
@@ -57,6 +79,7 @@ pub async fn delete_branch(
     branch_name: &str,
     force: bool,
 ) -> Result<GitOutput, TwigError> {
+    safe_ref(branch_name)?;
     let flag = if force { "-D" } else { "-d" };
     run_git(repo_path, &["branch", flag, branch_name]).await
 }
@@ -67,6 +90,8 @@ pub async fn push_branch(
     branch_name: &str,
     set_upstream: bool,
 ) -> Result<GitOutput, TwigError> {
+    safe_ref(remote)?;
+    safe_ref(branch_name)?;
     if set_upstream {
         run_git(repo_path, &["push", "-u", remote, branch_name]).await
     } else {
@@ -75,8 +100,12 @@ pub async fn push_branch(
 }
 
 pub async fn pull(repo_path: &Path, remote: &str, branch: Option<&str>) -> Result<GitOutput, TwigError> {
+    safe_ref(remote)?;
     match branch {
-        Some(b) => run_git(repo_path, &["pull", remote, b]).await,
+        Some(b) => {
+            safe_ref(b)?;
+            run_git(repo_path, &["pull", remote, b]).await
+        }
         None => run_git(repo_path, &["pull", remote]).await,
     }
 }
@@ -91,6 +120,7 @@ pub async fn fetch_all(repo_path: &Path) -> Result<GitOutput, TwigError> {
 }
 
 pub async fn merge_branch(repo_path: &Path, branch_name: &str) -> Result<GitOutput, TwigError> {
+    safe_ref(branch_name)?;
     run_git(repo_path, &["merge", branch_name]).await
 }
 
@@ -109,7 +139,9 @@ pub async fn restore_files(repo_path: &Path, paths: &[&str]) -> Result<GitOutput
 }
 
 pub async fn clean_files(repo_path: &Path, paths: &[&str]) -> Result<GitOutput, TwigError> {
-    let mut args = vec!["clean", "-f", "--"];
+    // `-d` is required to remove untracked directories; without it `git clean`
+    // silently leaves directories behind while still reporting success.
+    let mut args = vec!["clean", "-fd", "--"];
     args.extend(paths);
     run_git(repo_path, &args).await
 }
@@ -165,4 +197,31 @@ pub async fn stash_list(repo_path: &Path) -> Result<GitOutput, TwigError> {
         &["stash", "list", "--format=%gd%x00%s%x00%aI"],
     )
     .await
+}
+
+/// Resolve the commit SHA of the stash entry at the top of the stack
+/// (`stash@{0}`), or `None` if there is no stash.
+pub async fn stash_top_sha(repo_path: &Path) -> Result<Option<String>, TwigError> {
+    let out = run_git(repo_path, &["rev-parse", "--verify", "--quiet", "stash@{0}"]).await?;
+    let sha = out.stdout.trim().to_string();
+    Ok(if sha.is_empty() { None } else { Some(sha) })
+}
+
+/// Find the current stack index of the stash entry whose commit matches `sha`.
+/// Stash indices shift as entries are added/removed, so a previously-captured
+/// SHA must be re-resolved to an index before popping it.
+pub async fn stash_index_for_sha(repo_path: &Path, sha: &str) -> Result<Option<u32>, TwigError> {
+    let out = run_git(repo_path, &["stash", "list", "--format=%gd %H"]).await?;
+    for line in out.stdout.lines() {
+        if let Some((reference, line_sha)) = line.split_once(' ') {
+            if line_sha.trim() == sha {
+                return Ok(reference
+                    .trim_start_matches("stash@{")
+                    .trim_end_matches('}')
+                    .parse::<u32>()
+                    .ok());
+            }
+        }
+    }
+    Ok(None)
 }

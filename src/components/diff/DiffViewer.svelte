@@ -37,13 +37,15 @@
   // Image blob cache: fileKey -> { old, new, loading }
   let imageBlobs = $state<Record<string, { old: string | null; new: string | null; loading: boolean }>>({});
 
-  // Load diff when selected commit changes
-  let lastLoadedOid: string | null = null;
+  // Load diff when selected commit (or repo) changes. The guard keys on both
+  // path and oid so switching repos reloads even if the same oid is selected.
+  let lastLoaded: string | null = null;
   $effect(() => {
     const oid = commitOid;
     const path = repoPath;
-    if (path && oid && oid !== "__wip__" && oid !== lastLoadedOid) {
-      lastLoadedOid = oid;
+    const key = path && oid ? `${path} ${oid}` : null;
+    if (path && oid && oid !== "__wip__" && key !== lastLoaded) {
+      lastLoaded = key;
       loadDiff(path, oid);
     }
   });
@@ -61,6 +63,8 @@
     imageBlobs = {};
     try {
       const result = await tauri.getCommitDiff(path, oid);
+      // Drop the result if the active repo changed while loading.
+      if (repoPath !== path) return;
       $selectedDiff = result;
       if (result.length > 0) {
         expandedFiles = new Set([fileKey(result[0])]);
@@ -90,9 +94,8 @@
       next.delete(key);
     } else {
       next.add(key);
-      if (isImageFile(f) && !imageBlobs[key]) {
-        loadImageBlobs(f);
-      }
+      // Image blobs are loaded by the effect that watches expandedFiles, so we
+      // don't also kick off a load here (which could double-fetch).
     }
     expandedFiles = next;
   }
@@ -145,6 +148,8 @@
         newSource ? tauri.getFileBlob(path, filePath, newSource) : Promise.resolve(null),
       ]);
 
+      // Drop stale results if the active repo changed mid-load.
+      if (repoPath !== path) return;
       imageBlobs[key] = { old: oldData, new: newData, loading: false };
     } catch (err) {
       console.error("Failed to load image blobs:", err);

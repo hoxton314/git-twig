@@ -64,6 +64,25 @@
     }
   });
 
+  // Run a write command and surface any failure to the user instead of
+  // swallowing it. Returns true on success.
+  async function runWrite(
+    op: () => Promise<{ success: boolean; message: string }>,
+    title: string,
+  ): Promise<boolean> {
+    try {
+      const result = await op();
+      if (!result.success) {
+        await message(result.message, { title, kind: "error" });
+        return false;
+      }
+      return true;
+    } catch (err) {
+      await message(String(err), { title, kind: "error" });
+      return false;
+    }
+  }
+
   async function selectFile(file: FileStatus, area: "staged" | "unstaged") {
     if (!repoPath) return;
     // Clear commit selection so diff viewer shows working file diff
@@ -84,42 +103,48 @@
   async function stageFile(e: MouseEvent, file: FileStatus) {
     e.stopPropagation();
     if (!repoPath) return;
-    await tauri.stageFiles(repoPath, [file.path]);
+    const path = repoPath;
+    await runWrite(() => tauri.stageFiles(path, [file.path]), "Stage Failed");
     await refreshStatus();
   }
 
   async function unstageFile(e: MouseEvent, file: FileStatus) {
     e.stopPropagation();
     if (!repoPath) return;
-    await tauri.unstageFiles(repoPath, [file.path]);
+    const path = repoPath;
+    await runWrite(() => tauri.unstageFiles(path, [file.path]), "Unstage Failed");
     await refreshStatus();
   }
 
   async function stageAll() {
     if (!repoPath || status.unstaged.length === 0) return;
+    const path = repoPath;
     const paths = status.unstaged.map((f) => f.path);
-    await tauri.stageFiles(repoPath, paths);
+    await runWrite(() => tauri.stageFiles(path, paths), "Stage Failed");
     await refreshStatus();
   }
 
   async function unstageAll() {
     if (!repoPath || status.staged.length === 0) return;
+    const path = repoPath;
     const paths = status.staged.map((f) => f.path);
-    await tauri.unstageFiles(repoPath, paths);
+    await runWrite(() => tauri.unstageFiles(path, paths), "Unstage Failed");
     await refreshStatus();
   }
 
   async function discardFile(e: MouseEvent, file: FileStatus) {
     e.stopPropagation();
     if (!repoPath) return;
+    const path = repoPath;
     const tracked = file.is_new ? [] : [file.path];
     const untracked = file.is_new ? [file.path] : [];
-    await tauri.discardFiles(repoPath, tracked, untracked);
+    await runWrite(() => tauri.discardFiles(path, tracked, untracked), "Discard Failed");
     await refreshStatus();
   }
 
   async function discardAll() {
     if (!repoPath || status.unstaged.length === 0) return;
+    const path = repoPath;
     const ok = await ask("Discard all unstaged changes? This cannot be undone.", {
       title: "Discard Changes",
       kind: "warning",
@@ -127,7 +152,7 @@
     if (!ok) return;
     const tracked = status.unstaged.filter((f) => !f.is_new).map((f) => f.path);
     const untracked = status.unstaged.filter((f) => f.is_new).map((f) => f.path);
-    await tauri.discardFiles(repoPath, tracked, untracked);
+    await runWrite(() => tauri.discardFiles(path, tracked, untracked), "Discard Failed");
     await refreshStatus();
   }
 
@@ -146,7 +171,7 @@
         await message(result.message, { title: "Undo Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Undo commit error:", err);
+      await message(String(err), { title: "Undo Failed", kind: "error" });
     }
   }
 
@@ -160,10 +185,10 @@
         commitMessage = "";
         await refreshAll();
       } else {
-        console.error("Commit failed:", result.message);
+        await message(result.message, { title: "Commit Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Commit error:", err);
+      await message(String(err), { title: "Commit Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -179,10 +204,10 @@
       if (result.success) {
         await refreshAll();
       } else {
-        console.error("Push failed:", result.message);
+        await message(result.message, { title: "Push Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Push error:", err);
+      await message(String(err), { title: "Push Failed", kind: "error" });
     } finally {
       pushLoading = false;
     }
@@ -200,7 +225,7 @@
         await message(result.message, { title: "Pull — Stash Conflicts", kind: "warning" });
       }
     } catch (err) {
-      console.error("Pull error:", err);
+      await message(String(err), { title: "Pull Failed", kind: "error" });
     } finally {
       pullLoading = false;
     }

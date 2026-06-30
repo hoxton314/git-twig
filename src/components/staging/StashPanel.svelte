@@ -15,6 +15,7 @@
     refreshAll,
   } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
+  import { message } from "@tauri-apps/plugin-dialog";
 
   const repoPath = $derived($activeRepoPath);
   const entries = $derived($stashEntries);
@@ -45,9 +46,11 @@
       if (result.success) {
         stashMessage = "";
         await refreshAll();
+      } else {
+        await message(result.message, { title: "Stash Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Stash push error:", err);
+      await message(String(err), { title: "Stash Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -58,11 +61,13 @@
     actionLoading = index;
     try {
       const result = await tauri.stashPop(repoPath, index);
-      if (result.success) {
-        await refreshAll();
+      // Refresh regardless: a conflicting pop still applies changes to the tree.
+      await refreshAll();
+      if (!result.success) {
+        await message(result.message, { title: "Stash Pop Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Stash pop error:", err);
+      await message(String(err), { title: "Stash Pop Failed", kind: "error" });
     } finally {
       actionLoading = null;
     }
@@ -73,11 +78,12 @@
     actionLoading = index;
     try {
       const result = await tauri.stashApply(repoPath, index);
-      if (result.success) {
-        await refreshAll();
+      await refreshAll();
+      if (!result.success) {
+        await message(result.message, { title: "Stash Apply Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Stash apply error:", err);
+      await message(String(err), { title: "Stash Apply Failed", kind: "error" });
     } finally {
       actionLoading = null;
     }
@@ -90,9 +96,11 @@
       const result = await tauri.stashDrop(repoPath, index);
       if (result.success) {
         await refreshAll();
+      } else {
+        await message(result.message, { title: "Stash Drop Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Stash drop error:", err);
+      await message(String(err), { title: "Stash Drop Failed", kind: "error" });
     } finally {
       actionLoading = null;
     }

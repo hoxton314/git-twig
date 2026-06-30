@@ -13,10 +13,10 @@
     ArrowDown,
   } from "lucide-svelte";
   import { activeRepoPath, updateRepo } from "../../lib/stores/repos";
-  import { branches, commitGraph, graphLoading, refreshAll } from "../../lib/stores/graph";
+  import { branches, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import type { BranchInfo } from "../../lib/types/git";
-  import { message } from "@tauri-apps/plugin-dialog";
+  import { message, confirm } from "@tauri-apps/plugin-dialog";
   import Modal from "../shared/Modal.svelte";
 
   const repoPath = $derived($activeRepoPath);
@@ -71,20 +71,13 @@
     try {
       const result = await tauri.checkoutBranch(repoPath, branch.name);
       if (result.success) {
-        // Refresh state
-        const info = await tauri.getRepoInfo(repoPath);
-        updateRepo(info);
-        await loadBranches(repoPath);
-        // Reload the graph
-        $graphLoading = true;
-        const graph = await tauri.getCommitGraph(repoPath, 5000);
-        $commitGraph = graph;
-        $graphLoading = false;
+        // Single source of truth for reloading graph, branches, repo info and status.
+        await refreshAll(repoPath);
       } else {
         await message(result.message, { title: "Checkout Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Checkout error:", err);
+      await message(String(err), { title: "Checkout Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -102,10 +95,10 @@
         updateRepo(info);
         await loadBranches(repoPath);
       } else {
-        console.error("Create branch failed:", result.message);
+        await message(result.message, { title: "Create Branch Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Create branch error:", err);
+      await message(String(err), { title: "Create Branch Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -119,11 +112,31 @@
       const result = await tauri.deleteBranch(repoPath, branch.name, false);
       if (result.success) {
         await loadBranches(repoPath);
+        return;
+      }
+
+      // `git branch -d` refuses to delete a branch it can't confirm is merged.
+      // This is common for branches whose upstream was deleted (shows as
+      // "[gone]"): git falls back to checking the current branch and refuses.
+      // Offer a force delete (`-D`) instead of silently doing nothing.
+      const notMerged = /not fully merged/i.test(result.message);
+      if (notMerged) {
+        const force = await confirm(
+          `Branch "${branch.name}" is not fully merged. Deleting it may discard commits that exist only on this branch.\n\nForce delete anyway?`,
+          { title: "Branch not fully merged", kind: "warning" },
+        );
+        if (!force) return;
+        const forced = await tauri.deleteBranch(repoPath, branch.name, true);
+        if (forced.success) {
+          await loadBranches(repoPath);
+        } else {
+          await message(forced.message, { title: "Delete Failed", kind: "error" });
+        }
       } else {
-        console.error("Delete branch failed:", result.message);
+        await message(result.message, { title: "Delete Failed", kind: "error" });
       }
     } catch (err) {
-      console.error("Delete branch error:", err);
+      await message(String(err), { title: "Delete Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -133,10 +146,13 @@
     if (!repoPath) return;
     loading = true;
     try {
-      await tauri.fetchAll(repoPath);
+      const result = await tauri.fetchAll(repoPath);
+      if (!result.success) {
+        await message(result.message, { title: "Fetch Failed", kind: "error" });
+      }
       await loadBranches(repoPath);
     } catch (err) {
-      console.error("Fetch error:", err);
+      await message(String(err), { title: "Fetch Failed", kind: "error" });
     } finally {
       loading = false;
     }
@@ -213,8 +229,8 @@
       if (!targetIsHead) {
         const checkout = await tauri.checkoutBranch(repoPath, target);
         if (!checkout.success) {
-          console.error("Checkout failed:", checkout.message);
-          merging = false;
+          mergeDialog = null;
+          await message(checkout.message, { title: "Checkout Failed", kind: "error" });
           return;
         }
       }
@@ -222,13 +238,15 @@
       const result = await tauri.mergeBranch(repoPath, source);
       mergeDialog = null;
 
-      if (!result.success) {
-        console.error("Merge failed:", result.message);
-      }
-
+      // Refresh first so the UI reflects any conflict markers, then report.
       await refreshAll(repoPath);
+
+      if (!result.success) {
+        await message(result.message, { title: "Merge Failed", kind: "error" });
+      }
     } catch (err) {
-      console.error("Merge error:", err);
+      mergeDialog = null;
+      await message(String(err), { title: "Merge Failed", kind: "error" });
     } finally {
       merging = false;
     }

@@ -39,6 +39,7 @@
   });
 
   async function detectRemote() {
+    if (detecting) return; // guard against overlapping detections
     detecting = true;
     noRemote = false;
     error = "";

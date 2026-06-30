@@ -1,3 +1,9 @@
+<script module lang="ts">
+  // Shared stack of currently-open modals so a single Escape press closes only
+  // the topmost one instead of every mounted modal at once.
+  const openStack: symbol[] = [];
+</script>
+
 <script lang="ts">
   import { X } from "lucide-svelte";
   import { onMount } from "svelte";
@@ -12,8 +18,22 @@
 
   let { open, title, onclose, width = "480px", children }: Props = $props();
 
+  const id = Symbol("modal");
+
+  // Keep this modal's presence in the shared stack in sync with `open`.
+  $effect(() => {
+    if (open) {
+      openStack.push(id);
+      return () => {
+        const i = openStack.lastIndexOf(id);
+        if (i !== -1) openStack.splice(i, 1);
+      };
+    }
+  });
+
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && open) {
+    if (e.key === "Escape" && open && openStack[openStack.length - 1] === id) {
+      e.stopPropagation();
       onclose();
     }
   }
