@@ -98,6 +98,13 @@ export function checkoutBranch(
   return invoke<CommandResult>("checkout_branch", { path, branchName });
 }
 
+export function checkoutRemoteBranch(
+  path: string,
+  branchName: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("checkout_remote_branch", { path, branchName });
+}
+
 export function createBranch(
   path: string,
   branchName: string,
@@ -124,6 +131,18 @@ export function deleteBranch(
   force: boolean = false
 ): Promise<CommandResult> {
   return invoke<CommandResult>("delete_branch", { path, branchName, force });
+}
+
+export function deleteRemoteBranch(
+  path: string,
+  remote: string,
+  branchName: string
+): Promise<CommandResult> {
+  return invoke<CommandResult>("delete_remote_branch", {
+    path,
+    remote,
+    branchName,
+  });
 }
 
 export function pushBranch(

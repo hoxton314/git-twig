@@ -51,6 +51,32 @@ pub async fn checkout_branch(
     })
 }
 
+/// Checkout a remote branch (e.g. "origin/feature") as a local tracking branch.
+#[tauri::command]
+pub async fn checkout_remote_branch(
+    state: State<'_, AppState>,
+    path: String,
+    branch_name: String,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = {
+        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        let open = repos
+            .get(&path)
+            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+        open.path.clone()
+    };
+
+    let output = writer::checkout_remote_branch(&repo_path, &branch_name).await?;
+    Ok(CommandResult {
+        success: output.success,
+        message: if output.success {
+            output.stdout
+        } else {
+            output.stderr
+        },
+    })
+}
+
 /// Create a new branch, optionally from a start point.
 #[tauri::command]
 pub async fn create_branch(
@@ -123,6 +149,33 @@ pub async fn delete_branch(
     };
 
     let output = writer::delete_branch(&repo_path, &branch_name, force).await?;
+    Ok(CommandResult {
+        success: output.success,
+        message: if output.success {
+            output.stdout
+        } else {
+            output.stderr
+        },
+    })
+}
+
+/// Delete a branch on a remote. `branch_name` excludes the remote prefix.
+#[tauri::command]
+pub async fn delete_remote_branch(
+    state: State<'_, AppState>,
+    path: String,
+    remote: String,
+    branch_name: String,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = {
+        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+        let open = repos
+            .get(&path)
+            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+        open.path.clone()
+    };
+
+    let output = writer::delete_remote_branch(&repo_path, &remote, &branch_name).await?;
     Ok(CommandResult {
         success: output.success,
         message: if output.success {

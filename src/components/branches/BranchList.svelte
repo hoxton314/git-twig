@@ -69,7 +69,10 @@
     if (!repoPath || branch.is_head) return;
     loading = true;
     try {
-      const result = await tauri.checkoutBranch(repoPath, branch.name);
+      // Remote branches get a local tracking branch instead of a detached HEAD.
+      const result = branch.is_remote
+        ? await tauri.checkoutRemoteBranch(repoPath, branch.name)
+        : await tauri.checkoutBranch(repoPath, branch.name);
       if (result.success) {
         // Single source of truth for reloading graph, branches, repo info and status.
         await refreshAll(repoPath);
@@ -132,6 +135,37 @@
         } else {
           await message(forced.message, { title: "Delete Failed", kind: "error" });
         }
+      } else {
+        await message(result.message, { title: "Delete Failed", kind: "error" });
+      }
+    } catch (err) {
+      await message(String(err), { title: "Delete Failed", kind: "error" });
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleDeleteRemoteBranch(e: MouseEvent, branch: BranchInfo) {
+    e.stopPropagation();
+    if (!repoPath) return;
+
+    const sep = branch.name.indexOf("/");
+    if (sep <= 0) return;
+    const remote = branch.name.slice(0, sep);
+    const name = branch.name.slice(sep + 1);
+
+    const ok = await confirm(
+      `This will permanently delete "${name}" from the remote "${remote}". Anyone using this branch will lose it on their next fetch.\n\nDelete remote branch?`,
+      { title: "Delete Remote Branch", kind: "warning" },
+    );
+    if (!ok) return;
+
+    loading = true;
+    try {
+      const result = await tauri.deleteRemoteBranch(repoPath, remote, name);
+      if (result.success) {
+        // The remote-tracking ref is gone, so refs in the graph changed too.
+        await refreshAll(repoPath);
       } else {
         await message(result.message, { title: "Delete Failed", kind: "error" });
       }
@@ -364,17 +398,27 @@
 
   {#if remoteExpanded}
     {#each remoteBranches as branch (branch.name)}
-      <button
+      <div
         class="branch-item remote"
         draggable="true"
         ondragstart={(e) => handleDragStart(e, branch)}
         ondragend={() => handleDragEnd()}
         onclick={() => handleCheckout(branch)}
+        onkeydown={(e) => e.key === "Enter" && handleCheckout(branch)}
+        role="button"
+        tabindex="0"
         title="{branch.name} — {branch.last_commit_summary}"
       >
         <span class="dot"></span>
         <span class="branch-name">{branch.name}</span>
-      </button>
+        <button
+          class="delete-btn"
+          onclick={(e) => handleDeleteRemoteBranch(e, branch)}
+          title="Delete branch on remote"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
     {/each}
   {/if}
 </div>

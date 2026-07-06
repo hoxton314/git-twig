@@ -26,9 +26,11 @@ pub fn run() {
             // Branches
             commands::branches::get_branches,
             commands::branches::checkout_branch,
+            commands::branches::checkout_remote_branch,
             commands::branches::create_branch,
             commands::branches::rename_branch,
             commands::branches::delete_branch,
+            commands::branches::delete_remote_branch,
             commands::branches::push_branch,
             commands::branches::merge_branch,
             commands::branches::fetch_all,

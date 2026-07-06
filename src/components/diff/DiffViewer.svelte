@@ -12,11 +12,16 @@
   import * as tauri from "../../lib/tauri";
   import DiffHunk from "./DiffHunk.svelte";
   import ImageDiff from "./ImageDiff.svelte";
-  import { FileText, Binary, Package, Loader2, Columns2, AlignJustify, Image } from "lucide-svelte";
+  import AudioPreview from "./AudioPreview.svelte";
+  import { FileText, Binary, Package, Loader2, Columns2, AlignJustify, Image, Music } from "lucide-svelte";
   import type { DiffFile } from "../../lib/types/git";
 
   const IMAGE_EXTENSIONS = new Set([
     "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif", "tiff", "tif",
+  ]);
+
+  const AUDIO_EXTENSIONS = new Set([
+    "mp3", "wav", "ogg", "oga", "opus", "flac", "m4a", "aac", "weba",
   ]);
 
   const repoPath = $derived($activeRepoPath);
@@ -81,10 +86,22 @@
     return f.new_path ?? f.old_path ?? "unknown";
   }
 
-  function isImageFile(f: DiffFile): boolean {
+  function fileExt(f: DiffFile): string {
     const path = f.new_path ?? f.old_path ?? "";
-    const ext = path.split(".").pop()?.toLowerCase() ?? "";
-    return IMAGE_EXTENSIONS.has(ext);
+    return path.split(".").pop()?.toLowerCase() ?? "";
+  }
+
+  function isImageFile(f: DiffFile): boolean {
+    return IMAGE_EXTENSIONS.has(fileExt(f));
+  }
+
+  function isAudioFile(f: DiffFile): boolean {
+    return AUDIO_EXTENSIONS.has(fileExt(f));
+  }
+
+  // Files whose preview needs raw blob contents rather than text hunks.
+  function isBlobPreviewFile(f: DiffFile): boolean {
+    return isImageFile(f) || isAudioFile(f);
   }
 
   function toggleFile(f: DiffFile) {
@@ -157,11 +174,11 @@
     }
   }
 
-  // Auto-load image blobs for any expanded image file (works for all modes)
+  // Auto-load blobs for any expanded image/audio file (works for all modes)
   $effect(() => {
     for (const f of diff) {
       const key = fileKey(f);
-      if (isImageFile(f) && expandedFiles.has(key) && !imageBlobs[key]) {
+      if (isBlobPreviewFile(f) && expandedFiles.has(key) && !imageBlobs[key]) {
         loadImageBlobs(f);
       }
     }
@@ -236,6 +253,8 @@
             <span class="status-badge {statusBadgeClass(file.status)}">{statusLabel(file.status)}</span>
             {#if isImageFile(file)}
               <Image size={14} />
+            {:else if isAudioFile(file)}
+              <Music size={14} />
             {:else if file.is_binary}
               <Binary size={14} />
             {:else if file.is_lfs}
@@ -256,6 +275,14 @@
               {:else if isImageFile(file)}
                 {@const blob = imageBlobs[fileKey(file)]}
                 <ImageDiff
+                  oldData={blob?.old ?? null}
+                  newData={blob?.new ?? null}
+                  filePath={file.new_path ?? file.old_path ?? ""}
+                  loading={blob?.loading ?? true}
+                />
+              {:else if isAudioFile(file)}
+                {@const blob = imageBlobs[fileKey(file)]}
+                <AudioPreview
                   oldData={blob?.old ?? null}
                   newData={blob?.new ?? null}
                   filePath={file.new_path ?? file.old_path ?? ""}

@@ -49,6 +49,37 @@ pub async fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<GitO
     run_git(repo_path, &["checkout", branch_name]).await
 }
 
+/// Checkout a remote branch (e.g. "origin/feature") as a local tracking branch.
+/// If a local branch with the derived name already exists, checkout that instead
+/// of failing — it is almost always the branch the user wants.
+pub async fn checkout_remote_branch(
+    repo_path: &Path,
+    remote_branch: &str,
+) -> Result<GitOutput, TwigError> {
+    safe_ref(remote_branch)?;
+    let local_name = match remote_branch.split_once('/') {
+        Some((_, local)) if !local.is_empty() => local,
+        _ => {
+            return Err(TwigError::GitCli(format!(
+                "'{remote_branch}' is not a remote branch name"
+            )))
+        }
+    };
+    if local_name == "HEAD" {
+        return Err(TwigError::GitCli(
+            "cannot checkout the symbolic HEAD of a remote".to_string(),
+        ));
+    }
+
+    let local_ref = format!("refs/heads/{local_name}");
+    let exists = run_git(repo_path, &["rev-parse", "--verify", "--quiet", &local_ref]).await?;
+    if exists.success {
+        run_git(repo_path, &["checkout", local_name]).await
+    } else {
+        run_git(repo_path, &["checkout", "--track", remote_branch]).await
+    }
+}
+
 pub async fn create_branch(
     repo_path: &Path,
     branch_name: &str,
@@ -82,6 +113,18 @@ pub async fn delete_branch(
     safe_ref(branch_name)?;
     let flag = if force { "-D" } else { "-d" };
     run_git(repo_path, &["branch", flag, branch_name]).await
+}
+
+/// Delete a branch on a remote (`git push <remote> --delete <branch>`).
+/// `branch_name` is the branch name without the remote prefix.
+pub async fn delete_remote_branch(
+    repo_path: &Path,
+    remote: &str,
+    branch_name: &str,
+) -> Result<GitOutput, TwigError> {
+    safe_ref(remote)?;
+    safe_ref(branch_name)?;
+    run_git(repo_path, &["push", remote, "--delete", branch_name]).await
 }
 
 pub async fn push_branch(
