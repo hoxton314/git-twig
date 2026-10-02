@@ -73,12 +73,13 @@ pub async fn status(repo_path: &Path) -> Result<LfsStatus, TwigError> {
     }
     let parsed: TrackJson = serde_json::from_str(&out.stdout)
         .map_err(|e| invalid(format!("unexpected `git lfs track --json` output: {e}")))?;
-    let patterns = parsed
-        .patterns
-        .into_iter()
-        .filter(|p| p.tracked)
-        .map(|p| LfsPattern { pattern: p.pattern, source: p.source, lockable: p.lockable })
-        .collect();
+    // A pattern repeated in a file (common after merges) is listed twice.
+    let mut patterns: Vec<LfsPattern> = Vec::new();
+    for p in parsed.patterns.into_iter().filter(|p| p.tracked) {
+        if !patterns.iter().any(|q| q.pattern == p.pattern && q.source == p.source) {
+            patterns.push(LfsPattern { pattern: p.pattern, source: p.source, lockable: p.lockable });
+        }
+    }
     Ok(LfsStatus { version: Some(version), patterns })
 }
 
@@ -283,6 +284,19 @@ mod tests {
                 LfsPattern { pattern: "-odd*.x".into(), source: ".gitattributes".into(), lockable: false },
             ]
         );
+        // Duplicated lines and nested attribute files.
+        let mut attrs = std::fs::read_to_string(dir.join(".gitattributes")).unwrap();
+        attrs.push_str("docs/*.bin filter=lfs diff=lfs merge=lfs -text lockable\n");
+        std::fs::write(dir.join(".gitattributes"), &attrs).unwrap();
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/.gitattributes"), "*.dat filter=lfs diff=lfs merge=lfs -text\n").unwrap();
+        let st = status(&dir).await.unwrap();
+        assert_eq!(st.patterns.iter().filter(|p| p.pattern == "docs/*.bin").count(), 1);
+        assert!(st.patterns.iter().any(|p| p.source == "sub/.gitattributes"), "{:?}", st.patterns);
+        std::fs::remove_dir_all(dir.join("sub")).unwrap();
+        attrs.truncate(attrs.len() - "docs/*.bin filter=lfs diff=lfs merge=lfs -text lockable\n".len());
+        std::fs::write(dir.join(".gitattributes"), &attrs).unwrap();
+
         untrack(&dir, "*.psd").await.unwrap();
         untrack(&dir, "-odd*.x").await.unwrap();
         let attrs = std::fs::read_to_string(dir.join(".gitattributes")).unwrap();

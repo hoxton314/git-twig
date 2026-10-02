@@ -8,6 +8,8 @@ export const lfsPanelOpen = writable(false);
 
 /** git-lfs version + tracked patterns for the active repo (null until loaded). */
 export const lfsStatus = writable<LfsStatus | null>(null);
+/** Why the last status load failed (null when it didn't). */
+export const lfsError = writable<string | null>(null);
 
 let gen = 0;
 
@@ -20,9 +22,15 @@ export async function refreshLfsStatus(path?: string): Promise<void> {
   }
   try {
     const st = await tauri.getLfsStatus(p);
-    if (my === gen && get(activeRepoPath) === p) lfsStatus.set(st);
-  } catch {
-    if (my === gen && get(activeRepoPath) === p) lfsStatus.set(null);
+    if (my === gen && get(activeRepoPath) === p) {
+      lfsStatus.set(st);
+      lfsError.set(null);
+    }
+  } catch (err) {
+    if (my === gen && get(activeRepoPath) === p) {
+      lfsStatus.set(null);
+      lfsError.set(err instanceof Error ? err.message : String(err));
+    }
   }
 }
 
@@ -32,6 +40,7 @@ activeRepoPath.subscribe((p) => {
   lastPath = p;
   lfsPanelOpen.set(false);
   lfsStatus.set(null);
+  lfsError.set(null);
   void refreshLfsStatus(p ?? undefined);
 });
 

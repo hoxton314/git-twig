@@ -7,7 +7,7 @@
   import { ask } from "@tauri-apps/plugin-dialog";
   import Modal from "../shared/Modal.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
-  import { lfsPanelOpen, lfsStatus, pruneSummary, refreshLfsStatus } from "../../lib/stores/lfs";
+  import { lfsError, lfsPanelOpen, lfsStatus, pruneSummary, refreshLfsStatus } from "../../lib/stores/lfs";
   import { refreshAll } from "../../lib/stores/graph";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
@@ -76,6 +76,10 @@
       await tauri.lfsUntrack(p, pat);
       await refreshLfsStatus(p);
       await refreshAll(p);
+      if ($lfsStatus?.patterns.some((x) => x.pattern === pat && x.source === ".gitattributes")) {
+        toast("warning", `${pat} is still tracked; check .gitattributes for another line matching it.`);
+        return;
+      }
       toast("success", `Stopped tracking ${pat}. Commit .gitattributes to share it.`);
     });
 
@@ -139,6 +143,9 @@
           git-lfs is not installed. Install it (e.g. from git-lfs.com or your package manager) and run
           <code>git lfs install</code> once, then reopen this panel.
         </p>
+      {:else if !st && $lfsError}
+        <p class="error">Couldn't read the LFS setup: {$lfsError}</p>
+        <div><button class="btn" onclick={() => refreshLfsStatus()}>Retry</button></div>
       {:else if !st}
         <p class="muted"><Loader2 size={13} class="spinner" /> Loading…</p>
       {:else}
@@ -150,14 +157,18 @@
             <p class="muted">No files are tracked with LFS in this repository yet.</p>
           {:else}
             <ul class="rows">
-              {#each st.patterns as p (p.pattern + p.source)}
+              {#each st.patterns as p, i (i)}
                 <li class="row">
                   <code class="grow">{p.pattern}</code>
                   {#if p.lockable}<span class="badge" title="Read-only unless locked">lockable</span>{/if}
                   <span class="muted small">{p.source}</span>
-                  <button class="icon-btn" onclick={() => untrack(p.pattern)} disabled={!!busy} title="Stop tracking {p.pattern}" aria-label="Untrack {p.pattern}">
-                    <Trash2 size={13} />
-                  </button>
+                  {#if p.source === ".gitattributes"}
+                    <button class="icon-btn" onclick={() => untrack(p.pattern)} disabled={!!busy} title="Stop tracking {p.pattern}" aria-label="Untrack {p.pattern}">
+                      <Trash2 size={13} />
+                    </button>
+                  {:else}
+                    <span class="icon-btn placeholder" title="Defined in {p.source}; edit that file to change it"></span>
+                  {/if}
                 </li>
               {/each}
             </ul>
@@ -271,6 +282,7 @@
   .btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .icon-btn { display: flex; background: none; border: none; padding: 2px; color: var(--color-text-muted); cursor: pointer; }
   .icon-btn:hover:not(:disabled) { color: var(--color-text-primary); }
+  .placeholder { width: 17px; height: 17px; cursor: help; }
   :global(.lfs .spinner) { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
