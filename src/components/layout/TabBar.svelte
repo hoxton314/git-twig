@@ -16,7 +16,10 @@
   import { openRepos, activeRepoPath, removeRepo, addRepo, moveRepo } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
   import { shortcutLabels, withShortcut } from "../../lib/keybindings";
-  import { repoHistory, favoritePaths, missingRepoPaths, toggleFavoriteRepo, baseName } from "../../lib/stores/repoHistory";
+  import { repoHistory, favoritePaths, missingRepoPaths, toggleFavoriteRepo, baseName, repoGroups } from "../../lib/stores/repoHistory";
+  import { GROUP_PREFIX } from "../../lib/repoMenu";
+  import { openRepoGroup } from "../../lib/groupActions";
+  import { groupMenuItems } from "../../lib/groupMenu";
   import { toast, toastError } from "../../lib/stores/toasts";
   import { openRepoWithDialog } from "../../lib/appActions";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
@@ -65,7 +68,7 @@
   });
 
   // Searchable menu: favorites/recent + default-folder repositories.
-  const menuSections = $derived(filterEntries(buildEntries(quickRepos, $scannedRepos, openPaths), query));
+  const menuSections = $derived(filterEntries(buildEntries(quickRepos, $scannedRepos, openPaths, $repoGroups), query));
   const menuRows = $derived(flatRows(menuSections));
   /** Index in `menuRows` of each section's first row. */
   const sectionStart = $derived(
@@ -96,6 +99,11 @@
 
   function activateRow(row: RepoMenuRow) {
     if (row.missing) return;
+    if (row.kind === "group") {
+      showMenu = false;
+      void openRepoGroup(row.path.slice(GROUP_PREFIX.length));
+      return;
+    }
     if (row.open) {
       showMenu = false;
       $activeRepoPath = row.path;
@@ -311,6 +319,15 @@
           },
         },
         {
+          label: "Add to group…",
+          action: () => {
+            const items = groupMenuItems(path, info.name);
+            const { clientX: x, clientY: y } = e;
+            // Opened after this menu has closed.
+            setTimeout(() => (ctxMenu = { x, y, items }), 0);
+          },
+        },
+        {
           label: "Open folder",
           action: () => tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err)),
         },
@@ -436,13 +453,13 @@
               role="option"
               aria-selected={idx === selectedIdx}
               disabled={row.missing}
-              title={row.missing ? `${row.path} (folder not found)` : row.path}
+              title={row.kind === "group" ? `Open the “${row.name}” group (${row.branch})` : row.missing ? `${row.path} (folder not found)` : row.path}
               onclick={() => activateRow(row)}
               onmousemove={() => { if (!row.missing) selectedPath = row.path; }}
             >
               {#if row.kind === "favorite"}<Pin size={14} />{:else if row.kind === "recent"}<History size={14} />{:else}<GitBranch size={14} />{/if}
               <span class="tab-menu-repo-name">{#each highlightRuns(row.name, row.nameHits) as run, k (k)}{#if run.hit}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</span>
-              {#if row.missing}<span class="tab-menu-repo-branch">missing</span>{:else if row.open}<span class="tab-menu-repo-branch">open</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
+              {#if row.kind === "group"}<span class="tab-menu-repo-branch">{row.branch}</span>{:else if row.missing}<span class="tab-menu-repo-branch">missing</span>{:else if row.open}<span class="tab-menu-repo-branch">open</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
             </button>
           {/each}
         {/each}

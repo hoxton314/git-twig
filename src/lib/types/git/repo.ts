@@ -56,6 +56,15 @@ export interface RecentRepo {
 export interface RepoHistory {
   recent: RecentRepo[];
   favorites: string[];
+  /** User-defined repository groups, in display order. */
+  groups: RepoGroup[];
+}
+
+export interface RepoGroup {
+  id: string;
+  name: string;
+  /** Repository paths, in display order. */
+  paths: string[];
 }
 
 /** A `git clone` progress line (`clone-progress` event). */

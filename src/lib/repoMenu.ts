@@ -5,7 +5,10 @@
  */
 import { fuzzyMatch } from "./palette";
 
-export type RepoMenuKind = "favorite" | "recent" | "scanned";
+export type RepoMenuKind = "favorite" | "recent" | "scanned" | "group";
+
+/** `path` of a group entry; selecting it opens the whole group. */
+export const GROUP_PREFIX = "group:";
 
 export interface RepoMenuEntry {
   path: string;
@@ -29,14 +32,25 @@ export interface RepoMenuSection {
   rows: RepoMenuRow[];
 }
 
-/** Favorites first, then recent (not open as tabs); then scanned repos. A path appears once. */
+/**
+ * Groups first, then favorites and recent (not open as tabs), then scanned
+ * repos. A path appears once.
+ */
 export function buildEntries(
   quick: { path: string; name: string; favorite: boolean; missing: boolean }[],
   scanned: { path: string; name: string; head_name: string | null }[],
   openPaths: Set<string>,
+  groups: { id: string; name: string; paths: string[] }[] = [],
 ): RepoMenuEntry[] {
   const seen = new Set<string>();
-  const out: RepoMenuEntry[] = [];
+  const out: RepoMenuEntry[] = groups.map((g) => ({
+    path: `${GROUP_PREFIX}${g.id}`,
+    name: g.name,
+    branch: `${g.paths.length} repo${g.paths.length === 1 ? "" : "s"}`,
+    kind: "group",
+    open: g.paths.length > 0 && g.paths.every((p) => openPaths.has(p)),
+    missing: g.paths.length === 0,
+  }));
   for (const q of quick) {
     if (seen.has(q.path)) continue;
     seen.add(q.path);
@@ -75,8 +89,9 @@ export function filterEntries(entries: RepoMenuEntry[], query: string): RepoMenu
     // matching on long paths and branch names matches almost anything).
     const onName = fuzzyMatch(q, e.name);
     const lower = q.toLowerCase();
-    const onBranch = e.branch?.toLowerCase().includes(lower) ? fuzzyMatch(q, e.branch) : null;
-    const onPath = e.path.toLowerCase().includes(lower) ? fuzzyMatch(q, e.path) : null;
+    // Groups have no branch (it holds their repo count) and their path is an id.
+    const onBranch = e.kind !== "group" && e.branch?.toLowerCase().includes(lower) ? fuzzyMatch(q, e.branch) : null;
+    const onPath = e.kind !== "group" && e.path.toLowerCase().includes(lower) ? fuzzyMatch(q, e.path) : null;
     let best: RepoMenuRow | null = null;
     if (onName) best = { ...e, nameHits: onName.indices, score: onName.score };
     if (onBranch && (!best || onBranch.score - 15 > best.score)) best = { ...e, nameHits: [], score: onBranch.score - 15 };
@@ -85,7 +100,8 @@ export function filterEntries(entries: RepoMenuEntry[], query: string): RepoMenu
   });
   const byScore = (a: RepoMenuRow, b: RepoMenuRow) => b.score - a.score;
   const sections: RepoMenuSection[] = [
-    { title: "Favorites & recent", rows: rows.filter((r) => r.kind !== "scanned").sort(byScore) },
+    { title: "Groups", rows: rows.filter((r) => r.kind === "group").sort(byScore) },
+    { title: "Favorites & recent", rows: rows.filter((r) => r.kind === "favorite" || r.kind === "recent").sort(byScore) },
     { title: "Repositories", rows: rows.filter((r) => r.kind === "scanned").sort(byScore) },
   ];
   return sections.filter((s) => s.rows.length > 0);
