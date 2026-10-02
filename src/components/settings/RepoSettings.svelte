@@ -35,7 +35,7 @@
         { value: 1800, label: "30 minutes" },
       ],
     },
-    { key: "max_commits", label: "Commits per page", hint: "Graph page size", kind: "number", min: 100, max: 100000 },
+    { key: "max_commits", label: "Commits per page", hint: "Graph page size", kind: "number", min: 100, max: 50000 },
     { key: "graph_hide_remotes", label: "Hide remote branches", hint: "Graph shows local branches only", kind: "bool" },
     { key: "graph_current_branch_only", label: "Current branch only", hint: "Graph shows HEAD's history only", kind: "bool" },
     { key: "tab_size", label: "Tab size", hint: "Columns per tab in diffs", kind: "number", min: 1, max: 16 },

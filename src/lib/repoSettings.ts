@@ -27,6 +27,8 @@ export type RepoOverride = Partial<Pick<AppSettings, OverridableKey>>;
 export type RepoOverrides = Record<string, RepoOverride>;
 
 const ALLOWED = new Set<string>(OVERRIDABLE_KEYS);
+/** Overridable keys whose value may be null ("not set"). */
+const NULLABLE = new Set<string>(["external_diff_tool", "external_merge_tool"]);
 
 export function isOverridable(key: string): key is OverridableKey {
   return ALLOWED.has(key);
@@ -39,7 +41,7 @@ export function sanitizeOverride(raw: unknown, global: AppSettings): RepoOverrid
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (!isOverridable(k)) continue;
     const g = global[k];
-    const ok = g === null || g === undefined ? v === null || typeof v === "string" : typeof v === typeof g || v === null;
+    const ok = NULLABLE.has(k) ? v === null || typeof v === "string" : v !== null && typeof v === typeof g;
     if (ok) out[k] = v;
   }
   return out as RepoOverride;

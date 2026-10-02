@@ -46,6 +46,25 @@ describe("per-repository settings store", () => {
     expect(get(s.settings).context_lines).toBe(20);
   });
 
+  it("flushes pending override changes (e.g. before quitting)", async () => {
+    tauri.saveRepoSettings.mockClear();
+    s.setRepoOverride("/a", "tab_size", 2);
+    await s.flushSettings();
+    expect(tauri.saveRepoSettings).toHaveBeenCalledWith({ "/a": { context_lines: 9, tab_size: 2 } });
+  });
+
+  it("never saves overrides it couldn't read", async () => {
+    tauri.loadRepoSettings.mockRejectedValueOnce(new Error("EACCES"));
+    await s.loadSettings();
+    tauri.saveRepoSettings.mockClear();
+    s.setRepoOverride("/z", "tab_size", 2);
+    await s.flushSettings();
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+    expect(tauri.saveRepoSettings).not.toHaveBeenCalled();
+  });
+
   it("clears overrides back to the global value", () => {
     s.setRepoOverride("/b", "tab_size", 8);
     s.clearRepoOverride("/a", "context_lines");

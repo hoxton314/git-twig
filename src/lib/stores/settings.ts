@@ -93,6 +93,7 @@ export async function loadSettings() {
     console.error("Failed to load settings, using defaults:", e);
     globalSettings.set({ ...defaults });
   }
+  repoLoaded = false;
   try {
     const raw = await tauri.loadRepoSettings();
     const g = get(globalSettings);
@@ -101,9 +102,11 @@ export async function loadSettings() {
       const s = sanitizeOverride(o, g);
       if (Object.keys(s).length > 0) clean[path] = s;
     }
+    repoLoaded = true;
     repoOverrides.set(clean);
   } catch (e) {
-    console.error("Failed to load repository settings:", e);
+    // Don't save over a file we couldn't read: that would drop every repo's overrides.
+    console.error("Failed to load repository settings; overrides won't be saved this session:", e);
   }
   // Apply the persisted default diff view at startup.
   diffViewMode.set(get(settings).diff_view_mode);
@@ -112,9 +115,11 @@ export async function loadSettings() {
 }
 
 let repoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+/** Overrides were read from disk, so saving them can't lose any. */
+let repoLoaded = false;
 
 function persistRepoOverrides() {
-  if (!loaded) return;
+  if (!loaded || !repoLoaded) return;
   if (repoSaveTimeout) clearTimeout(repoSaveTimeout);
   repoSaveTimeout = setTimeout(() => {
     repoSaveTimeout = null;
@@ -175,6 +180,11 @@ export async function flushSettings(): Promise<void> {
   }
   if (!loaded) return;
   await tauri.saveSettings(get(globalSettings));
+  if (repoSaveTimeout) {
+    clearTimeout(repoSaveTimeout);
+    repoSaveTimeout = null;
+    if (repoLoaded) await tauri.saveRepoSettings(get(repoOverrides) as Record<string, Record<string, unknown>>);
+  }
 }
 
 /** Apply visual settings to CSS custom properties. */

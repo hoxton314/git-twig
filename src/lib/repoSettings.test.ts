@@ -24,6 +24,10 @@ describe("per-repository settings", () => {
       sanitizeOverride({ context_lines: 5, theme: "light", max_commits: "lots", external_diff_tool: "meld", nope: 1 }, global),
     ).toEqual({ context_lines: 5, external_diff_tool: "meld" });
     expect(sanitizeOverride(null, global)).toEqual({});
+    // null only where "not set" is a real value.
+    expect(sanitizeOverride({ context_lines: null, graph_hide_remotes: null, external_merge_tool: null }, global)).toEqual({
+      external_merge_tool: null,
+    });
     expect(isOverridable("theme")).toBe(false);
   });
 
