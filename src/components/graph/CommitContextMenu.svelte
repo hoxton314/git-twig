@@ -26,6 +26,7 @@
   import {
     checkoutCommitAction,
     cherryPickAction,
+    cherryPickRangeAction,
     copyText,
     resetAction,
     revertAction,
@@ -105,7 +106,17 @@
   function multiItemsFor(c: CommitInfo, oids: string[]): MenuItem[] {
     const pair = comparePair(oids);
     const shorts = oids.map((o) => findCommit(o)?.short_oid ?? o.slice(0, 7));
+    const path = $activeRepoPath;
     const items: MenuItem[] = [];
+    if (path) {
+      items.push(
+        {
+          label: `Cherry-pick ${oids.length} commits onto ${currentBranch?.name ?? "HEAD"}`,
+          action: () => cherryPickRangeAction(path, oids),
+        },
+        { separator: true },
+      );
+    }
     if (pair) {
       items.push(
         { label: "Copy compared range (older..newer)", action: () => copyText(`${pair.from}..${pair.to}`, "range") },
@@ -174,7 +185,14 @@
         "create_tag",
         withSelected((_, c) => createTagTarget.set({ oid: c.oid, label: `${c.short_oid} ${c.summary}` })),
       ),
-      onAction("cherry_pick_selected", withSelected((p, c) => cherryPickAction(p, c.oid))),
+      onAction(
+        "cherry_pick_selected",
+        withSelected((p, c) => {
+          const oids = $selectedCommits;
+          if (oids.length > 1) cherryPickRangeAction(p, oids);
+          else cherryPickAction(p, c.oid);
+        }),
+      ),
       onAction("revert_selected", withSelected((p, c) => revertAction(p, c.oid))),
       onAction(
         "copy_commit_sha",

@@ -89,6 +89,7 @@ pub fn run() {
             // Commit context menu & undo history (reflog)
             commands::commit_ops::checkout_commit,
             commands::commit_ops::cherry_pick_commit,
+            commands::commit_ops::cherry_pick_commits,
             commands::commit_ops::revert_commit,
             commands::commit_ops::reset_to_commit,
             commands::commit_ops::get_head_reflog,

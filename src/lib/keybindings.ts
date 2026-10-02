@@ -48,7 +48,7 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "commit_context_menu",  label: "Open commit context menu",          category: "Commit", defaultShortcut: "Shift+F10" },
   { id: "branch_from_selected", label: "Create branch at selected commit…", category: "Commit", defaultShortcut: "" },
   { id: "create_tag",           label: "Create tag at selected commit…",    category: "Commit", defaultShortcut: "" },
-  { id: "cherry_pick_selected", label: "Cherry-pick selected commit",       category: "Commit", defaultShortcut: "" },
+  { id: "cherry_pick_selected", label: "Cherry-pick selected commit(s)",    category: "Commit", defaultShortcut: "" },
   { id: "revert_selected",      label: "Revert selected commit",            category: "Commit", defaultShortcut: "" },
   { id: "copy_commit_sha",      label: "Copy selected commit SHA",          category: "Commit", defaultShortcut: "" },
   { id: "show_undo_history",    label: "Undo history (reflog)…",            category: "Git",    defaultShortcut: "Ctrl+Shift+H" },
