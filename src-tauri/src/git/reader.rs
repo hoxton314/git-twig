@@ -253,7 +253,7 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
                 behind,
                 oid: oid.to_string(),
                 short_oid: short_oid(oid),
-                last_commit_summary: commit.summary().unwrap_or("").to_string(),
+                last_commit_summary: crate::git::graph::commit_summary(&commit),
                 last_commit_timestamp: commit.time().seconds(),
                 remote_name,
                 short_name,

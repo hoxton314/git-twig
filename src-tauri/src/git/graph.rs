@@ -96,6 +96,24 @@ pub(crate) fn decode_text(bytes: &[u8], encoding: Option<&str>) -> String {
     }
 }
 
+/// Commit summary (first paragraph, unwrapped), decoded like `decode_text`.
+pub(crate) fn commit_summary(commit: &Commit) -> String {
+    commit
+        .summary_bytes()
+        .map(|b| decode_text(b, commit.message_encoding()))
+        .unwrap_or_default()
+}
+
+/// Full commit message, decoded like `decode_text`.
+pub(crate) fn commit_message(commit: &Commit) -> String {
+    decode_text(commit.message_bytes(), commit.message_encoding())
+}
+
+/// Author name, decoded with the commit's encoding (may be empty).
+pub(crate) fn commit_author_name(commit: &Commit) -> String {
+    decode_text(commit.author().name_bytes(), commit.message_encoding())
+}
+
 /// Build the IPC commit description.
 pub(crate) fn commit_info(commit: &Commit) -> CommitInfo {
     let oid = commit.id();
@@ -592,6 +610,68 @@ mod tests {
         assert_eq!(search_commits(&repo, "REN\u{c9}", &opts, 10).unwrap().matches.len(), 1);
         // Plain lossy fallback for undeclared bytes.
         assert_eq!(decode_text(b"a\xffb", None), "a\u{fffd}b");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every reader built on the decode helpers shows a Latin-1 commit.
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_metadata_in_other_views() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = temp_repo("latin1-views");
+        commit(&dir, "base");
+        std::fs::write(dir.join("f.txt"), "x\n").unwrap();
+        git(&dir, &["add", "f.txt"]);
+        let name = std::ffi::OsStr::from_bytes(b"Ren\xe9");
+        let ok = Command::new("git")
+            .args(["-c", "commit.gpgsign=false", "-c", "i18n.commitEncoding=ISO-8859-1"])
+            .args(["commit", "-q", "-F", "-"])
+            .env("GIT_AUTHOR_NAME", name)
+            .env("GIT_COMMITTER_NAME", name)
+            .env("GIT_AUTHOR_EMAIL", "r@example.com")
+            .env("GIT_COMMITTER_EMAIL", "r@example.com")
+            .current_dir(&dir)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut c| {
+                use std::io::Write;
+                c.stdin.take().unwrap().write_all(b"caf\xe9 latin\n\nbody \xe9\n")?;
+                c.wait()
+            })
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok);
+        let repo = Repository::open(&dir).unwrap();
+        let (subject, author) = ("caf\u{e9} latin", "Ren\u{e9}");
+
+        let hist = crate::git::file_history::read_file_history(&repo, "f.txt", None, 0, 10).unwrap();
+        let c = &hist.entries[0].commit;
+        assert_eq!((c.summary.as_str(), c.author_name.as_str()), (subject, author));
+        assert_eq!(c.body, "body \u{e9}");
+
+        let blame = crate::git::file_history::read_blame(&repo, "f.txt", None).unwrap();
+        let h = &blame.hunks[0];
+        assert_eq!((h.summary.as_str(), h.author_name.as_str()), (subject, author));
+
+        let list = crate::git::history::list_rebase_commits(&repo, Some("HEAD~1")).unwrap();
+        let r = &list.commits[0];
+        assert_eq!((r.summary.as_str(), r.author_name.as_str()), (subject, author));
+        assert!(r.message.starts_with(subject), "{:?}", r.message);
+
+        let log = crate::git::reflog::read_head_reflog(&repo, 5).unwrap();
+        assert_eq!(log[0].commit_summary.as_deref(), Some(subject));
+
+        // Amend prefill keeps the real text (a lossy prefill would be saved).
+        let head = crate::git::commit_tools::read_head_commit(&repo).unwrap();
+        assert_eq!(head.message, "caf\u{e9} latin\n\nbody \u{e9}");
+        // Recent co-authors include the Latin-1 author.
+        let authors = crate::git::commit_tools::read_recent_authors(&repo, 50).unwrap();
+        assert!(authors.iter().any(|a| a.name == author), "{authors:?}");
+        // Tags show the target commit's summary.
+        git(&dir, &["tag", "-a", "-m", "release notes", "v1"]);
+        let tags = crate::git::tags::read_tags(&repo).unwrap();
+        assert_eq!(tags[0].commit_summary.as_deref(), Some(subject));
+        assert_eq!(tags[0].message.as_deref(), Some("release notes"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

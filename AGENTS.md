@@ -129,6 +129,7 @@ all four green locally before pushing. Releases are built separately by `release
 - Async all commands, even if the body is sync (Tauri requirement for `State<>` access)
 - `serde::Serialize` on all types crossing the IPC boundary
 - Command results that are write operations return `CommandResult { success, message }`
+- Commit text from git2: use `git::graph::{commit_summary, commit_message, commit_author_name, decode_text}`, never `summary()`/`message()`/`name()` — those return `None` for non-UTF-8 (e.g. Latin-1) commits, which shows up as empty text
 
 ### Frontend
 

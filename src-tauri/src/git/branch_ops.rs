@@ -199,8 +199,8 @@ fn commits_between(
             list.push(ComparedCommit {
                 short_oid: full.chars().take(7).collect(),
                 oid: full,
-                summary: commit.summary().unwrap_or("").to_string(),
-                author_name: commit.author().name().unwrap_or("").to_string(),
+                summary: crate::git::graph::commit_summary(&commit),
+                author_name: crate::git::graph::commit_author_name(&commit),
                 timestamp: commit.time().seconds(),
             });
         }
