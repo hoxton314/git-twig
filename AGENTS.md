@@ -29,13 +29,16 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/lib.rs` | Tauri builder -- all commands registered here |
 | `src-tauri/src/state.rs` | `AppState` with `Mutex<HashMap<String, OpenRepo>>` |
 | `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
-| `src-tauri/src/git/reader.rs` | git2-based reads: graph, branches, diffs, status |
+| `src-tauri/src/git/reader.rs` | git2-based reads: branches, diffs, status (graph IPC structs) |
+| `src-tauri/src/git/graph.rs` | Commit graph: paginated walk + lane assignment (`LaneState`), full-history search, locate ref/commit row |
 | `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
 | `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
 | `src-tauri/src/commands/git_config.rs` | Read/write global `~/.gitconfig` values, detect LFS |
 | `src/lib/types/git.ts` | All shared TypeScript interfaces |
 | `src/lib/tauri.ts` | Typed `invoke()` wrappers for every command |
-| `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging |
+| `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
+| `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
+| `src/lib/stores/clock.ts` | Shared minute clock (`now`) for relative dates |
 | `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |
 | `src-tauri/src/commands/stash.rs` | Stash operations: list, push, pop, apply, drop |
@@ -204,7 +207,3 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 - ~~Interactive rebase UI~~ ✓ (`src/components/rebase/`, backend `git/history.rs`; also rebase onto and force push with lease)
 - File history view
 - Submodule support
-
-## Known Issues (deferred)
-
-- **Commit graph mainline drifts right after a fork.** In `compute_lanes` (`src-tauri/src/git/reader.rs`), when two children share a parent, the parent keeps whichever lane claimed it first, so after a fork the main line can move right and stay there. The fix is to collapse the parent into the lowest-index lane, but the frontend can't draw that yet: `GraphCanvas.svelte` only renders straight `rails` and `parent_lanes` edges, with no "lane merges into another lane" segment. Needs a new segment type in the `CommitGraph` IPC struct (Rust + `types/git.ts`) and matching drawing in `GraphCanvas.svelte`.

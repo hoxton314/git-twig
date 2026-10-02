@@ -6,14 +6,13 @@ use std::path::{Component, Path};
 
 use git2::{
     BranchType, Commit, Delta, Diff, DiffFindOptions, DiffOptions, ObjectType, Oid, Repository,
-    Sort,
 };
 use serde::Serialize;
 
 use crate::error::TwigError;
 
 /// First 7 hex chars of an OID (OID strings are ASCII, so slicing is safe).
-fn short_oid(oid: Oid) -> String {
+pub(crate) fn short_oid(oid: Oid) -> String {
     let mut s = oid.to_string();
     s.truncate(7);
     s
@@ -66,6 +65,10 @@ pub struct GraphEntry {
     /// merge parents branch to different lanes. Used to draw lines from the
     /// commit node downward.
     pub parent_lanes: Vec<usize>,
+    /// Extra lanes whose line enters from above and converges into this
+    /// commit's node (several children shared this parent; the parent sits
+    /// on the lowest of their lanes and the others merge into it here).
+    pub merge_ins: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,162 +83,17 @@ pub struct CommitGraph {
     pub total_lanes: usize,
     pub refs: HashMap<String, Vec<RefLabel>>,
     pub unpushed_oids: Vec<String>,
-}
-
-/// Read the full commit graph for the repo, computing lane assignments.
-/// The commits are returned in topological order (newest first).
-pub fn read_commit_graph(repo: &Repository, max_commits: usize) -> Result<CommitGraph, TwigError> {
-    let mut revwalk = repo.revwalk()?;
-    revwalk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
-
-    // Push all references so we walk all branches
-    revwalk.push_glob("refs/heads/*")?;
-    revwalk.push_glob("refs/remotes/*")?;
-    // Also push HEAD in case of detached HEAD
-    if let Ok(head) = repo.head() {
-        if let Some(target) = head.target() {
-            revwalk.push(target)?;
-        }
-    }
-
-    let mut commits: Vec<CommitInfo> = Vec::new();
-
-    for oid_result in revwalk {
-        if commits.len() >= max_commits {
-            break;
-        }
-        let oid = oid_result?;
-        let commit = repo.find_commit(oid)?;
-
-        let author = commit.author();
-        let email = author.email().unwrap_or("").to_string();
-        let gravatar_hash = format!("{:x}", md5::compute(email.trim().to_lowercase().as_bytes()));
-
-        let parent_oids = commit
-            .parent_ids()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>();
-
-        commits.push(CommitInfo {
-            oid: oid.to_string(),
-            short_oid: short_oid(oid),
-            summary: commit.summary().unwrap_or("").to_string(),
-            body: commit.body().unwrap_or("").to_string(),
-            author_name: author.name().unwrap_or("Unknown").to_string(),
-            author_email: email,
-            author_gravatar: gravatar_hash,
-            timestamp: commit.time().seconds(),
-            parent_oids,
-        });
-    }
-
-    // Lane assignment algorithm
-    let mut graph = compute_lanes(commits);
-    graph.refs = build_refs_map(repo)?;
-    graph.unpushed_oids = compute_unpushed_oids(repo);
-    Ok(graph)
-}
-
-/// Lane assignment algorithm.
-///
-/// Walks commits in topological order, assigning each to a lane (column).
-/// For every row it records:
-///   - which lane the commit sits on
-///   - whether there was a line entering from above (child reserved the lane)
-///   - which other lanes carry pass-through lines (rails)
-///   - which lanes the parents are assigned to (for drawing outgoing lines)
-fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
-    // Each slot is Some(oid) when a child has reserved that lane for a future
-    // commit, or None when the lane is free.
-    let mut lanes: Vec<Option<String>> = Vec::new();
-    let mut entries: Vec<GraphEntry> = Vec::with_capacity(commits.len());
-    let mut max_lanes: usize = 0;
-
-    for commit in commits {
-        // ── 1. Find or allocate lane for this commit ──────────────────
-        let reserved = lanes
-            .iter()
-            .position(|slot| slot.as_deref() == Some(&commit.oid));
-
-        let (my_lane, has_incoming) = match reserved {
-            Some(lane) => (lane, true),
-            None => {
-                let lane = lanes
-                    .iter()
-                    .position(|s| s.is_none())
-                    .unwrap_or_else(|| {
-                        lanes.push(None);
-                        lanes.len() - 1
-                    });
-                (lane, false)
-            }
-        };
-
-        // ── 2. Consume the lane ───────────────────────────────────────
-        lanes[my_lane] = None;
-
-        // ── 3. Snapshot pass-through rails ────────────────────────────
-        // These are lanes still occupied by other branches — they draw
-        // straight vertical lines through this row.
-        let rails: Vec<usize> = lanes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| if s.is_some() { Some(i) } else { None })
-            .collect();
-
-        // ── 4. Assign parents to lanes ────────────────────────────────
-        let mut parent_lanes: Vec<usize> = Vec::with_capacity(commit.parent_oids.len());
-
-        for (pi, parent_oid) in commit.parent_oids.iter().enumerate() {
-            // Parent may already have a lane (reserved by another child's merge)
-            if let Some(existing) = lanes.iter().position(|s| s.as_deref() == Some(parent_oid)) {
-                parent_lanes.push(existing);
-            } else if pi == 0 {
-                // First parent inherits our lane (straight continuation)
-                lanes[my_lane] = Some(parent_oid.clone());
-                parent_lanes.push(my_lane);
-            } else {
-                // Merge parent — allocate a lane
-                let lane = lanes
-                    .iter()
-                    .position(|s| s.is_none())
-                    .unwrap_or_else(|| {
-                        lanes.push(None);
-                        lanes.len() - 1
-                    });
-                lanes[lane] = Some(parent_oid.clone());
-                parent_lanes.push(lane);
-            }
-        }
-
-        if lanes.len() > max_lanes {
-            max_lanes = lanes.len();
-        }
-
-        // Trim trailing empty lanes to keep the graph compact
-        while lanes.last() == Some(&None) {
-            lanes.pop();
-        }
-
-        entries.push(GraphEntry {
-            commit,
-            lane: my_lane,
-            has_incoming,
-            rails,
-            parent_lanes,
-        });
-    }
-
-    CommitGraph {
-        entries,
-        total_lanes: max_lanes,
-        refs: HashMap::new(),
-        unpushed_oids: vec![],
-    }
+    /// Index of `entries[0]` in the full graph order (pagination offset).
+    pub offset: usize,
+    /// True when more commits exist after this page.
+    pub has_more: bool,
+    /// Signature of the walked branch tips. Pages are only consistent with
+    /// each other while this stays the same.
+    pub tips: String,
 }
 
 /// Build a map from commit OID -> list of branch/tag labels pointing at it.
-fn build_refs_map(repo: &Repository) -> Result<HashMap<String, Vec<RefLabel>>, TwigError> {
+pub(crate) fn build_refs_map(repo: &Repository) -> Result<HashMap<String, Vec<RefLabel>>, TwigError> {
     let mut map: HashMap<String, Vec<RefLabel>> = HashMap::new();
 
     for reference_result in repo.references()? {
@@ -274,7 +132,7 @@ fn build_refs_map(repo: &Repository) -> Result<HashMap<String, Vec<RefLabel>>, T
 }
 
 /// Compute the set of commit OIDs on HEAD that are not yet on its upstream.
-fn compute_unpushed_oids(repo: &Repository) -> Vec<String> {
+pub(crate) fn compute_unpushed_oids(repo: &Repository) -> Vec<String> {
     let head = match repo.head() {
         Ok(h) => h,
         Err(_) => return vec![],
@@ -964,34 +822,5 @@ mod tests {
         let head = repo.head().unwrap().target().unwrap().to_string();
         assert!(read_commit_diff(&repo, &head[..10]).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn lanes_for_merge() {
-        let mk = |oid: &str, parents: &[&str]| CommitInfo {
-            oid: oid.into(),
-            short_oid: oid.into(),
-            summary: String::new(),
-            body: String::new(),
-            author_name: String::new(),
-            author_email: String::new(),
-            author_gravatar: String::new(),
-            timestamp: 0,
-            parent_oids: parents.iter().map(|p| p.to_string()).collect(),
-        };
-        // m merges b into a; both fork from r.
-        let g = compute_lanes(vec![
-            mk("m", &["a", "b"]),
-            mk("b", &["r"]),
-            mk("a", &["r"]),
-            mk("r", &[]),
-        ]);
-        let lanes: Vec<usize> = g.entries.iter().map(|e| e.lane).collect();
-        // `r` was first reserved by `b` (lane 1), so `a` joins that lane.
-        assert_eq!(lanes, vec![0, 1, 0, 1]);
-        assert!(g.entries.iter().skip(1).all(|e| e.has_incoming));
-        assert_eq!(g.entries[1].parent_lanes, vec![1]);
-        assert_eq!(g.entries[2].parent_lanes, vec![1]);
-        assert_eq!(g.total_lanes, 2);
     }
 }

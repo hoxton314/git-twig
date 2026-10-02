@@ -65,6 +65,29 @@ pub struct AppSettings {
     /// Show the staged/unstaged file lists as a folder tree instead of flat.
     #[serde(default)]
     pub staging_tree_view: bool,
+    // ── Commit graph view ───────────────────────────────────────────
+    #[serde(default = "default_true")]
+    pub graph_show_author: bool,
+    #[serde(default = "default_true")]
+    pub graph_show_date: bool,
+    #[serde(default = "default_true")]
+    pub graph_show_sha: bool,
+    #[serde(default = "default_graph_author_width")]
+    pub graph_author_width: u32,
+    #[serde(default = "default_graph_sha_width")]
+    pub graph_sha_width: u32,
+    #[serde(default = "default_graph_date_width")]
+    pub graph_date_width: u32,
+    /// "relative" | "iso" | "locale"
+    #[serde(default = "default_graph_date_format")]
+    pub graph_date_format: String,
+    /// "compact" | "normal" | "comfortable"
+    #[serde(default = "default_graph_row_density")]
+    pub graph_row_density: String,
+    #[serde(default)]
+    pub graph_hide_remotes: bool,
+    #[serde(default)]
+    pub graph_current_branch_only: bool,
 }
 
 fn default_true() -> bool {
@@ -94,6 +117,22 @@ fn default_tab_size() -> u32 {
 fn default_context_lines() -> u32 {
     3
 }
+// Commit graph view defaults
+fn default_graph_author_width() -> u32 {
+    120
+}
+fn default_graph_sha_width() -> u32 {
+    64
+}
+fn default_graph_date_width() -> u32 {
+    90
+}
+fn default_graph_date_format() -> String {
+    "relative".to_string()
+}
+fn default_graph_row_density() -> String {
+    "normal".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -117,6 +156,17 @@ impl Default for AppSettings {
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
             staging_tree_view: false,
+            // Commit graph view
+            graph_show_author: true,
+            graph_show_date: true,
+            graph_show_sha: true,
+            graph_author_width: default_graph_author_width(),
+            graph_sha_width: default_graph_sha_width(),
+            graph_date_width: default_graph_date_width(),
+            graph_date_format: default_graph_date_format(),
+            graph_row_density: default_graph_row_density(),
+            graph_hide_remotes: false,
+            graph_current_branch_only: false,
         }
     }
 }

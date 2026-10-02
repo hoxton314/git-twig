@@ -66,6 +66,15 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "operation_abort",    label: "Abort merge / rebase / cherry-pick",    category: "Git", defaultShortcut: "" },
   { id: "operation_skip",     label: "Skip current commit (rebase / cherry-pick)", category: "Git", defaultShortcut: "" },
   { id: "resolve_conflicts",  label: "Resolve conflicts",                category: "Git", defaultShortcut: "" },
+  // Commit graph (Ctrl+F / "/" also open search while the commit list is focused)
+  { id: "graph_search",                label: "Search commits",                         category: "Graph", defaultShortcut: "" },
+  { id: "graph_filter",                label: "Filter commits",                         category: "Graph", defaultShortcut: "" },
+  { id: "graph_jump_head",             label: "Jump to HEAD",                           category: "Graph", defaultShortcut: "" },
+  { id: "graph_goto_ref",              label: "Go to branch, tag or commit…",           category: "Graph", defaultShortcut: "" },
+  { id: "graph_view_options",          label: "Graph view options",                     category: "Graph", defaultShortcut: "" },
+  { id: "graph_load_all",              label: "Load entire history",                    category: "Graph", defaultShortcut: "" },
+  { id: "graph_toggle_remotes",        label: "Toggle remote branches in graph",        category: "Graph", defaultShortcut: "" },
+  { id: "graph_toggle_current_branch", label: "Toggle current branch only in graph",    category: "Graph", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

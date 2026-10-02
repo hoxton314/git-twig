@@ -130,6 +130,9 @@ pub fn run() {
             commands::history::list_rebase_commits,
             commands::history::interactive_rebase,
             commands::history::force_push_with_lease,
+            // Commit graph: search & locate
+            commands::graph::search_commits,
+            commands::graph::locate_commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

@@ -31,6 +31,8 @@ export interface GraphEntry {
   rails: number[];
   /** Lane index for each parent (lines from node downward) */
   parent_lanes: number[];
+  /** Extra lanes whose line enters from above and converges into this node */
+  merge_ins: number[];
 }
 
 export interface RefLabel {
@@ -43,6 +45,12 @@ export interface CommitGraph {
   total_lanes: number;
   refs: Record<string, RefLabel[]>;
   unpushed_oids: string[];
+  /** Index of entries[0] in the full graph order (pagination offset). */
+  offset: number;
+  /** More commits exist after this page. */
+  has_more: boolean;
+  /** Signature of the walked branch tips; pages only line up while it matches. */
+  tips: string;
 }
 
 // ── Branches ──────────────────────────────────────────────────────────
@@ -144,6 +152,17 @@ export interface AppSettings {
   tab_size: number;
   show_whitespace_changes: boolean;
   word_wrap_in_diffs: boolean;
+  // Commit graph view
+  graph_show_author: boolean;
+  graph_show_date: boolean;
+  graph_show_sha: boolean;
+  graph_author_width: number;
+  graph_sha_width: number;
+  graph_date_width: number;
+  graph_date_format: GraphDateFormat;
+  graph_row_density: GraphRowDensity;
+  graph_hide_remotes: boolean;
+  graph_current_branch_only: boolean;
   context_lines: number;
   external_diff_tool: string | null;
   external_merge_tool: string | null;
@@ -354,4 +373,37 @@ export interface RebaseTodoItem {
   oid: string;
   action: RebaseAction;
   message: string | null;
+}
+
+// ── Commit graph: view options, search, locate ───────────────────────
+
+export type GraphDateFormat = "relative" | "iso" | "locale";
+export type GraphRowDensity = "compact" | "normal" | "comfortable";
+
+/** Which refs the graph walks (mirrors Rust `GraphOptions`). */
+export interface GraphOptions {
+  hide_remotes: boolean;
+  current_branch_only: boolean;
+}
+
+export interface SearchMatch {
+  /** Row of the commit in the unfiltered graph. */
+  index: number;
+  commit: CommitInfo;
+}
+
+export interface CommitSearchResult {
+  matches: SearchMatch[];
+  /** Cut off at the result limit. */
+  truncated: boolean;
+  /** Number of commits examined. */
+  scanned: number;
+  tips: string;
+}
+
+export interface LocatedCommit {
+  oid: string;
+  /** Graph row, or null when the commit is hidden by the view options. */
+  index: number | null;
+  tips: string;
 }

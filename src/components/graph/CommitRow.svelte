@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { GraphEntry, RefLabel } from "../../lib/types/git";
+  import type { GraphEntry, RefLabel, GraphDateFormat } from "../../lib/types/git";
   import { ArrowUp } from "lucide-svelte";
+  import { formatCommitDate } from "./graphLayout";
 
   interface Props {
     entry: GraphEntry;
@@ -8,14 +9,38 @@
     isUnpushed: boolean;
     refs: RefLabel[];
     onSelect: () => void;
+    /** Column visibility (widths come from CSS vars set by CommitGraph). */
+    showAuthor?: boolean;
+    showSha?: boolean;
+    showDate?: boolean;
+    dateFormat?: GraphDateFormat;
+    /** Shared clock (ms) so relative dates refresh. */
+    now?: number;
+    avatarSize?: number;
+    /** Search highlight state. */
+    searchMatch?: "none" | "match" | "current";
     oncontextmenu?: (e: MouseEvent) => void;
   }
 
-  let { entry, isSelected, isUnpushed, refs, onSelect, oncontextmenu }: Props = $props();
+  let {
+    entry,
+    isSelected,
+    isUnpushed,
+    refs,
+    onSelect,
+    showAuthor = true,
+    showSha = true,
+    showDate = true,
+    dateFormat = "relative",
+    now = Date.now(),
+    avatarSize = 20,
+    searchMatch = "none",
+    oncontextmenu,
+  }: Props = $props();
 
   const commit = $derived(entry.commit);
   const gravatarUrl = $derived(
-    `https://www.gravatar.com/avatar/${commit.author_gravatar}?s=28&d=identicon`
+    `https://www.gravatar.com/avatar/${commit.author_gravatar}?s=${avatarSize * 2}&d=identicon`
   );
 
   // Sort refs: local first, then remote, then tags
@@ -26,27 +51,14 @@
     })
   );
 
-  function formatTime(ts: number): string {
-    const date = new Date(ts * 1000);
-    const now = new Date();
-    // Clamp to 0 so clock skew (commit timestamp slightly in the future)
-    // never renders a negative "ago" value.
-    const diff = Math.max(0, now.getTime() - date.getTime());
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (minutes < 1) return "just now";
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 30) return `${days}d ago`;
-    return date.toLocaleDateString();
-  }
+  const dateLabel = $derived(formatCommitDate(commit.timestamp, dateFormat, now));
 </script>
 
 <button
   class="commit-row"
   class:selected={isSelected}
+  class:search-match={searchMatch !== "none"}
+  class:search-current={searchMatch === "current"}
   aria-pressed={isSelected}
   tabindex="-1"
   onclick={onSelect}
@@ -57,8 +69,8 @@
     src={gravatarUrl}
     alt=""
     title={`${commit.author_name} <${commit.author_email}>`}
-    width="20"
-    height="20"
+    width={avatarSize}
+    height={avatarSize}
     loading="lazy"
   />
   {#if sortedRefs.length > 0}
@@ -75,9 +87,15 @@
       <ArrowUp size={11} />
     </span>
   {/if}
-  <span class="author">{commit.author_name}</span>
-  <span class="oid">{commit.short_oid}</span>
-  <span class="time" title={new Date(commit.timestamp * 1000).toLocaleString()}>{formatTime(commit.timestamp)}</span>
+  {#if showAuthor}
+    <span class="author" title={`${commit.author_name} <${commit.author_email}>`}>{commit.author_name}</span>
+  {/if}
+  {#if showSha}
+    <span class="oid">{commit.short_oid}</span>
+  {/if}
+  {#if showDate}
+    <span class="time" title={new Date(commit.timestamp * 1000).toLocaleString()}>{dateLabel}</span>
+  {/if}
 </button>
 
 <style>
@@ -86,6 +104,7 @@
     align-items: center;
     gap: 8px;
     flex: 1;
+    min-width: 0;
     padding: 0 12px 0 4px;
     height: 100%;
     border: none;
@@ -107,6 +126,19 @@
     border-left: 2px solid var(--color-accent);
   }
 
+  .commit-row.search-match {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+
+  .commit-row.search-match:hover {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+
+  .commit-row.search-current {
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  }
+
   .avatar {
     border-radius: 50%;
     flex-shrink: 0;
@@ -115,7 +147,9 @@
   .ref-labels {
     display: flex;
     gap: 4px;
-    flex-shrink: 0;
+    /* Shrinks (clipping pills) before the fixed columns get pushed out. */
+    flex-shrink: 1;
+    min-width: 0;
     max-width: 300px;
     overflow: hidden;
   }
@@ -140,7 +174,7 @@
   }
 
   .ref-remote {
-    background: rgba(86, 95, 137, 0.2);
+    background: color-mix(in srgb, var(--color-text-muted) 20%, transparent);
     color: var(--color-text-muted);
   }
 
@@ -157,8 +191,9 @@
     min-width: 0;
   }
 
+  /* The summary takes all free space; the fixed columns align right. */
   .spacer {
-    flex: 1;
+    flex: 0 0 0;
   }
 
   .unpushed {
@@ -169,26 +204,32 @@
     opacity: 0.8;
   }
 
-  .author {
-    color: var(--color-text-muted);
+  /* Fixed-width columns; widths are CSS vars set by CommitGraph so the
+     header and every row line up and resize together. */
+  .author,
+  .oid,
+  .time {
     font-size: 11px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     flex-shrink: 0;
+  }
+
+  .author {
+    color: var(--color-text-muted);
+    width: var(--graph-col-author, 120px);
   }
 
   .oid {
     font-family: var(--font-mono);
-    font-size: 11px;
     color: var(--color-accent);
-    flex-shrink: 0;
+    width: var(--graph-col-sha, 64px);
   }
 
   .time {
     color: var(--color-text-muted);
-    font-size: 11px;
-    white-space: nowrap;
-    min-width: 60px;
     text-align: right;
-    flex-shrink: 0;
+    width: var(--graph-col-date, 90px);
   }
 </style>
