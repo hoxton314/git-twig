@@ -66,6 +66,12 @@ fn graph_walk<'r>(
         tips.hash(&mut hasher);
     }
 
+    // History can change without any ref moving: `fetch --deepen` /
+    // `--unshallow` rewrites `shallow`, and grafts rewrite parents.
+    for file in ["shallow", "info/grafts"] {
+        std::fs::read(repo.path().join(file)).ok().hash(&mut hasher);
+    }
+
     // HEAD too, for a detached HEAD (and as the only tip in current-branch mode).
     if let Ok(head) = repo.head() {
         if let Some(target) = head.target() {
@@ -249,7 +255,8 @@ impl LaneState {
 // The order is computed once per (repository, tips signature) and kept with
 // lane-state checkpoints, so a page resumes lane assignment from the nearest
 // checkpoint instead of from row 0. Any ref change alters the tips signature
-// and therefore the key, so a cached order can never describe stale history.
+// and therefore the key, as do changes to `shallow` and `info/grafts`, so a
+// cached order never describes stale history.
 
 /// A lane-state snapshot is kept every this many rows (small in tests so
 /// the resume-from-checkpoint path is exercised).
@@ -891,6 +898,32 @@ mod tests {
         let loc = locate_commit(&repo, "f3", &opts).unwrap();
         assert_eq!(full.entries[loc.index.unwrap()].commit.oid, loc.oid);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Deepening a shallow clone changes history without moving any ref:
+    /// the cache must notice.
+    #[test]
+    fn deepening_a_shallow_clone_invalidates_the_cache() {
+        let src = temp_repo("shallow-src");
+        for i in 0..10 {
+            commit(&src, &format!("c{i}"));
+        }
+        let clone = src.with_extension("clone");
+        let _ = std::fs::remove_dir_all(&clone);
+        let url = format!("file://{}", src.display());
+        git(&src, &["clone", "-q", "--depth", "3", &url, &clone.to_string_lossy()]);
+        let repo = Repository::open(&clone).unwrap();
+        let opts = GraphOptions::default();
+        let before = read_commit_graph_page(&repo, 0, 100, &opts).unwrap();
+        assert_eq!(before.entries.len(), 3);
+        git(&clone, &["fetch", "-q", "--unshallow"]);
+        // Twig opens a fresh handle per read (libgit2 caches shallow info).
+        let repo = Repository::open(&clone).unwrap();
+        let after = read_commit_graph_page(&repo, 0, 100, &opts).unwrap();
+        assert_eq!(after.entries.len(), 10, "stale cached order after --unshallow");
+        assert_ne!(after.tips, before.tips);
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&clone);
     }
 
     #[test]
