@@ -247,6 +247,18 @@ try {
     // Autostash put the working changes back.
     await until(() => git("status", "--porcelain").replace(/\n$/, "") === " M big.txt\n M scattered.txt", "restored changes");
     if (!existsSync(join(repo, "notes.txt"))) throw new Error("notes.txt lost in the squash");
+    // The dialog closes once the app has refreshed; global shortcuts wait for it.
+    const closeBy = Date.now() + 15_000;
+    while (Date.now() < closeBy && (await session.execute("return !!document.querySelector('[aria-modal=\"true\"]');"))) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (await session.execute("return !!document.querySelector('[aria-modal=\"true\"]');")) {
+      throw new Error("squash dialog did not close");
+    }
+    const after = git("status", "--porcelain").replace(/\n$/, "");
+    if (after !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status after squash: ${JSON.stringify(after)}`);
+    const stashes = git("stash", "list").trim();
+    if (stashes) throw new Error(`squash left a stash entry: ${stashes}`);
   });
 
   await step("code search finds text and opens blame at the line", async () => {
