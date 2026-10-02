@@ -77,6 +77,15 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // App shell: status bar, recent repos, settings import/export
+            commands::app_shell::get_repo_status_summary,
+            commands::app_shell::load_repo_history,
+            commands::app_shell::save_repo_history,
+            commands::app_shell::repo_paths_exist,
+            commands::app_shell::open_in_file_manager,
+            commands::app_shell::open_settings_folder,
+            commands::app_shell::export_settings,
+            commands::app_shell::import_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

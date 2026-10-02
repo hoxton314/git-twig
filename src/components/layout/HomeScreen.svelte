@@ -1,13 +1,26 @@
 <script lang="ts">
-  import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2 } from "lucide-svelte";
-  import { open, message } from "@tauri-apps/plugin-dialog";
+  import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2, Pin, PinOff, X, History, AlertTriangle } from "lucide-svelte";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
   import { settings } from "../../lib/stores/settings";
+  import { shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import {
+    repoHistory,
+    favoriteRepos,
+    favoritePaths,
+    missingRepoPaths,
+    refreshMissingPaths,
+    removeRecentRepo,
+    clearRecentRepos,
+    setFavoriteRepo,
+  } from "../../lib/stores/repoHistory";
+  import { toastError } from "../../lib/stores/toasts";
+  import { openRepoWithDialog } from "../../lib/appActions";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
   import type { RepoInfo } from "../../lib/types/git";
+  import { onMount } from "svelte";
 
   type SortMode = "recent" | "name";
 
@@ -23,6 +36,11 @@
       if (sortMode === "recent") return b.last_commit_time - a.last_commit_time;
       return a.name.localeCompare(b.name);
     }),
+  );
+
+  /** Recently opened repos (favorites are listed separately). */
+  const recentRepos = $derived(
+    $repoHistory.recent.filter((r) => r.last_opened > 0 && !$favoritePaths.has(r.path)).slice(0, 12),
   );
 
   // Derived so unrelated settings changes (theme, accent...) don't rescan the dir.
@@ -43,28 +61,37 @@
     return () => { cancelled = true; };
   });
 
-  async function handleOpenRepo() {
-    const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
-    if (!selected) return;
-    try {
-      const info = await tauri.openRepo(selected as string);
-      addRepo(info);
-    } catch (err) {
-      await message(String(err), { title: "Open Repository Failed", kind: "error" });
-    }
-  }
+  // Folders may have been moved/deleted since startup.
+  onMount(() => {
+    refreshMissingPaths();
+  });
 
   async function openDiscoveredRepo(path: string) {
     try {
       const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
-      await message(String(err), { title: "Open Repository Failed", kind: "error" });
+      toastError("Open repository failed", err);
+      refreshMissingPaths();
     }
+  }
+
+  function openOrSwitch(path: string) {
+    if (openPaths.has(path)) switchToRepo(path);
+    else openDiscoveredRepo(path);
   }
 
   function switchToRepo(path: string) {
     $activeRepoPath = path;
+  }
+
+  function relativeTime(ms: number): string {
+    const s = Math.max(0, (Date.now() - ms) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.round(s / 60)} min ago`;
+    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    const d = Math.round(s / 86400);
+    return d < 30 ? `${d} d ago` : new Date(ms).toLocaleDateString();
   }
 
   function handleCloned(info: RepoInfo) {
@@ -82,7 +109,7 @@
   <div class="hero">
     <h1 class="logo">Twig</h1>
     <p class="tagline">Lighter than the rest.</p>
-    <button class="open-button" onclick={handleOpenRepo}>
+    <button class="open-button" onclick={openRepoWithDialog} title={withShortcut("Open Repository", $shortcutLabels["open_repo"])}>
       <FolderOpen size={16} />
       Open Repository
     </button>
@@ -96,6 +123,9 @@
         New GitHub Repo
       </button>
     </div>
+    {#if $shortcutLabels["command_palette"]}
+      <p class="palette-hint">Press <kbd>{$shortcutLabels["command_palette"]}</kbd> for the command palette</p>
+    {/if}
   </div>
 
   <CloneFromGitHub
@@ -108,6 +138,101 @@
     onclose={() => (showCreateRepoModal = false)}
     oncreated={handleRepoCreated}
   />
+
+  {#if $favoriteRepos.length > 0}
+    <section class="open-repos" aria-labelledby="favorites-heading">
+      <h2 class="section-title" id="favorites-heading"><Pin size={13} /> Favorites</h2>
+      <div class="repo-list">
+        {#each $favoriteRepos as repo (repo.path)}
+          {@const missing = $missingRepoPaths.has(repo.path)}
+          <div class="repo-row" class:missing>
+            <button
+              class="repo-card"
+              class:repo-card-open={openPaths.has(repo.path)}
+              disabled={missing}
+              onclick={() => openOrSwitch(repo.path)}
+              title={missing ? `${repo.path} — folder not found` : repo.path}
+            >
+              {#if missing}
+                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label="Missing" />
+              {:else}
+                <GitBranch size={16} class="repo-icon" />
+              {/if}
+              <div class="repo-info">
+                <span class="repo-name">{repo.name}</span>
+                <span class="repo-path">{repo.path}</span>
+              </div>
+              {#if missing}<span class="repo-badge missing-badge">Missing</span>{/if}
+            </button>
+            <button
+              class="row-action"
+              onclick={() => setFavoriteRepo(repo.path, false)}
+              title="Unpin from favorites"
+              aria-label="Unpin {repo.name} from favorites"
+            >
+              <PinOff size={14} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
+  {#if recentRepos.length > 0}
+    <section class="open-repos" aria-labelledby="recent-heading">
+      <div class="section-header">
+        <h2 class="section-title" id="recent-heading"><History size={13} /> Recent</h2>
+        <button class="link-btn" onclick={clearRecentRepos}>Clear</button>
+      </div>
+      <div class="repo-list">
+        {#each recentRepos as repo (repo.path)}
+          {@const missing = $missingRepoPaths.has(repo.path)}
+          <div class="repo-row" class:missing>
+            <button
+              class="repo-card"
+              class:repo-card-open={openPaths.has(repo.path)}
+              disabled={missing}
+              onclick={() => openOrSwitch(repo.path)}
+              title={missing ? `${repo.path} — folder not found` : repo.path}
+            >
+              {#if missing}
+                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label="Missing" />
+              {:else}
+                <GitBranch size={16} class="repo-icon" />
+              {/if}
+              <div class="repo-info">
+                <span class="repo-name">{repo.name}</span>
+                <span class="repo-path">{repo.path}</span>
+              </div>
+              {#if missing}
+                <span class="repo-badge missing-badge">Missing</span>
+              {:else}
+                <span class="repo-time">{relativeTime(repo.last_opened)}</span>
+              {/if}
+            </button>
+            {#if !missing}
+              <button
+                class="row-action"
+                onclick={() => setFavoriteRepo(repo.path, true, repo.name)}
+                title="Pin to favorites"
+                aria-label="Pin {repo.name} to favorites"
+              >
+                <Pin size={14} />
+              </button>
+            {/if}
+            <button
+              class="row-action"
+              onclick={() => removeRecentRepo(repo.path)}
+              title="Remove from list"
+              aria-label="Remove {repo.name} from recent repositories"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   {#if repos.length > 0 && !$settings.default_repo_dir}
     <div class="open-repos">
@@ -359,5 +484,101 @@
 
   .repo-card-open {
     opacity: 0.5;
+  }
+
+  .palette-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .palette-hint kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-surface);
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .repo-row {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .repo-row .repo-card {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .repo-card:disabled {
+    cursor: default;
+  }
+
+  .repo-card:disabled:hover {
+    background: var(--color-surface);
+    border-color: var(--color-border);
+  }
+
+  .repo-row.missing .repo-name,
+  .repo-row.missing .repo-path {
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+
+  .repo-card :global(.missing-icon) {
+    color: var(--color-diff-del-text);
+  }
+
+  .repo-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .missing-badge {
+    color: var(--color-diff-del-text);
+    background: var(--color-diff-del-bg);
+  }
+
+  .repo-time {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+  }
+
+  .row-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    flex-shrink: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s;
+  }
+
+  .row-action:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-muted);
+  }
+
+  .link-btn {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .link-btn:hover {
+    color: var(--color-text-primary);
+    text-decoration: underline;
   }
 </style>

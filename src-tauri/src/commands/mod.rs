@@ -10,3 +10,5 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// App shell (status bar, recent repos, settings import/export)
+pub mod app_shell;

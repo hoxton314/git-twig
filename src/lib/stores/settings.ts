@@ -22,9 +22,20 @@ const defaults: AppSettings = {
   external_diff_tool: null,
   external_merge_tool: null,
   keybinding_overrides: {},
+  // App shell: fonts & updater
+  ui_font_family: "",
+  mono_font_family: "",
+  check_updates_on_startup: true,
+  skipped_update_version: null,
 };
 
+/** Default values for every setting (used by reset/import). */
+export const DEFAULT_SETTINGS: Readonly<AppSettings> = defaults;
+
 export const settings = writable<AppSettings>({ ...defaults });
+
+/** True once settings have been loaded from disk (or defaults applied). */
+export const settingsReady = writable(false);
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let loaded = false;
@@ -42,6 +53,7 @@ export async function loadSettings() {
   // Apply the persisted default diff view at startup.
   diffViewMode.set(get(settings).diff_view_mode);
   loaded = true;
+  settingsReady.set(true);
 }
 
 /** Persist current settings to disk (debounced). */
@@ -76,6 +88,41 @@ function applyVisualSettings(s: AppSettings) {
   root.style.setProperty("--color-accent", s.accent_color);
   root.style.setProperty("font-size", `${s.font_size}px`);
   root.style.setProperty("--diff-font-size", `${s.diff_font_size}px`);
+  applyFontFamily(root, "--font-sans", s.ui_font_family, UI_FONT_FALLBACK);
+  applyFontFamily(root, "--font-mono", s.mono_font_family, MONO_FONT_FALLBACK);
+}
+
+// ── Font families ────────────────────────────────────────────────────
+
+/** Fallback stacks appended after a user-chosen font (mirror app.css). */
+export const UI_FONT_FALLBACK =
+  'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+export const MONO_FONT_FALLBACK =
+  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
+
+const GENERIC_FAMILIES = new Set([
+  "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
+  "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "math", "emoji",
+]);
+
+/**
+ * Turn a user-entered family list ("JetBrains Mono, Fira Code") into a safe
+ * CSS font-family value: each name is quoted unless it is a generic family,
+ * and characters that could escape the declaration are dropped.
+ */
+export function cssFontFamily(input: string): string {
+  return input
+    .split(",")
+    .map((name) => name.replace(/[;{}<>\\"']/g, "").trim())
+    .filter(Boolean)
+    .map((name) => (GENERIC_FAMILIES.has(name.toLowerCase()) ? name.toLowerCase() : `"${name}"`))
+    .join(", ");
+}
+
+function applyFontFamily(root: HTMLElement, prop: string, value: string | undefined, fallback: string) {
+  const family = cssFontFamily(value ?? "");
+  if (family) root.style.setProperty(prop, `${family}, ${fallback}`);
+  else root.style.removeProperty(prop);
 }
 
 settings.subscribe((s) => {

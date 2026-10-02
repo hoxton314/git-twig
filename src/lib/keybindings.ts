@@ -7,13 +7,20 @@
  * platforms the Super/Meta key never matches.
  */
 
+import { writable } from "svelte/store";
+
 // ── Action definitions ───────────────────────────────────────────────
 
 export interface KeybindingAction {
   id: string;
   label: string;
   category: string;
+  /** Empty string = no default shortcut (still listed, rebindable, and in the palette). */
   defaultShortcut: string;
+  /** Also fire while focus is in an input/textarea (e.g. commit, command palette). */
+  allowInInputs?: boolean;
+  /** Hide from the command palette (e.g. actions that only make sense as a key press). */
+  hideInPalette?: boolean;
 }
 
 export const ACTIONS: KeybindingAction[] = [
@@ -33,6 +40,18 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // App shell: command palette, tabs, settings, updater
+  { id: "command_palette",      label: "Command palette",                 category: "Navigation",  defaultShortcut: "Ctrl+K", allowInInputs: true, hideInPalette: true },
+  { id: "move_tab_left",        label: "Move tab left",                   category: "Navigation",  defaultShortcut: "Ctrl+Shift+PageUp" },
+  { id: "move_tab_right",       label: "Move tab right",                  category: "Navigation",  defaultShortcut: "Ctrl+Shift+PageDown" },
+  { id: "toggle_favorite_repo", label: "Pin/unpin repository to favorites", category: "Repository", defaultShortcut: "" },
+  { id: "reveal_repo",          label: "Open repository folder",          category: "Repository", defaultShortcut: "" },
+  { id: "copy_repo_path",       label: "Copy repository path",            category: "Repository", defaultShortcut: "" },
+  { id: "check_for_updates",    label: "Check for updates",               category: "Application", defaultShortcut: "" },
+  { id: "open_settings_folder", label: "Open settings folder",            category: "Application", defaultShortcut: "" },
+  { id: "export_settings",      label: "Export settings…",                category: "Application", defaultShortcut: "" },
+  { id: "import_settings",      label: "Import settings…",                category: "Application", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
@@ -161,13 +180,18 @@ function handleKeydown(e: KeyboardEvent) {
   const target = e.target as HTMLElement | null;
   const tag = target?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
-    // Exception: allow Ctrl+Enter for commit even in textarea
-    const commitBinding = parsedBindings.get("commit");
-    if (commitBinding && matchesEvent(commitBinding, e)) {
-      const handler = handlers.get("commit");
-      if (handler) {
-        e.preventDefault();
-        handler();
+    // Exceptions: commit (Ctrl+Enter in the message box) and actions flagged
+    // `allowInInputs` (e.g. the command palette) still fire.
+    for (const action of ACTIONS) {
+      if (action.id !== "commit" && !action.allowInInputs) continue;
+      const binding = parsedBindings.get(action.id);
+      if (binding && matchesEvent(binding, e)) {
+        const handler = handlers.get(action.id);
+        if (handler) {
+          e.preventDefault();
+          handler();
+        }
+        return;
       }
     }
     return;
@@ -189,6 +213,45 @@ function handleKeydown(e: KeyboardEvent) {
 export function setOverrides(newOverrides: Record<string, string>) {
   overrides = newOverrides ?? {};
   rebuildParsedBindings();
+  shortcutLabels.set(currentShortcutMap());
+}
+
+function currentShortcutMap(): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const action of ACTIONS) {
+    const sc = overrides[action.id] || action.defaultShortcut;
+    if (sc) map[action.id] = sc;
+  }
+  return map;
+}
+
+/**
+ * Reactive map of action id -> effective shortcut (only bound actions).
+ * Use `$shortcutLabels[id]` in templates so tooltips follow rebinding.
+ */
+export const shortcutLabels = writable<Record<string, string>>(currentShortcutMap());
+
+/** Current shortcut for an action, or "" when unbound (non-reactive). */
+export function shortcutFor(actionId: string): string {
+  return getShortcut(actionId);
+}
+
+/** "Push (Ctrl+Shift+P)" — a tooltip label with the action's shortcut, if any. */
+export function withShortcut(label: string, shortcut: string | undefined): string {
+  return shortcut ? `${label} (${shortcut})` : label;
+}
+
+/** Whether a component currently handles this action. */
+export function hasActionHandler(actionId: string): boolean {
+  return handlers.has(actionId);
+}
+
+/** Run an action's handler as if its shortcut were pressed. Returns false if none is registered. */
+export function runAction(actionId: string): boolean {
+  const handler = handlers.get(actionId);
+  if (!handler) return false;
+  handler();
+  return true;
 }
 
 /** Register a handler for an action. Returns an unsubscribe function. */

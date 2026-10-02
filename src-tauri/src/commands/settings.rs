@@ -60,6 +60,19 @@ pub struct AppSettings {
     /// is neither sent to the webview nor written back to disk.
     #[serde(default, rename = "github_token", skip_serializing)]
     pub legacy_github_token: Option<String>,
+
+    // ── App shell: fonts & updater ──────────────────────────────────
+    /// Interface font family (CSS font-family list); empty = system UI font.
+    #[serde(default)]
+    pub ui_font_family: String,
+    /// Monospace font family for code/diffs/hashes; empty = system monospace.
+    #[serde(default)]
+    pub mono_font_family: String,
+    #[serde(default = "default_true")]
+    pub check_updates_on_startup: bool,
+    /// Release version the user chose to skip in the update prompt.
+    #[serde(default)]
+    pub skipped_update_version: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -111,6 +124,10 @@ impl Default for AppSettings {
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
+            ui_font_family: String::new(),
+            mono_font_family: String::new(),
+            check_updates_on_startup: true,
+            skipped_update_version: None,
         }
     }
 }

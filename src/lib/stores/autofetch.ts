@@ -3,6 +3,7 @@ import { openRepos, activeRepoPath } from "./repos";
 import { settings } from "./settings";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
+import { trackOperation } from "./operations";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentSeconds = -1;
@@ -20,9 +21,11 @@ async function fetchAllRepos() {
       // The tab may have been closed while an earlier fetch was running.
       if (!get(openRepos).has(path)) continue;
       try {
-        await tauri.fetchAll(path);
+        // Failures are recorded in `lastFetch` and shown in the status bar
+        // rather than interrupting the user from a background timer.
+        await trackOperation(path, "fetch", "Auto-fetching…", () => tauri.fetchAll(path), { background: true });
       } catch {
-        // Silently skip repos that fail to fetch
+        // Recorded by trackOperation; skip to the next repo.
       }
       // Reflect new remote refs / ahead-behind counts in the visible repo.
       if (get(activeRepoPath) === path) {

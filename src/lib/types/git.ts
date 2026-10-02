@@ -144,6 +144,11 @@ export interface AppSettings {
   external_merge_tool: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
+  // App shell: fonts & updater
+  ui_font_family: string;
+  mono_font_family: string;
+  check_updates_on_startup: boolean;
+  skipped_update_version: string | null;
 }
 
 // ── Git Config ───────────────────────────────────────────────────
@@ -179,4 +184,41 @@ export const LANE_COLORS = [
 
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+// ── App shell (status bar, recent repos) ─────────────────────────────
+
+/** In-progress repository operation reported by git2 `repo.state()`. */
+export type RepoOperationState =
+  | "clean"
+  | "merge"
+  | "revert"
+  | "cherry-pick"
+  | "bisect"
+  | "rebase"
+  | "rebase-interactive"
+  | "rebase-merge"
+  | "apply-mailbox";
+
+export interface RepoStatusSummary {
+  branch: string | null;
+  detached: boolean;
+  unborn: boolean;
+  head_short_oid: string;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  state: RepoOperationState;
+}
+
+export interface RecentRepo {
+  path: string;
+  name: string;
+  /** Unix time in milliseconds. */
+  last_opened: number;
+}
+
+export interface RepoHistory {
+  recent: RecentRepo[];
+  favorites: string[];
 }
