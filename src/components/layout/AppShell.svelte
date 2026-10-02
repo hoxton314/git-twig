@@ -9,6 +9,8 @@
   import Toaster from "../shared/Toaster.svelte";
   import UndoHistory from "../reflog/UndoHistory.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
+  import OperationBanner from "../conflicts/OperationBanner.svelte";
+  import OperationHost from "../conflicts/OperationHost.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
@@ -237,6 +239,7 @@
         onmousedown={onDragStart("sidebar")}
       ></div>
       <main class="main-area" bind:this={mainAreaEl}>
+        <OperationBanner />
         <div
           class="graph-panel"
           style="flex: {showDiff ? 1 - panelRatio : 1}"
@@ -273,6 +276,7 @@
     <span class="version-badge">v{appVersion}</span>
   {/if}
 
+  <OperationHost />
   <Toaster />
   <UndoHistory />
 </div>

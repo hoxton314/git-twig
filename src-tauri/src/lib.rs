@@ -116,6 +116,20 @@ pub fn run() {
             commands::remotes::set_remote_urls,
             commands::remotes::fetch_remote,
             commands::remotes::prune_remote,
+            // Conflict resolution & history rewriting (rebase, force push)
+            commands::conflicts::get_operation_state,
+            commands::conflicts::get_conflict_versions,
+            commands::conflicts::continue_operation,
+            commands::conflicts::abort_operation,
+            commands::conflicts::skip_operation,
+            commands::conflicts::resolve_take_side,
+            commands::conflicts::mark_resolved,
+            commands::conflicts::save_resolved_file,
+            commands::conflicts::open_merge_tool,
+            commands::history::rebase_onto,
+            commands::history::list_rebase_commits,
+            commands::history::interactive_rebase,
+            commands::history::force_push_with_lease,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

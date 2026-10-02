@@ -58,6 +58,14 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "branch_create",         label: "Create branch…",         category: "Git",        defaultShortcut: "" },
   { id: "branch_rename_current", label: "Rename current branch…", category: "Git",        defaultShortcut: "" },
   { id: "branch_filter",         label: "Filter branches",        category: "Navigation", defaultShortcut: "" },
+  // Conflict resolution & history rewriting (rebase, force push)
+  { id: "force_push",         label: "Force push (with lease)",          category: "Git", defaultShortcut: "" },
+  { id: "rebase_onto",        label: "Rebase current branch onto…",      category: "Git", defaultShortcut: "" },
+  { id: "interactive_rebase", label: "Interactive rebase…",              category: "Git", defaultShortcut: "" },
+  { id: "operation_continue", label: "Continue merge / rebase / cherry-pick", category: "Git", defaultShortcut: "" },
+  { id: "operation_abort",    label: "Abort merge / rebase / cherry-pick",    category: "Git", defaultShortcut: "" },
+  { id: "operation_skip",     label: "Skip current commit (rebase / cherry-pick)", category: "Git", defaultShortcut: "" },
+  { id: "resolve_conflicts",  label: "Resolve conflicts",                category: "Git", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

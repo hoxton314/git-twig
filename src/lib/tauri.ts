@@ -622,3 +622,91 @@ export function fetchRemote(path: string, name: string): Promise<CommandResult> 
 export function pruneRemote(path: string, name: string): Promise<CommandResult> {
   return invoke<CommandResult>("prune_remote", { path, name });
 }
+
+// ── Conflict resolution & history rewriting (rebase, force push) ────
+
+import type {
+  RepoOperationState,
+  ConflictVersions,
+  RebaseCommitList,
+  RebaseTodoItem,
+} from "./types/git";
+
+export function getOperationState(path: string): Promise<RepoOperationState> {
+  return invoke<RepoOperationState>("get_operation_state", { path });
+}
+
+export function getConflictVersions(path: string, filePath: string): Promise<ConflictVersions> {
+  return invoke<ConflictVersions>("get_conflict_versions", { path, filePath });
+}
+
+/** Continue the in-progress merge/rebase/cherry-pick/revert. */
+export function continueOperation(path: string, message?: string | null): Promise<CommandResult> {
+  return invoke<CommandResult>("continue_operation", { path, message: message ?? null });
+}
+
+export function abortOperation(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("abort_operation", { path });
+}
+
+export function skipOperation(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("skip_operation", { path });
+}
+
+export function resolveTakeSide(
+  path: string,
+  files: string[],
+  side: "ours" | "theirs",
+): Promise<CommandResult> {
+  return invoke<CommandResult>("resolve_take_side", { path, files, side });
+}
+
+export function markResolved(path: string, files: string[]): Promise<CommandResult> {
+  return invoke<CommandResult>("mark_resolved", { path, files });
+}
+
+export function saveResolvedFile(
+  path: string,
+  filePath: string,
+  content: string,
+  stage: boolean,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("save_resolved_file", { path, filePath, content, stage });
+}
+
+/** Opens the merge tool and resolves once it has been closed. */
+export function openMergeTool(
+  path: string,
+  filePath: string,
+  tool: string | null,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("open_merge_tool", { path, filePath, tool });
+}
+
+/** Rebase the current branch onto a branch name or commit. */
+export function rebaseOnto(path: string, upstream: string, autostash: boolean): Promise<CommandResult> {
+  return invoke<CommandResult>("rebase_onto", { path, upstream, autostash });
+}
+
+/** Commits base..HEAD (oldest first); `base = null` means from the root. */
+export function listRebaseCommits(path: string, base: string | null): Promise<RebaseCommitList> {
+  return invoke<RebaseCommitList>("list_rebase_commits", { path, base });
+}
+
+export function interactiveRebase(
+  path: string,
+  base: string | null,
+  items: RebaseTodoItem[],
+  autostash: boolean,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("interactive_rebase", { path, base, items, autostash });
+}
+
+/** `git push --force-with-lease`; remote defaults to the upstream remote, then origin. */
+export function forcePushWithLease(
+  path: string,
+  branchName: string,
+  remote?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("force_push_with_lease", { path, branchName, remote: remote ?? null });
+}

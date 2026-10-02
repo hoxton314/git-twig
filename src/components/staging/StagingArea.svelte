@@ -5,6 +5,7 @@
     RefreshCw,
     Loader2,
     GitPullRequest,
+    ChevronDown,
   } from "lucide-svelte";
   import StashPanel from "./StashPanel.svelte";
   import ChangedFiles from "./ChangedFiles.svelte";
@@ -14,6 +15,10 @@
   import { refreshStatus, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import { message } from "@tauri-apps/plugin-dialog";
+  // Force push (with lease)
+  import ContextMenu from "../shared/ContextMenu.svelte";
+  import { forcePush } from "../../lib/stores/operation";
+  let pushMenu = $state<{ x: number; y: number } | null>(null);
 
   const repoPath = $derived($activeRepoPath);
   let pushLoading = $state(false);
@@ -98,6 +103,31 @@
       {/if}
       <span>Push</span>
     </button>
+    <!-- Force push (with lease) menu -->
+    <button
+      class="toolbar-btn push-more"
+      onclick={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        pushMenu = { x: r.left, y: r.bottom + 2 };
+      }}
+      disabled={pushLoading}
+      title="More push options"
+      aria-label="More push options"
+      aria-haspopup="menu"
+    >
+      <ChevronDown size={12} />
+    </button>
+    {#if pushMenu}
+      <ContextMenu
+        x={pushMenu.x}
+        y={pushMenu.y}
+        items={[
+          { label: "Push", action: handlePush },
+          { label: "Force push (with lease)…", action: () => { forcePush(); }, danger: true },
+        ]}
+        onclose={() => (pushMenu = null)}
+      />
+    {/if}
     <button
       class="toolbar-btn"
       onclick={() => (showPrModal = true)}
@@ -170,6 +200,11 @@
   .toolbar-btn:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  .toolbar-btn.push-more {
+    padding: 4px 3px;
+    margin-left: -3px;
   }
 
   .toolbar-btn.icon-only {

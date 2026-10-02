@@ -19,3 +19,7 @@ pub mod file_ops;
 // Branch list / remotes
 pub mod branch_ops;
 pub mod remotes;
+
+// Conflict resolution & history rewriting (rebase, force push)
+pub mod conflicts;
+pub mod history;
