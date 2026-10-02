@@ -13,6 +13,7 @@
   import OperationHost from "../conflicts/OperationHost.svelte";
   import FileViewHost from "../history/FileViewHost.svelte";
   import CodeSearch from "../search/CodeSearch.svelte";
+  import { lfsPanelOpen } from "../../lib/stores/lfs";
   import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
   import StatusBar from "./StatusBar.svelte";
   import CommandPalette from "./CommandPalette.svelte";
@@ -96,6 +97,9 @@
     // ── Keybinding action handlers ─────────────────────────────────
     const unsubs = [
       onAction("open_repo", openRepoWithDialog),
+      onAction("lfs_manage", () => {
+        if ($activeRepoPath) lfsPanelOpen.set(true);
+      }),
       onAction("clone_from_url", () => openNewRepoDialog("clone")),
       onAction("init_repository", () => openNewRepoDialog("init")),
       onAction("close_tab", () => {
@@ -373,6 +377,12 @@
   <!-- File history & blame overlay; worktree/submodule actions -->
   <FileViewHost />
   <CodeSearch />
+  <!-- Rarely opened: loaded on first use to keep the main bundle small. -->
+  {#if $lfsPanelOpen}
+    {#await import("../lfs/LfsPanel.svelte") then { default: LfsPanel }}
+      <LfsPanel />
+    {/await}
+  {/if}
   <RepoToolsHost />
   <PullRequestsPanel />
   <NewRepoDialog />
