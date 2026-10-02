@@ -40,6 +40,8 @@
   import { get } from "svelte/store";
   // Hosting integrations
   import PullRequestsPanel from "../github/PullRequestsPanel.svelte";
+  import NewRepoDialog from "./NewRepoDialog.svelte";
+  import { newRepoDialog } from "../../lib/newRepo";
   import { invalidateCi } from "../../lib/stores/ci";
 
   let showTitleBar = $state(false);
@@ -76,6 +78,8 @@
     // ── Keybinding action handlers ─────────────────────────────────
     const unsubs = [
       onAction("open_repo", openRepoWithDialog),
+      onAction("clone_from_url", () => newRepoDialog.set("clone")),
+      onAction("init_repository", () => newRepoDialog.set("init")),
       onAction("close_tab", () => {
         const path = get(activeRepoPath);
         if (path) {
@@ -343,6 +347,7 @@
   <FileViewHost />
   <RepoToolsHost />
   <PullRequestsPanel />
+  <NewRepoDialog />
 </div>
 
 <style>

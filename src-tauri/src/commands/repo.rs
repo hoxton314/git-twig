@@ -84,6 +84,69 @@ pub async fn open_repo(
     Ok(info)
 }
 
+/// Open the repository at `dir` (just created or cloned) and track it.
+pub(crate) async fn register_repo(state: &AppState, dir: PathBuf) -> Result<RepoInfo, TwigError> {
+    let (canonical, info) = tauri::async_runtime::spawn_blocking(move || {
+        let shown = dir.to_string_lossy().to_string();
+        let repo = Repository::open(&dir).map_err(|_| TwigError::NotARepo(shown))?;
+        let workdir = repo.workdir().unwrap_or(repo.path()).to_path_buf();
+        let canonical = workdir.canonicalize().unwrap_or(workdir);
+        let key = canonical.to_string_lossy().to_string();
+        let info = build_repo_info(&repo, key, &canonical);
+        Ok::<_, TwigError>((canonical, info))
+    })
+    .await
+    .map_err(|e| TwigError::Task(e.to_string()))??;
+    let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
+    repos.insert(info.path.clone(), OpenRepo { path: canonical });
+    Ok(info)
+}
+
+/// `git init` a folder (created if missing) and open it.
+#[tauri::command]
+pub async fn init_repository(
+    state: State<'_, AppState>,
+    path: String,
+    initial_branch: Option<String>,
+) -> Result<RepoInfo, TwigError> {
+    let out = crate::git::create::init_repo(&path, initial_branch.as_deref()).await?;
+    if !out.success {
+        return Err(TwigError::GitCli(format!("git init failed: {}", out.stderr.trim())));
+    }
+    register_repo(&state, PathBuf::from(path)).await
+}
+
+/// Progress line of a running clone, emitted as `clone-progress`.
+#[derive(Debug, Clone, Serialize)]
+pub struct CloneProgress {
+    pub op_id: u64,
+    pub line: String,
+}
+
+/// Clone any URL into `destination` (absolute; missing or empty) and open it.
+/// Progress lines are emitted as `clone-progress` events tagged with `op_id`.
+/// HTTPS clones from the configured GitHub host use the stored token.
+#[tauri::command]
+pub async fn clone_repository(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    destination: String,
+    op_id: u64,
+) -> Result<RepoInfo, TwigError> {
+    use tauri::Emitter;
+    let env = crate::commands::github::clone_auth_env(&app, url.trim()).await;
+    let emitter = app.clone();
+    let out = crate::git::create::clone_repo(&url, &destination, &env, move |line| {
+        let _ = emitter.emit("clone-progress", CloneProgress { op_id, line: line.to_string() });
+    })
+    .await?;
+    if !out.success {
+        return Err(TwigError::GitCli(format!("Clone failed: {}", out.stderr.trim())));
+    }
+    register_repo(&state, PathBuf::from(destination)).await
+}
+
 /// Close a repository and remove it from state.
 #[tauri::command]
 pub async fn close_repo(

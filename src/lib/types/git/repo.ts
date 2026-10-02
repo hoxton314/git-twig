@@ -57,3 +57,9 @@ export interface RepoHistory {
   recent: RecentRepo[];
   favorites: string[];
 }
+
+/** A `git clone` progress line (`clone-progress` event). */
+export interface CloneProgress {
+  op_id: number;
+  line: string;
+}

@@ -124,6 +124,23 @@ try {
     }
     if (git("status", "--porcelain").trim() !== "") throw new Error("working tree not clean");
   });
+
+  await step("clone from URL opens the clone in a new tab", async () => {
+    await session.click(await session.find('button[aria-label="Home"]'));
+    await session.click(await session.findByText("button", "Clone from URL"));
+    const [urlBox] = await session.waitFor('input[placeholder^="https://"]');
+    await session.type(urlBox, `file://${repo}`);
+    const parent = await session.find('input[aria-label="Parent folder"]');
+    await session.type(parent, tmp);
+    const name = await session.find('input[aria-label="Folder name"]');
+    await session.execute("arguments[0].value = ''; arguments[0].dispatchEvent(new Event('input', { bubbles: true }));", [{ "element-6066-11e4-a52e-4f735466cecf": name }]);
+    await session.type(name, "cloned");
+    await session.click(await session.findByText("button[type=submit]", "Clone"));
+    await session.waitFor(".tab .tab-name", { pred: (t) => t.includes("cloned"), timeout: 60_000 });
+    await until(() => existsSync(join(tmp, "cloned", ".git")), "clone on disk");
+    const head = execFileSync("git", ["log", "--format=%s", "-n", "1"], { cwd: join(tmp, "cloned"), env, encoding: "utf8" }).trim();
+    if (head !== "add notes from e2e") throw new Error(`clone HEAD is ${JSON.stringify(head)}`);
+  });
 } catch (err) {
   failed = true;
   console.log("FAILED");

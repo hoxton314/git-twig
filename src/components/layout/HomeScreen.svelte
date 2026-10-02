@@ -16,6 +16,7 @@
   } from "../../lib/stores/repoHistory";
   import { toastError } from "../../lib/stores/toasts";
   import { openRepoWithDialog } from "../../lib/appActions";
+  import { newRepoDialog } from "../../lib/newRepo";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
@@ -113,6 +114,16 @@
       <FolderOpen size={16} />
       Open Repository
     </button>
+    <div class="github-buttons">
+      <button class="github-button" onclick={() => newRepoDialog.set("clone")}>
+        <GitBranch size={15} />
+        Clone from URL
+      </button>
+      <button class="github-button" onclick={() => newRepoDialog.set("init")}>
+        <FolderGit2 size={15} />
+        New Repository
+      </button>
+    </div>
     <div class="github-buttons">
       <button class="github-button" onclick={() => (showCloneModal = true)}>
         <GitFork size={15} />

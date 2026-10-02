@@ -27,6 +27,20 @@ export class Session {
     return v.map((e) => e[ELEMENT]);
   }
 
+  /** First element matching `css` whose text contains `text` (polls). */
+  async findByText(css, text, timeout = 15_000) {
+    const end = Date.now() + timeout;
+    while (Date.now() < end) {
+      const el = await this.execute(
+        "return Array.from(document.querySelectorAll(arguments[0])).find((e) => (e.textContent || '').includes(arguments[1])) || null;",
+        [css, text],
+      );
+      if (el) return el[ELEMENT];
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    throw new Error(`no ${css} containing "${text}"`);
+  }
+
   /** `textContent` of every match (WebDriver's visible text depends on layout). */
   texts(css) {
     return this.execute(

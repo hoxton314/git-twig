@@ -1,17 +1,15 @@
 use std::path::PathBuf;
 
-use git2::Repository;
 use tauri::State;
-use tokio::process::Command;
 
-use crate::commands::repo::{build_repo_info, RepoInfo};
+use crate::commands::repo::RepoInfo;
 use crate::commands::settings::read_legacy_token;
 use crate::credentials;
 use crate::error::TwigError;
 use crate::github::{self, GitHubPullRequest, GitHubRemoteInfo, GitHubRepo, GitHubUser, RepoListPage};
 use crate::hosting::config::{self as hosting_config, GitHubEndpoint};
 use crate::hosting::{net_auth, remote as hosting_remote};
-use crate::state::{AppState, OpenRepo};
+use crate::state::AppState;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -75,6 +73,19 @@ pub async fn github_list_repos(
     github::list_repos(&client, &endpoint(&app).api_base, &token, page, per_page, &sort).await
 }
 
+/// Auth environment for cloning `url`: the GitHub token as a host-scoped
+/// `http.extraHeader` (via `GIT_CONFIG_*` env vars, never persisted into the
+/// clone's config) when `url` is HTTPS on the configured GitHub host.
+pub(crate) async fn clone_auth_env(app: &tauri::AppHandle, url: &str) -> Vec<(String, String)> {
+    let host = endpoint(app).host;
+    if hosting_remote::is_https_on_host(url, &host) {
+        if let Ok(token) = get_token(app).await {
+            return net_auth::auth_env_for(&host, &token);
+        }
+    }
+    Vec::new()
+}
+
 #[tauri::command]
 pub async fn github_clone_repo(
     app: tauri::AppHandle,
@@ -82,60 +93,12 @@ pub async fn github_clone_repo(
     clone_url: String,
     destination: String,
 ) -> Result<RepoInfo, TwigError> {
-    let dest = PathBuf::from(&destination);
-
-    // Guard against arguments git would treat as flags (`--` ends option parsing).
-    if clone_url.starts_with('-') || destination.starts_with('-') {
-        return Err(TwigError::GitCli(
-            "clone URL and destination must not start with '-'".to_string(),
-        ));
+    let env = clone_auth_env(&app, clone_url.trim()).await;
+    let out = crate::git::create::clone_repo(&clone_url, &destination, &env, |_| {}).await?;
+    if !out.success {
+        return Err(TwigError::GitCli(format!("Clone failed: {}", out.stderr.trim())));
     }
-    // A relative destination would resolve against the app's working
-    // directory (wherever Twig was launched from), not anywhere meaningful.
-    if !dest.is_absolute() {
-        return Err(TwigError::GitCli(
-            "Clone destination must be an absolute path".to_string(),
-        ));
-    }
-
-    let mut cmd = Command::new("git");
-    cmd.args(["clone", "--", &clone_url, &destination])
-        // Never block on an interactive username/password prompt.
-        .env("GIT_TERMINAL_PROMPT", "0");
-
-    // Authenticate HTTPS clones of GitHub repos (needed for private repos)
-    // with the configured token. It is passed as a one-off, host-scoped
-    // http.extraHeader via GIT_CONFIG_* env vars so it is neither visible in
-    // the process list nor persisted into the clone's .git/config.
-    let host = endpoint(&app).host;
-    if hosting_remote::is_https_on_host(&clone_url, &host) {
-        if let Ok(token) = get_token(&app).await {
-            cmd.envs(net_auth::auth_env_for(&host, &token));
-        }
-    }
-
-    let output = cmd
-        .output()
-        .await
-        .map_err(|e| TwigError::GitCli(format!("Failed to execute git clone: {e}")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(TwigError::GitCli(format!("Clone failed: {stderr}")));
-    }
-
-    // Open the cloned repo in state (same logic as open_repo)
-    let repo = Repository::open(&dest).map_err(|_| TwigError::NotARepo(destination.clone()))?;
-
-    let workdir = repo.workdir().unwrap_or(repo.path()).to_path_buf();
-    let canonical = workdir.canonicalize().unwrap_or_else(|_| workdir.clone());
-    let key = canonical.to_string_lossy().to_string();
-    let info = build_repo_info(&repo, key.clone(), &canonical);
-
-    let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.insert(key, OpenRepo { path: canonical });
-
-    Ok(info)
+    crate::commands::repo::register_repo(&state, PathBuf::from(destination)).await
 }
 
 #[tauri::command]

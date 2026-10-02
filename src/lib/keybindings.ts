@@ -26,6 +26,8 @@ export interface KeybindingAction {
 export const ACTIONS: KeybindingAction[] = [
   // Navigation
   { id: "open_repo",      label: "Open repository",      category: "Navigation", defaultShortcut: "Ctrl+O" },
+  { id: "clone_from_url", label: "Clone repository from URL…", category: "Repository", defaultShortcut: "" },
+  { id: "init_repository", label: "Initialize new repository…", category: "Repository", defaultShortcut: "" },
   { id: "close_tab",      label: "Close tab",            category: "Navigation", defaultShortcut: "Ctrl+W" },
   { id: "next_tab",       label: "Next tab",             category: "Navigation", defaultShortcut: "Ctrl+Tab" },
   { id: "prev_tab",       label: "Previous tab",         category: "Navigation", defaultShortcut: "Ctrl+Shift+Tab" },
