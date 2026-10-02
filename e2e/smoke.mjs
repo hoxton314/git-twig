@@ -73,6 +73,16 @@ driver.on("exit", (code, signal) => {
   driverExit = `tauri-driver exited (${signal ?? code})`;
 });
 
+/** Poll a condition outside the app (e.g. the repo's real git state). */
+async function until(cond, what, timeout = 15_000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
 let session;
 let failed = false;
 const step = async (name, fn) => {
