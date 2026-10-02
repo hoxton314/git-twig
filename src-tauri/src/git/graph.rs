@@ -75,18 +75,42 @@ fn graph_walk<'r>(
     Ok((walk, format!("{:016x}", hasher.finish())))
 }
 
+/// Decode commit text: UTF-8 when valid, Latin-1 when the commit says so
+/// (every byte is one code point), otherwise lossily. git2's `&str`
+/// accessors return `None` for non-UTF-8 text, which showed up as empty
+/// summaries and "Unknown" authors.
+pub(crate) fn decode_text(bytes: &[u8], encoding: Option<&str>) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_string();
+    }
+    let latin1 = encoding.is_some_and(|e| {
+        matches!(
+            e.to_ascii_lowercase().as_str(),
+            "iso-8859-1" | "iso8859-1" | "latin1" | "latin-1" | "l1"
+        )
+    });
+    if latin1 {
+        bytes.iter().map(|&b| char::from(b)).collect()
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+}
+
 /// Build the IPC commit description.
 pub(crate) fn commit_info(commit: &Commit) -> CommitInfo {
     let oid = commit.id();
     let author = commit.author();
-    let email = author.email().unwrap_or("").to_string();
+    let enc = commit.message_encoding();
+    // git re-encodes the whole commit (idents included) by its header.
+    let email = decode_text(author.email_bytes(), enc);
     let gravatar_hash = format!("{:x}", md5::compute(email.trim().to_lowercase().as_bytes()));
+    let name = decode_text(author.name_bytes(), enc);
     CommitInfo {
         oid: oid.to_string(),
         short_oid: short_oid(oid),
-        summary: commit.summary().unwrap_or("").to_string(),
-        body: commit.body().unwrap_or("").to_string(),
-        author_name: author.name().unwrap_or("Unknown").to_string(),
+        summary: commit.summary_bytes().map(|b| decode_text(b, enc)).unwrap_or_default(),
+        body: commit.body_bytes().map(|b| decode_text(b, enc)).unwrap_or_default(),
+        author_name: if name.is_empty() { "Unknown".to_string() } else { name },
         author_email: email,
         author_gravatar: gravatar_hash,
         timestamp: commit.time().seconds(),
@@ -297,13 +321,11 @@ impl Matcher {
             }
         }
         let author = commit.author();
-        let contains = |s: Option<&str>| {
-            s.map(|s| s.to_lowercase().contains(&self.needle))
-                .unwrap_or(false)
-        };
-        contains(author.name())
-            || contains(author.email())
-            || contains(commit.message())
+        let contains = |s: String| s.to_lowercase().contains(&self.needle);
+        let enc = commit.message_encoding();
+        contains(decode_text(author.name_bytes(), enc))
+            || contains(decode_text(author.email_bytes(), enc))
+            || contains(decode_text(commit.message_bytes(), enc))
     }
 }
 
@@ -503,6 +525,74 @@ mod tests {
 
     fn commit(dir: &Path, msg: &str) {
         git(dir, &["commit", "-q", "--allow-empty", "-m", msg]);
+    }
+
+    /// Branches with `/` in their name (and remotes under them) are walked,
+    /// and moving any of them changes `tips`.
+    #[test]
+    fn nested_branch_names_are_walked() {
+        let dir = temp_repo("nested");
+        commit(&dir, "base");
+        git(&dir, &["checkout", "-q", "-b", "feature/deep/x"]);
+        commit(&dir, "nested only");
+        git(&dir, &["checkout", "-q", "main"]);
+        git(&dir, &["update-ref", "refs/remotes/origin/team/y", "feature/deep/x"]);
+        git(&dir, &["branch", "-q", "-f", "feature/deep/x", "main"]);
+        let repo = Repository::open(&dir).unwrap();
+
+        let all = read_commit_graph_page(&repo, 0, 100, &GraphOptions::default()).unwrap();
+        let subjects: Vec<&str> = all.entries.iter().map(|e| e.commit.summary.as_str()).collect();
+        assert!(subjects.contains(&"nested only"), "{subjects:?}");
+        let local = GraphOptions { hide_remotes: true, ..Default::default() };
+        let g = read_commit_graph_page(&repo, 0, 100, &local).unwrap();
+        assert_eq!(g.entries.len(), 1);
+
+        git(&dir, &["checkout", "-q", "-b", "a/b"]);
+        commit(&dir, "on a/b");
+        let moved = read_commit_graph_page(&repo, 0, 100, &local).unwrap();
+        assert_ne!(moved.tips, g.tips);
+        assert_eq!(moved.entries.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Commits recorded in a legacy encoding (message *and* author bytes)
+    /// show decoded and are searchable instead of rendering as empty /
+    /// "Unknown".
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_commit_metadata_is_shown_and_searchable() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = temp_repo("latin1");
+        let name = std::ffi::OsStr::from_bytes(b"Ren\xe9");
+        let ok = Command::new("git")
+            .args(["-c", "commit.gpgsign=false", "-c", "i18n.commitEncoding=ISO-8859-1"])
+            .args(["commit", "-q", "--allow-empty", "-F", "-"])
+            .env("GIT_AUTHOR_NAME", name)
+            .env("GIT_COMMITTER_NAME", name)
+            .env("GIT_AUTHOR_EMAIL", "r@example.com")
+            .env("GIT_COMMITTER_EMAIL", "r@example.com")
+            .current_dir(&dir)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut c| {
+                use std::io::Write;
+                c.stdin.take().unwrap().write_all(b"caf\xe9 latin\n")?;
+                c.wait()
+            })
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok);
+        let repo = Repository::open(&dir).unwrap();
+        let opts = GraphOptions::default();
+        let g = read_commit_graph_page(&repo, 0, 10, &opts).unwrap();
+        let c = &g.entries[0].commit;
+        assert_eq!(c.summary, "caf\u{e9} latin");
+        assert_eq!(c.author_name, "Ren\u{e9}");
+        assert_eq!(search_commits(&repo, "latin", &opts, 10).unwrap().matches.len(), 1);
+        assert_eq!(search_commits(&repo, "REN\u{c9}", &opts, 10).unwrap().matches.len(), 1);
+        // Plain lossy fallback for undeclared bytes.
+        assert_eq!(decode_text(b"a\xffb", None), "a\u{fffd}b");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
