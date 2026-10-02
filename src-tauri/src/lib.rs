@@ -77,6 +77,8 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // Diff viewer: partial (hunk/line) staging
+            commands::hunks::apply_diff_selection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

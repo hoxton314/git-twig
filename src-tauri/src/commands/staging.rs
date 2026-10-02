@@ -41,10 +41,12 @@ pub async fn get_staged_diff(
     state: State<'_, AppState>,
     path: String,
     file_path: Option<String>,
+    options: Option<reader::DiffReadOptions>,
 ) -> Result<Vec<reader::DiffFile>, TwigError> {
+    let options = options.unwrap_or_default();
     state
         .read_repo(&path, move |repo| {
-            reader::read_staged_diff(repo, file_path.as_deref())
+            reader::read_staged_diff_with(repo, file_path.as_deref(), &options)
         })
         .await
 }
@@ -55,10 +57,12 @@ pub async fn get_unstaged_diff(
     state: State<'_, AppState>,
     path: String,
     file_path: Option<String>,
+    options: Option<reader::DiffReadOptions>,
 ) -> Result<Vec<reader::DiffFile>, TwigError> {
+    let options = options.unwrap_or_default();
     state
         .read_repo(&path, move |repo| {
-            reader::read_unstaged_diff(repo, file_path.as_deref())
+            reader::read_unstaged_diff_with(repo, file_path.as_deref(), &options)
         })
         .await
 }

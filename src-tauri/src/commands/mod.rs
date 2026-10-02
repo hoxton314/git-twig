@@ -10,3 +10,5 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Diff viewer: partial (hunk/line) staging
+pub mod hunks;
