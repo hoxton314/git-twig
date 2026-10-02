@@ -135,7 +135,7 @@ pub async fn clone_repository(
     op_id: u64,
 ) -> Result<RepoInfo, TwigError> {
     use tauri::Emitter;
-    let env = crate::commands::github::clone_auth_env(&app, url.trim()).await;
+    let env = crate::commands::github::clone_auth_env(&app, url.trim(), true).await;
     let emitter = app.clone();
     let out = crate::git::create::clone_repo(&url, &destination, &env, move |line| {
         let _ = emitter.emit("clone-progress", CloneProgress { op_id, line: line.to_string() });

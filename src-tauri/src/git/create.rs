@@ -16,13 +16,12 @@ fn require_abs(path: &str, what: &str) -> Result<(), TwigError> {
     Ok(())
 }
 
-/// Validate a clone URL: non-empty, no leading `-` (git would read it as an
-/// option), no whitespace or control characters. Any scheme git supports is
-/// accepted; git's own `protocol.*.allow` policy still applies.
+/// Validate a clone URL or path: non-empty, no leading `-` (git would read it
+/// as an option), no control characters (newlines). Spaces are fine (local
+/// paths). Any scheme git supports is accepted; git's own
+/// `protocol.*.allow` policy still applies.
 pub(crate) fn validate_clone_url(url: &str) -> Result<(), TwigError> {
-    let bad = url.is_empty()
-        || url.starts_with('-')
-        || url.chars().any(|c| c.is_whitespace() || c.is_control());
+    let bad = url.is_empty() || url.starts_with('-') || url.chars().any(char::is_control);
     if bad {
         return Err(TwigError::InvalidArgument(format!("'{url}' is not a valid repository URL")));
     }
@@ -39,15 +38,18 @@ pub async fn init_repo(path: &str, initial_branch: Option<&str>) -> Result<GitOu
             "'{path}' is already a git repository; open it instead"
         )));
     }
-    std::fs::create_dir_all(dir)?;
+    // Validate everything before creating any folder.
     let branch = initial_branch.map(str::trim).filter(|b| !b.is_empty());
-    let mut args = vec!["init"];
     if let Some(b) = branch {
         safe_ref(b)?;
-        let check = run_git(dir, &["check-ref-format", "--branch", b]).await?;
+        let check = run_git(&std::env::temp_dir(), &["check-ref-format", "--branch", b]).await?;
         if !check.success {
             return Err(TwigError::InvalidArgument(format!("'{b}' is not a valid branch name")));
         }
+    }
+    std::fs::create_dir_all(dir)?;
+    let mut args = vec!["init"];
+    if let Some(b) = branch {
         args.extend(["-b", b]);
     }
     args.extend(["--", path]);
@@ -147,6 +149,7 @@ mod tests {
         let q = dir.join("other").to_string_lossy().to_string();
         assert!(init_repo(&q, Some("bad..name")).await.is_err());
         assert!(init_repo(&q, Some("-x")).await.is_err());
+        assert!(!Path::new(&q).exists(), "a rejected init must not create the folder");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -173,10 +176,15 @@ mod tests {
         // Non-empty destination, bad URLs, relative destination.
         assert!(clone_repo(&url, &dest, &[], |_| {}).await.is_err());
         let fresh = dir.join("fresh").to_string_lossy().to_string();
-        for bad in ["", "--upload-pack=evil", "https://x y", "a\nb"] {
+        for bad in ["", "--upload-pack=evil", "a\nb", "x\ty\u{7}"] {
             assert!(clone_repo(bad, &fresh, &[], |_| {}).await.is_err(), "{bad:?}");
         }
         assert!(clone_repo(&url, "rel/dir", &[], |_| {}).await.is_err());
+
+        // Local paths with spaces are fine.
+        let spaced = dir.join("my repos").join("dest 2").to_string_lossy().to_string();
+        let out = clone_repo(&s, &spaced, &[], |_| {}).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
 
         // A failing clone reports git's error.
         let missing = format!("file://{}", dir.join("nope").to_string_lossy());

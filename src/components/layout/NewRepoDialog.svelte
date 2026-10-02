@@ -77,16 +77,17 @@
     error = null;
     progress = "Starting…";
     const opId = nextOp++;
-    const unlisten = await tauri.onCloneProgress((p) => {
-      if (p.op_id === opId) progress = p.line;
-    });
+    let unlisten: (() => void) | null = null;
     try {
+      unlisten = await tauri.onCloneProgress((p) => {
+        if (p.op_id === opId) progress = p.line;
+      });
       opened(await tauri.cloneRepository(url.trim(), destination, opId), "Cloned");
     } catch (err) {
       error = String(err);
       busy = false;
     } finally {
-      unlisten();
+      unlisten?.();
     }
   }
 

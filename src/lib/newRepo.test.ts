@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cloneFolderName, joinPath } from "./newRepo";
+import { get } from "svelte/store";
+import { cloneFolderName, joinPath, newRepoDialog, openNewRepoDialog } from "./newRepo";
 
 describe("cloneFolderName", () => {
   it("matches git's default folder name", () => {
@@ -22,5 +23,17 @@ describe("joinPath", () => {
   it("uses the folder's separator", () => {
     expect(joinPath("/home/me/code/", "repo")).toBe("/home/me/code/repo");
     expect(joinPath("C:\\Users\\me", "repo")).toBe("C:\\Users\\me\\repo");
+  });
+});
+
+describe("openNewRepoDialog", () => {
+  it("does not switch a dialog that is already open (e.g. mid-clone)", () => {
+    newRepoDialog.set(null);
+    openNewRepoDialog("clone");
+    openNewRepoDialog("init");
+    expect(get(newRepoDialog)).toBe("clone");
+    newRepoDialog.set(null);
+    openNewRepoDialog("init");
+    expect(get(newRepoDialog)).toBe("init");
   });
 });

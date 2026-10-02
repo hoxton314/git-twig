@@ -3,6 +3,11 @@ import { writable } from "svelte/store";
 /** Which "new repository" dialog is open (`null` = none). */
 export const newRepoDialog = writable<"init" | "clone" | null>(null);
 
+/** Open a dialog unless one is already open (it may be mid-clone). */
+export function openNewRepoDialog(mode: "init" | "clone") {
+  newRepoDialog.update((current) => current ?? mode);
+}
+
 /**
  * Folder name `git clone` would pick for `url`: the last path component
  * without a trailing `.git` (`https://h/o/repo.git` → `repo`,

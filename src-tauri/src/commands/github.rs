@@ -76,7 +76,17 @@ pub async fn github_list_repos(
 /// Auth environment for cloning `url`: the GitHub token as a host-scoped
 /// `http.extraHeader` (via `GIT_CONFIG_*` env vars, never persisted into the
 /// clone's config) when `url` is HTTPS on the configured GitHub host.
-pub(crate) async fn clone_auth_env(app: &tauri::AppHandle, url: &str) -> Vec<(String, String)> {
+/// `respect_setting`: only when "Use token for HTTPS git operations" is on
+/// (the generic clone); the GitHub picker clones repos the API listed for
+/// this token, so it always authenticates.
+pub(crate) async fn clone_auth_env(
+    app: &tauri::AppHandle,
+    url: &str,
+    respect_setting: bool,
+) -> Vec<(String, String)> {
+    if respect_setting && !hosting_config::load(app).github_https_auth {
+        return Vec::new();
+    }
     let host = endpoint(app).host;
     if hosting_remote::is_https_on_host(url, &host) {
         if let Ok(token) = get_token(app).await {
@@ -93,7 +103,7 @@ pub async fn github_clone_repo(
     clone_url: String,
     destination: String,
 ) -> Result<RepoInfo, TwigError> {
-    let env = clone_auth_env(&app, clone_url.trim()).await;
+    let env = clone_auth_env(&app, clone_url.trim(), false).await;
     let out = crate::git::create::clone_repo(&clone_url, &destination, &env, |_| {}).await?;
     if !out.success {
         return Err(TwigError::GitCli(format!("Clone failed: {}", out.stderr.trim())));
