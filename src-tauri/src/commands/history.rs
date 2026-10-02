@@ -2,6 +2,7 @@
 use tauri::State;
 
 use crate::error::TwigError;
+use crate::hosting::net_auth::with_network_auth;
 use crate::git::conflicts::read_operation_state;
 use crate::git::history::{self, RebaseCommitList, RebaseTodoItem};
 use crate::state::AppState;
@@ -99,6 +100,7 @@ pub async fn interactive_rebase(
 /// the branch's upstream remote, then `origin`.
 #[tauri::command]
 pub async fn force_push_with_lease(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     branch_name: String,
@@ -122,6 +124,11 @@ pub async fn force_push_with_lease(
     }
     let set_upstream = upstream.is_none();
     let remote = remote.or(upstream).unwrap_or_else(|| "origin".to_string());
-    let out = history::force_push_with_lease(&repo_path, &remote, &branch_name, set_upstream).await?;
+    let out = with_network_auth(
+        &app,
+        &repo_path,
+        history::force_push_with_lease(&repo_path, &remote, &branch_name, set_upstream),
+    )
+    .await?;
     Ok(merge_output(out))
 }
