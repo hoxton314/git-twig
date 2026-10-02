@@ -6,6 +6,7 @@
   import WorktreeList from "../worktrees/WorktreeList.svelte";
   import SubmoduleList from "../submodules/SubmoduleList.svelte";
   import PullRequestsEntry from "../github/PullRequestsEntry.svelte";
+  import LfsEntry from "../lfs/LfsEntry.svelte";
 
   const isOpen = $derived($sidebarOpen);
   const width = $derived($sidebarWidth);
@@ -18,6 +19,7 @@
     <WorktreeList />
     <SubmoduleList />
     <PullRequestsEntry />
+    <LfsEntry />
   </aside>
 {/if}
 <!-- Branch list / remotes: global actions + remotes dialog, mounted even when the sidebar is hidden -->

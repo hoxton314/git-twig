@@ -101,6 +101,7 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "stash_files",       label: "Stash selected files…",    category: "Git",        defaultShortcut: "" },
   { id: "submodules_update", label: "Update submodules (init, recursive)", category: "Git", defaultShortcut: "" },
   { id: "submodules_sync",   label: "Sync submodule URLs",      category: "Git",        defaultShortcut: "" },
+  { id: "lfs_manage",        label: "Git LFS…",                 category: "Git",        defaultShortcut: "" },
   { id: "worktree_add",      label: "Add worktree…",            category: "Git",        defaultShortcut: "" },
   // App shell: command palette, tabs, settings, updater
   { id: "command_palette",      label: "Command palette",                 category: "Navigation",  defaultShortcut: "Ctrl+K", allowInInputs: true, hideInPalette: true },

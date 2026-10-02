@@ -11,3 +11,4 @@ export * from "./git/stash";
 export * from "./git/settings";
 export * from "./git/history";
 export * from "./git/workspace";
+export * from "./git/lfs";
