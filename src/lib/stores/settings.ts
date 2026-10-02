@@ -22,6 +22,8 @@ const defaults: AppSettings = {
   external_diff_tool: null,
   external_merge_tool: null,
   keybinding_overrides: {},
+  // Diff viewer: syntax highlighting
+  syntax_highlighting: true,
 };
 
 export const settings = writable<AppSettings>({ ...defaults });
@@ -82,6 +84,11 @@ settings.subscribe((s) => {
   persistSettings();
   applyVisualSettings(s);
   setOverrides(s.keybinding_overrides ?? {});
+  // Diff viewer: context lines / whitespace apply to every diff read.
+  tauri.setDiffReadDefaults({
+    context_lines: s.context_lines,
+    ignore_whitespace: !s.show_whitespace_changes,
+  });
 });
 
 /** Update one or more settings fields and auto-save. */

@@ -144,6 +144,8 @@ export interface AppSettings {
   external_merge_tool: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
+  // Diff viewer: syntax highlighting
+  syntax_highlighting: boolean;
 }
 
 // ── Git Config ───────────────────────────────────────────────────
@@ -179,4 +181,31 @@ export const LANE_COLORS = [
 
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+// ── Diff viewer: read options & partial staging ──────────────────────
+
+/** Mirrors `reader::DiffReadOptions`; omitted fields use git defaults. */
+export interface DiffReadOptions {
+  context_lines?: number | null;
+  ignore_whitespace?: boolean | null;
+}
+
+export type DiffArea = "staged" | "unstaged";
+export type HunkAction = "stage" | "unstage" | "discard";
+
+/** Mirrors `hunks::SelectedLine`: a changed line exactly as displayed. */
+export interface SelectedLine {
+  origin: string;
+  old_lineno: number | null;
+  new_lineno: number | null;
+  content: string;
+}
+
+/** Mirrors `hunks::HunkRange`. */
+export interface HunkRange {
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
 }

@@ -60,6 +60,10 @@ pub struct AppSettings {
     /// is neither sent to the webview nor written back to disk.
     #[serde(default, rename = "github_token", skip_serializing)]
     pub legacy_github_token: Option<String>,
+
+    // ── Diff viewer: syntax highlighting ─────────────────────────────
+    #[serde(default = "default_true")]
+    pub syntax_highlighting: bool,
 }
 
 fn default_true() -> bool {
@@ -111,6 +115,7 @@ impl Default for AppSettings {
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
+            syntax_highlighting: true,
         }
     }
 }
