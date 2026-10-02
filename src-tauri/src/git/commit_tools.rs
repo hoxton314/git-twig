@@ -20,6 +20,68 @@ pub struct CommitOptions {
     pub amend: bool,
     /// Append a `Signed-off-by` trailer for the committer.
     pub signoff: bool,
+    /// Skip the pre-commit and commit-msg hooks (`--no-verify`).
+    pub no_verify: bool,
+}
+
+/// Hooks `git commit` runs, in order. `--no-verify` skips the two verifying ones.
+const COMMIT_HOOKS: [&str; 4] = ["pre-commit", "prepare-commit-msg", "commit-msg", "post-commit"];
+
+/// Commit hooks installed in the repository (`core.hooksPath` aware) that a
+/// commit with `no_verify` would run.
+pub async fn active_commit_hooks(repo_path: &Path, no_verify: bool) -> Result<Vec<String>, TwigError> {
+    let out = run_git(repo_path, &["rev-parse", "--git-path", "hooks"]).await?;
+    if !out.success {
+        return Ok(Vec::new());
+    }
+    let dir = repo_path.join(out.stdout.trim());
+    Ok(COMMIT_HOOKS
+        .iter()
+        .filter(|h| !(no_verify && matches!(**h, "pre-commit" | "commit-msg")))
+        .filter(|h| is_executable(&dir.join(h)))
+        .map(|h| h.to_string())
+        .collect())
+}
+
+#[cfg(unix)]
+fn is_executable(p: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(p: &Path) -> bool {
+    p.is_file()
+}
+
+/// Drop ANSI escape sequences (colored hook output) and carriage-return
+/// progress redraws, keeping the final text of each line.
+pub fn clean_hook_output(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // CSI: ESC [ params final-byte; other escapes: ESC + one char.
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                for n in chars.by_ref() {
+                    if ('@'..='~').contains(&n) {
+                        break;
+                    }
+                }
+            } else {
+                chars.next();
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out.lines()
+        .map(|l| l.rsplit('\r').find(|seg| !seg.is_empty()).unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 /// Whether `line` looks like a git trailer (`Token: value`).
@@ -89,6 +151,9 @@ pub async fn commit_with_options(
     let mut args = vec!["commit", "--cleanup=whitespace"];
     if opts.amend {
         args.push("--amend");
+    }
+    if opts.no_verify {
+        args.push("--no-verify");
     }
     args.push("-m");
     args.push(&message);
@@ -292,13 +357,62 @@ mod tests {
         assert_eq!(append_trailer("docs: update", "A: b"), "docs: update\n\nA: b");
     }
 
+    #[test]
+    fn cleans_hook_output() {
+        assert_eq!(clean_hook_output("\u{1b}[1;32mPassed\u{1b}[0m\n"), "Passed");
+        assert_eq!(clean_hook_output("lint 10%\rlint 50%\rlint done\nok\r\n"), "lint done\nok");
+        assert_eq!(clean_hook_output("  \n"), "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn hooks_report_output_and_can_be_skipped() {
+        let dir = temp_repo("hooks").await;
+        let hooks = dir.join("hooks");
+        std::fs::create_dir_all(&hooks).unwrap();
+        git_ok(&dir, &["config", "core.hooksPath", "hooks"]).await;
+        let write_hook = |name: &str, body: &str| {
+            use std::os::unix::fs::PermissionsExt;
+            let p = hooks.join(name);
+            std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        write_hook("pre-commit", "echo 'pre-commit: all checks passed'");
+        write_hook("commit-msg", "grep -q 'ok' \"$1\" || { echo 'commit-msg: needs ok' >&2; exit 1; }");
+        // Not executable: git ignores it, and so must the list.
+        std::fs::write(hooks.join("post-commit"), "#!/bin/sh\necho nope\n").unwrap();
+
+        assert_eq!(active_commit_hooks(&dir, false).await.unwrap(), ["pre-commit", "commit-msg"]);
+        assert!(active_commit_hooks(&dir, true).await.unwrap().is_empty());
+
+        std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+        git_ok(&dir, &["add", "--", "a.txt"]).await;
+        let opts = CommitOptions::default();
+        let out = commit_with_options(&dir, "rejected", opts).await.unwrap();
+        assert!(!out.success);
+        assert!(out.stderr.contains("commit-msg: needs ok"), "{}", out.stderr);
+
+        // Hook stdout goes to stderr; a successful commit still carries it.
+        let out = commit_with_options(&dir, "ok then", opts).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        // (git's own hint about the non-executable post-commit follows it.)
+        assert!(clean_hook_output(&out.stderr).lines().next() == Some("pre-commit: all checks passed"), "{}", out.stderr);
+
+        std::fs::write(dir.join("b.txt"), "b\n").unwrap();
+        git_ok(&dir, &["add", "--", "b.txt"]).await;
+        let out = commit_with_options(&dir, "skipped", CommitOptions { no_verify: true, ..opts }).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        assert!(!out.stderr.contains("pre-commit"), "{}", out.stderr);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn amend_message_only_and_signoff() {
         let dir = temp_repo("amend").await;
         std::fs::write(dir.join("a.txt"), "a\n").unwrap();
         git_ok(&dir, &["add", "--", "a.txt"]).await;
 
-        let opts = CommitOptions { amend: false, signoff: true };
+        let opts = CommitOptions { amend: false, signoff: true, ..Default::default() };
         let out = commit_with_options(&dir, "first\n\n#42 keeps hash lines", opts).await.unwrap();
         assert!(out.success, "{}", out.stderr);
 
@@ -309,7 +423,7 @@ mod tests {
         assert!(!head.pushed);
 
         // Nothing staged: amend still rewrites the message.
-        let opts = CommitOptions { amend: true, signoff: false };
+        let opts = CommitOptions { amend: true, signoff: false, ..Default::default() };
         let out = commit_with_options(&dir, "reworded", opts).await.unwrap();
         assert!(out.success, "{}", out.stderr);
         let head2 = read_head_commit(&repo).unwrap();

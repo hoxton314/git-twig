@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AuthorInfo,
   CommandResult,
+  CommitResult,
   DiffArea,
   DiffFile,
   DiffReadOptions,
@@ -144,8 +145,9 @@ export function createCommitWithOptions(
   message: string,
   amend: boolean,
   signoff: boolean,
-): Promise<CommandResult> {
-  return invoke<CommandResult>("create_commit_with_options", { path, message, amend, signoff });
+  noVerify = false,
+): Promise<CommitResult> {
+  return invoke<CommitResult>("create_commit_with_options", { path, message, amend, signoff, noVerify });
 }
 
 export function getHeadCommitInfo(path: string): Promise<HeadCommitInfo> {

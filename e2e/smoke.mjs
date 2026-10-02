@@ -58,6 +58,8 @@ writeFileSync(join(repo, "big.txt"), Array.from({ length: BIG_LINES }, (_, i) =>
 writeFileSync(join(repo, "scattered.txt"), Array.from({ length: BIG_LINES }, (_, i) => `row ${i}\n`).join(""));
 git("add", "README.md", "big.txt", "scattered.txt");
 git("commit", "-q", "-m", "initial commit");
+// Installed after the initial commit: its output must show up in the app.
+writeFileSync(join(repo, ".git", "hooks", "pre-commit"), "#!/bin/sh\necho 'e2e pre-commit hook ran'\n", { mode: 0o755 });
 writeFileSync(join(repo, "notes.txt"), "from the e2e test\n");
 writeFileSync(
   join(repo, "scattered.txt"),
@@ -175,6 +177,8 @@ try {
     await session.type(box, "add notes from e2e");
     await session.click(await session.find(".commit-btn"));
     await session.waitFor(".commit-row .summary", { pred: (t) => t.includes("add notes from e2e") });
+    await session.waitFor(".hook-output", { pred: (t) => t.some((x) => x.includes("e2e pre-commit hook ran") && x.includes("pre-commit")) });
+    await session.click(await session.find('button[aria-label="Dismiss hook output"]'));
     const log = git("log", "--format=%s", "-n", "2").trim().split("\n");
     if (log[0] !== "add notes from e2e" || log[1] !== "initial commit") {
       throw new Error(`unexpected history: ${JSON.stringify(log)}`);

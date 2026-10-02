@@ -5,7 +5,7 @@
 </script>
 
 <script lang="ts">
-  import { Send, Loader2, Undo2, Users, FileText, History, PenLine } from "lucide-svelte";
+  import { Send, Loader2, Undo2, Users, FileText, History, PenLine, X } from "lucide-svelte";
   import { onMount, tick, untrack } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
@@ -42,6 +42,10 @@
   /** The draft that was in the box before "Amend" replaced it with HEAD's message. */
   let preAmendDraft = "";
   let signoff = $state(false);
+  /** `--no-verify` for the next commit (deliberately not persisted). */
+  let skipHooks = $state(false);
+  /** What the last successful commit printed while hooks ran, until dismissed. */
+  let hookOutput = $state<{ hooks: string[]; text: string } | null>(null);
   let template = $state<string | null>(null);
   let history = $state<string[]>([]);
   let historyIndex = -1;
@@ -72,6 +76,8 @@
       untrack(() => {
         if (lastLoadedPath) commitDrafts.set(lastLoadedPath, currentDraft());
         amend = false;
+        skipHooks = false;
+        hookOutput = null;
         preAmendDraft = "";
         commitMessage = commitDrafts.get(path) ?? "";
         historyIndex = -1;
@@ -228,7 +234,12 @@
     try {
       // Wait for any queued stage/unstage so the commit sees the final index.
       await waitForWrites();
-      const result = await tauri.createCommitWithOptions(path, msg, wasAmend, signoff);
+      hookOutput = null;
+      const result = await tauri.createCommitWithOptions(path, msg, wasAmend, signoff, skipHooks);
+      // Failures already show git's full message in the error toast.
+      if (repoPath === path && result.success && result.hook_output) {
+        hookOutput = { hooks: result.hooks, text: result.hook_output };
+      }
       if (result.success) {
         const nextHistory = pushHistory(path, msg);
         commitDrafts.delete(path);
@@ -238,6 +249,7 @@
           commitMessage = wasAmend ? preAmendDraft : "";
           preAmendDraft = "";
           amend = false;
+          skipHooks = false;
         }
         if (wasAmend) toast("success", "Amended the last commit");
         await refreshAll();
@@ -355,6 +367,10 @@
       <input type="checkbox" checked={signoff} onchange={toggleSignoff} />
       <span>Sign-off</span>
     </label>
+    <label class="opt" class:skipping={skipHooks} title="Don't run the pre-commit and commit-msg hooks for this commit (git commit --no-verify)">
+      <input type="checkbox" bind:checked={skipHooks} aria-label="Skip hooks" />
+      <span>Skip hooks</span>
+    </label>
     {#if summaryLength > 0}
       <span
         class="summary-hint"
@@ -388,6 +404,18 @@
       </button>
     {/if}
   </div>
+
+  {#if hookOutput}
+    <div class="hook-output" role="status" aria-label="Hook output">
+      <div class="hook-head">
+        <span title="Everything git and the repository's hooks printed during the commit">Commit output — hooks: {hookOutput.hooks.join(", ")}</span>
+        <button class="hook-close" onclick={() => (hookOutput = null)} title="Dismiss" aria-label="Dismiss hook output">
+          <X size={12} />
+        </button>
+      </div>
+      <pre>{hookOutput.text}</pre>
+    </div>
+  {/if}
 </div>
 
 {#if repoPath}
@@ -528,6 +556,51 @@
   }
 
   .opt:hover {
+    color: var(--color-text-primary);
+  }
+
+  .opt.skipping {
+    color: var(--color-diff-del-text);
+  }
+
+  .hook-output {
+    margin: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    font-size: 11px;
+  }
+
+  .hook-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 6px 4px 8px;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .hook-close {
+    display: flex;
+    background: none;
+    border: none;
+    padding: 2px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .hook-close:hover {
+    color: var(--color-text-primary);
+  }
+
+  .hook-output pre {
+    margin: 0;
+    padding: 6px 8px;
+    max-height: 160px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
     color: var(--color-text-primary);
   }
 
