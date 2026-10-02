@@ -77,6 +77,19 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // Commit context menu & undo history (reflog)
+            commands::commit_ops::checkout_commit,
+            commands::commit_ops::cherry_pick_commit,
+            commands::commit_ops::revert_commit,
+            commands::commit_ops::reset_to_commit,
+            commands::commit_ops::get_head_reflog,
+            commands::commit_ops::restore_head,
+            // Tags
+            commands::tags::get_tags,
+            commands::tags::create_tag,
+            commands::tags::delete_tag,
+            commands::tags::push_tag,
+            commands::tags::delete_remote_tag,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");
