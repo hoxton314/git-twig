@@ -19,6 +19,8 @@
   import type { BranchInfo } from "../../lib/types/git";
   import { message, confirm } from "@tauri-apps/plugin-dialog";
   import Modal from "../shared/Modal.svelte";
+  import { shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import { trackOperation } from "../../lib/stores/operations";
 
   const repoPath = $derived($activeRepoPath);
   const allBranches = $derived($branches);
@@ -204,7 +206,8 @@
     if (!repoPath) return;
     loading = true;
     try {
-      const result = await tauri.fetchAll(repoPath);
+      const path = repoPath;
+      const result = await trackOperation(path, "fetch", "Fetching…", () => tauri.fetchAll(path));
       // Remote refs and ahead/behind changed: refresh graph labels as well.
       await refreshAll(repoPath);
       if (!result.success) {
@@ -328,7 +331,7 @@
       <button class="icon-btn" onclick={() => (showCreateInput = !showCreateInput)} title="New branch" aria-label="New branch">
         <Plus size={14} />
       </button>
-      <button class="icon-btn" onclick={handleFetch} title="Fetch all" aria-label="Fetch all" disabled={loading}>
+      <button class="icon-btn" onclick={handleFetch} title={withShortcut("Fetch all", $shortcutLabels["fetch"])} aria-label="Fetch all" disabled={loading}>
         <RefreshCw size={14} />
       </button>
     </div>

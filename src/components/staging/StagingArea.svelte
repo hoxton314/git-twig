@@ -37,7 +37,8 @@
     refreshStatus,
     refreshAll,
   } from "../../lib/stores/graph";
-  import { onAction } from "../../lib/keybindings";
+  import { onAction, shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import { trackOperation } from "../../lib/stores/operations";
   import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
@@ -267,7 +268,10 @@
     try {
       const info = await tauri.getRepoInfo(repoPath);
       const branch = info.head_name ?? "HEAD";
-      const result = await tauri.pushBranch(repoPath, branch, undefined, true);
+      const path = repoPath;
+      const result = await trackOperation(path, "push", `Pushing ${branch}…`, () =>
+        tauri.pushBranch(path, branch, undefined, true),
+      );
       if (result.success) {
         await refreshAll();
       } else {
@@ -284,7 +288,8 @@
     if (!repoPath) return;
     pullLoading = true;
     try {
-      const result = await tauri.pull(repoPath);
+      const path = repoPath;
+      const result = await trackOperation(path, "pull", "Pulling…", () => tauri.pull(path));
       await refreshAll();
       if (!result.success) {
         await message(result.message, { title: "Pull Failed", kind: "error" });
@@ -343,7 +348,7 @@
       class="toolbar-btn"
       onclick={handlePull}
       disabled={pullLoading}
-      title="Pull"
+      title={withShortcut("Pull", $shortcutLabels["pull"])}
     >
       {#if pullLoading}
         <Loader2 size={14} class="spinner" />
@@ -356,7 +361,7 @@
       class="toolbar-btn"
       onclick={handlePush}
       disabled={pushLoading}
-      title="Push"
+      title={withShortcut("Push", $shortcutLabels["push"])}
     >
       {#if pushLoading}
         <Loader2 size={14} class="spinner" />
@@ -547,6 +552,7 @@
       <button
         class="commit-btn"
         onclick={handleCommit}
+        title={withShortcut("Commit", $shortcutLabels["commit"])}
         disabled={loading || !commitMessage.trim() || status.staged.length === 0}
       >
         {#if loading}

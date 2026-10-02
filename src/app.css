@@ -175,3 +175,17 @@ input[type="number"]::-webkit-outer-spin-button {
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: #9898a8;
 }
+
+/* ── App shell: accessibility ───────────────────────────────────── */
+
+/* Settings toggles hide the real checkbox; show its keyboard focus on the slider. */
+.toggle input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Range sliders and text fields that reset `outline` still need a focus ring. */
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

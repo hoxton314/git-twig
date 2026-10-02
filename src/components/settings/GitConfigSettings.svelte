@@ -143,6 +143,7 @@
           <label class="toggle">
             <input
               type="checkbox"
+              aria-label="Auto-prune on fetch"
               checked={fetchPrune}
               onchange={() => { fetchPrune = !fetchPrune; scheduleGitConfigSave(); }}
             />
@@ -164,6 +165,7 @@
           <label class="toggle">
             <input
               type="checkbox"
+              aria-label="GPG sign commits"
               checked={gpgSign}
               onchange={() => { gpgSign = !gpgSign; scheduleGitConfigSave(); }}
             />

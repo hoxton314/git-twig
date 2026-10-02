@@ -96,6 +96,7 @@
         <label class="toggle">
           <input
             type="checkbox"
+            aria-label="Show whitespace changes"
             checked={s.show_whitespace_changes}
             onchange={() => updateSettings({ show_whitespace_changes: !s.show_whitespace_changes })}
           />
@@ -113,6 +114,7 @@
         <label class="toggle">
           <input
             type="checkbox"
+            aria-label="Word wrap in diffs"
             checked={s.word_wrap_in_diffs}
             onchange={() => updateSettings({ word_wrap_in_diffs: !s.word_wrap_in_diffs })}
           />

@@ -106,9 +106,17 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="capture-overlay" onclick={() => (capturingActionId = null)}>
-    <div class="capture-modal" role="status" aria-live="polite">
-      <p class="capture-title">Press a key combination</p>
-      <p class="capture-hint">Press Escape to cancel</p>
+    <div
+      class="capture-modal"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="capture-title"
+      aria-describedby="capture-hint"
+    >
+      <p class="capture-title" id="capture-title" aria-live="assertive">
+        Press a key combination for “{ACTIONS.find((a) => a.id === capturingActionId)?.label ?? capturingActionId}”
+      </p>
+      <p class="capture-hint" id="capture-hint">Press Escape to cancel</p>
     </div>
   </div>
 {/if}
@@ -141,17 +149,23 @@
               title={conflicts.has(action.id)
                 ? `Conflicts with: ${conflicts.get(action.id)?.join(", ")}`
                 : "Click to change"}
+              aria-label="Change shortcut for {action.label}, currently {effectiveShortcut(action.id) || 'not set'}{conflicts.has(action.id) ? `, conflicts with ${conflicts.get(action.id)?.join(', ')}` : ''}"
             >
-              {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
-                {#if i > 0}<span class="key-sep">+</span>{/if}
-                <kbd class="key">{part}</kbd>
-              {/each}
+              {#if effectiveShortcut(action.id)}
+                {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
+                  {#if i > 0}<span class="key-sep">+</span>{/if}
+                  <kbd class="key">{part}</kbd>
+                {/each}
+              {:else}
+                <span class="key-unset">Not set</span>
+              {/if}
             </button>
             {#if isCustomized(action.id)}
               <button
                 class="reset-btn"
                 onclick={() => resetBinding(action.id)}
-                title="Reset to default ({action.defaultShortcut})"
+                title="Reset to default ({action.defaultShortcut || 'not set'})"
+                aria-label="Reset {action.label} to default ({action.defaultShortcut || 'not set'})"
               >
                 <RotateCcw size={11} />
               </button>
@@ -279,6 +293,13 @@
     font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.3;
+  }
+
+  .key-unset {
+    padding: 2px 4px;
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: italic;
   }
 
   .key-sep {
