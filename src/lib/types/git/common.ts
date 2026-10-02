@@ -9,8 +9,8 @@ export interface CommandResult {
 
 /** A commit from the staging panel, with what its hooks printed. */
 export interface CommitResult extends CommandResult {
-  /** Hooks that ran (pre-commit, commit-msg, …). */
+  /** Executable commit hooks installed for this commit (pre-commit, …). */
   hooks: string[];
-  /** Their combined output, when non-empty. */
+  /** On success: what hooks (and git) printed, when anything. */
   hook_output: string | null;
 }

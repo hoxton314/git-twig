@@ -44,8 +44,8 @@
   let signoff = $state(false);
   /** `--no-verify` for the next commit (deliberately not persisted). */
   let skipHooks = $state(false);
-  /** Output of the last commit's hooks, shown until dismissed. */
-  let hookOutput = $state<{ hooks: string[]; text: string; failed: boolean } | null>(null);
+  /** What the last successful commit printed while hooks ran, until dismissed. */
+  let hookOutput = $state<{ hooks: string[]; text: string } | null>(null);
   let template = $state<string | null>(null);
   let history = $state<string[]>([]);
   let historyIndex = -1;
@@ -234,11 +234,11 @@
     try {
       // Wait for any queued stage/unstage so the commit sees the final index.
       await waitForWrites();
+      hookOutput = null;
       const result = await tauri.createCommitWithOptions(path, msg, wasAmend, signoff, skipHooks);
-      if (repoPath === path) {
-        hookOutput = result.hook_output
-          ? { hooks: result.hooks, text: result.hook_output, failed: !result.success }
-          : null;
+      // Failures already show git's full message in the error toast.
+      if (repoPath === path && result.success && result.hook_output) {
+        hookOutput = { hooks: result.hooks, text: result.hook_output };
       }
       if (result.success) {
         const nextHistory = pushHistory(path, msg);
@@ -406,9 +406,9 @@
   </div>
 
   {#if hookOutput}
-    <div class="hook-output" class:failed={hookOutput.failed} role="status" aria-label="Hook output">
+    <div class="hook-output" role="status" aria-label="Hook output">
       <div class="hook-head">
-        <span>{hookOutput.hooks.join(", ") || "Hook"} output{hookOutput.failed ? " (commit not created)" : ""}</span>
+        <span title="Everything git and the repository's hooks printed during the commit">Commit output — hooks: {hookOutput.hooks.join(", ")}</span>
         <button class="hook-close" onclick={() => (hookOutput = null)} title="Dismiss" aria-label="Dismiss hook output">
           <X size={12} />
         </button>
@@ -569,10 +569,6 @@
     border-radius: 4px;
     background: var(--color-surface);
     font-size: 11px;
-  }
-
-  .hook-output.failed {
-    border-color: var(--color-diff-del-text);
   }
 
   .hook-head {

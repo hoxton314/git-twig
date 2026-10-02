@@ -13,9 +13,11 @@ use crate::state::AppState;
 pub struct CommitResult {
     #[serde(flatten)]
     pub result: CommandResult,
-    /// Hooks that ran (pre-commit, commit-msg, …).
+    /// Executable commit hooks installed for this commit (pre-commit, …).
     pub hooks: Vec<String>,
-    /// Their combined output (git sends hook stdout to stderr), when any.
+    /// On success, what the commit printed to stderr while hooks are
+    /// installed: their output (git sends hook stdout to stderr), plus any
+    /// git warnings. `None` without hooks or output.
     pub hook_output: Option<String>,
 }
 
@@ -41,7 +43,7 @@ pub async fn create_commit_with_options(
     .await?;
     // Without hooks, stderr only holds git's own warnings; on failure it is
     // already the message.
-    let hook_output = (!hooks.is_empty())
+    let hook_output = (output.success && !hooks.is_empty())
         .then(|| commit_tools::clean_hook_output(&output.stderr))
         .filter(|s| !s.is_empty());
     Ok(CommitResult { result: crate::commands::signing::commit_result(output), hooks, hook_output })
