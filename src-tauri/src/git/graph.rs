@@ -660,6 +660,18 @@ mod tests {
 
         let log = crate::git::reflog::read_head_reflog(&repo, 5).unwrap();
         assert_eq!(log[0].commit_summary.as_deref(), Some(subject));
+
+        // Amend prefill keeps the real text (a lossy prefill would be saved).
+        let head = crate::git::commit_tools::read_head_commit(&repo).unwrap();
+        assert_eq!(head.message, "caf\u{e9} latin\n\nbody \u{e9}");
+        // Recent co-authors include the Latin-1 author.
+        let authors = crate::git::commit_tools::read_recent_authors(&repo, 50).unwrap();
+        assert!(authors.iter().any(|a| a.name == author), "{authors:?}");
+        // Tags show the target commit's summary.
+        git(&dir, &["tag", "-a", "-m", "release notes", "v1"]);
+        let tags = crate::git::tags::read_tags(&repo).unwrap();
+        assert_eq!(tags[0].commit_summary.as_deref(), Some(subject));
+        assert_eq!(tags[0].message.as_deref(), Some("release notes"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

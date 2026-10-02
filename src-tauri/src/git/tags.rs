@@ -36,9 +36,12 @@ pub fn read_tags(repo: &Repository) -> Result<Vec<TagInfo>, TwigError> {
         let mut timestamp = 0;
         if let Ok(tag) = repo.find_tag(direct) {
             annotated = true;
-            message = tag.message().map(|m| m.trim_end().to_string());
+            // Tag objects carry no encoding header: UTF-8, else lossy.
+            message = tag
+                .message_bytes()
+                .map(|m| crate::git::graph::decode_text(m, None).trim_end().to_string());
             if let Some(sig) = tag.tagger() {
-                tagger_name = sig.name().map(str::to_string);
+                tagger_name = Some(crate::git::graph::decode_text(sig.name_bytes(), None));
                 timestamp = sig.when().seconds();
             }
         }
@@ -61,7 +64,7 @@ pub fn read_tags(repo: &Repository) -> Result<Vec<TagInfo>, TwigError> {
             message,
             tagger_name,
             timestamp,
-            commit_summary: commit.as_ref().and_then(|c| c.summary().map(str::to_string)),
+            commit_summary: commit.as_ref().map(crate::git::graph::commit_summary),
         });
     }
     tags.sort_by(|a, b| b.timestamp.cmp(&a.timestamp).then_with(|| a.name.cmp(&b.name)));

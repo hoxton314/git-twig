@@ -118,9 +118,8 @@ pub fn read_head_commit(repo: &Repository) -> Result<HeadCommitInfo, TwigError> 
         .map_err(|_| TwigError::InvalidArgument("there is no commit to amend yet".to_string()))?;
     let commit = head.peel_to_commit()?;
     let oid = commit.id();
-    let message = String::from_utf8_lossy(commit.message_bytes())
-        .trim_end()
-        .to_string();
+    // Prefill for amend: a lossy decode would be saved back as U+FFFD.
+    let message = crate::git::graph::commit_message(&commit).trim_end().to_string();
 
     let mut pushed_to: Option<String> = None;
 
@@ -197,7 +196,8 @@ pub fn read_recent_authors(
     for oid in walk.take(max_commits) {
         let commit = repo.find_commit(oid?)?;
         let sig = commit.author();
-        let (Some(name), Some(email)) = (sig.name(), sig.email()) else { continue };
+        let name = crate::git::graph::commit_author_name(&commit);
+        let email = crate::git::graph::decode_text(sig.email_bytes(), commit.message_encoding());
         let key = email.to_lowercase();
         if key.is_empty() || me.as_deref() == Some(key.as_str()) {
             continue;
@@ -207,8 +207,8 @@ pub fn read_recent_authors(
             None => {
                 seen.insert(key, authors.len());
                 authors.push(AuthorInfo {
-                    name: name.to_string(),
-                    email: email.to_string(),
+                    name,
+                    email,
                     count: 1,
                 });
             }
