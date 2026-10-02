@@ -15,7 +15,8 @@
   import { refreshStatus, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import { message } from "@tauri-apps/plugin-dialog";
-  import { shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import { onAction, shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import { onMount } from "svelte";
   import { trackOperation } from "../../lib/stores/operations";
   // Force push (with lease)
   import ContextMenu from "../shared/ContextMenu.svelte";
@@ -78,6 +79,9 @@
       pullLoading = false;
     }
   }
+
+  // Hosting integrations: "Create pull request" palette/keybinding action.
+  onMount(() => onAction("create_pull_request", () => (showPrModal = true)));
 </script>
 
 <div class="staging-area">

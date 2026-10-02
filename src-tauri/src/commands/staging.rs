@@ -165,6 +165,7 @@ pub async fn discard_files(
 /// Pull from remote, auto-stashing uncommitted changes if present.
 #[tauri::command]
 pub async fn pull(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     remote: Option<String>,
@@ -198,7 +199,7 @@ pub async fn pull(
     }
 
     let remote_name = remote.as_deref().unwrap_or("origin");
-    let output = writer::pull(&repo_path, remote_name, branch.as_deref()).await?;
+    let output = crate::hosting::net_auth::with_network_auth(&app, &repo_path, writer::pull(&repo_path, remote_name, branch.as_deref())).await?;
 
     if !output.success {
         // Pull failed — restore stash if we created one

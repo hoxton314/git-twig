@@ -3,6 +3,8 @@ mod credentials;
 mod error;
 mod git;
 mod github;
+// Hosting integrations
+mod hosting;
 mod state;
 
 use state::AppState;
@@ -162,6 +164,23 @@ pub fn run() {
             commands::app_shell::open_settings_folder,
             commands::app_shell::export_settings,
             commands::app_shell::import_settings,
+            // Hosting integrations (PRs, CI, OAuth device flow, GitLab/Gitea)
+            commands::hosting::hosting_list_remotes,
+            commands::hosting::hosting_info,
+            commands::hosting::hosting_list_prs,
+            commands::hosting::hosting_get_pr,
+            commands::hosting::hosting_pr_files,
+            commands::hosting::hosting_checkout_pr,
+            commands::hosting::hosting_create_pr,
+            commands::hosting::hosting_list_branches,
+            commands::hosting::hosting_ci_status,
+            commands::hosting::hosting_set_token,
+            commands::hosting::hosting_has_token,
+            commands::hosting::hosting_validate_token,
+            commands::hosting::hosting_list_repos,
+            commands::hosting::github_device_start,
+            commands::hosting::github_device_wait,
+            commands::hosting::github_device_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

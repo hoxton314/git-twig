@@ -38,6 +38,9 @@
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
+  // Hosting integrations
+  import PullRequestsPanel from "../github/PullRequestsPanel.svelte";
+  import { invalidateCi } from "../../lib/stores/ci";
 
   let showTitleBar = $state(false);
   let appVersion = $state("");
@@ -115,6 +118,7 @@
         try {
           const result = await trackOperation(path, "fetch", "Fetching…", () => tauri.fetchAll(path));
           refreshAll(path);
+          invalidateCi(path);
           if (!result.success) toastError("Fetch failed", result.message);
         } catch (err) {
           toastError("Fetch failed", err);
@@ -146,6 +150,7 @@
             tauri.pushBranch(path, branch, undefined, true),
           );
           refreshAll(path);
+          invalidateCi(path);
           if (!result.success) toastError("Push failed", result.message);
         } catch (err) {
           toastError("Push failed", err);
@@ -337,6 +342,7 @@
   <!-- File history & blame overlay; worktree/submodule actions -->
   <FileViewHost />
   <RepoToolsHost />
+  <PullRequestsPanel />
 </div>
 
 <style>

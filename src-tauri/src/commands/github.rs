@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use base64::Engine;
 use git2::Repository;
 use tauri::State;
 use tokio::process::Command;
@@ -10,11 +9,13 @@ use crate::commands::settings::read_legacy_token;
 use crate::credentials;
 use crate::error::TwigError;
 use crate::github::{self, GitHubPullRequest, GitHubRemoteInfo, GitHubRepo, GitHubUser, RepoListPage};
+use crate::hosting::config::{self as hosting_config, GitHubEndpoint};
+use crate::hosting::{net_auth, remote as hosting_remote};
 use crate::state::{AppState, OpenRepo};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async fn get_token(app: &tauri::AppHandle) -> Result<String, TwigError> {
+pub(crate) async fn get_token(app: &tauri::AppHandle) -> Result<String, TwigError> {
     let stored = credentials::get_github_token().await;
     if let Ok(Some(token)) = stored {
         return Ok(token);
@@ -44,13 +45,13 @@ pub async fn github_has_token(app: tauri::AppHandle) -> Result<bool, TwigError> 
     Ok(get_token(&app).await.is_ok())
 }
 
-fn build_client() -> Result<reqwest::Client, TwigError> {
-    reqwest::Client::builder()
-        .user_agent(concat!("Twig/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| TwigError::Http(e.to_string()))
+pub(crate) fn build_client() -> Result<reqwest::Client, TwigError> {
+    crate::hosting::http::build_client()
+}
+
+/// The configured GitHub / GitHub Enterprise endpoint.
+pub(crate) fn endpoint(app: &tauri::AppHandle) -> GitHubEndpoint {
+    hosting_config::load(app).github
 }
 
 // ── Commands ─────────────────────────────────────────────────────────
@@ -59,7 +60,7 @@ fn build_client() -> Result<reqwest::Client, TwigError> {
 pub async fn github_validate_token(app: tauri::AppHandle) -> Result<GitHubUser, TwigError> {
     let token = get_token(&app).await?;
     let client = build_client()?;
-    github::validate_token(&client, &token).await
+    github::validate_token(&client, &endpoint(&app).api_base, &token).await
 }
 
 #[tauri::command]
@@ -71,7 +72,7 @@ pub async fn github_list_repos(
 ) -> Result<RepoListPage, TwigError> {
     let token = get_token(&app).await?;
     let client = build_client()?;
-    github::list_repos(&client, &token, page, per_page, &sort).await
+    github::list_repos(&client, &endpoint(&app).api_base, &token, page, per_page, &sort).await
 }
 
 #[tauri::command]
@@ -103,16 +104,13 @@ pub async fn github_clone_repo(
         .env("GIT_TERMINAL_PROMPT", "0");
 
     // Authenticate HTTPS clones of GitHub repos (needed for private repos)
-    // with the configured PAT. It is passed as a one-off http.extraHeader via
-    // GIT_CONFIG_* env vars so it is neither visible in the process list nor
-    // persisted into the clone's .git/config remote URL.
-    if clone_url.to_ascii_lowercase().starts_with("https://github.com/") {
+    // with the configured token. It is passed as a one-off, host-scoped
+    // http.extraHeader via GIT_CONFIG_* env vars so it is neither visible in
+    // the process list nor persisted into the clone's .git/config.
+    let host = endpoint(&app).host;
+    if hosting_remote::is_https_on_host(&clone_url, &host) {
         if let Ok(token) = get_token(&app).await {
-            let basic = base64::engine::general_purpose::STANDARD
-                .encode(format!("x-access-token:{token}"));
-            cmd.env("GIT_CONFIG_COUNT", "1")
-                .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
-                .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: basic {basic}"));
+            cmd.envs(net_auth::auth_env_for(&host, &token));
         }
     }
 
@@ -152,6 +150,7 @@ pub async fn github_create_repo(
     let client = build_client()?;
     github::create_repo(
         &client,
+        &endpoint(&app).api_base,
         &token,
         &name,
         description.as_deref(),
@@ -163,10 +162,12 @@ pub async fn github_create_repo(
 
 #[tauri::command]
 pub async fn github_detect_remote(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Option<GitHubRemoteInfo>, TwigError> {
-    state.read_repo(&path, |repo| {
+    let host = endpoint(&app).host;
+    state.read_repo(&path, move |repo| {
         let remotes = repo.remotes().map_err(TwigError::Git)?;
 
         // Prefer "origin", fall back to first GitHub remote found
@@ -175,7 +176,7 @@ pub async fn github_detect_remote(
         for remote_name in remotes.iter().flatten() {
             if let Ok(remote) = repo.find_remote(remote_name) {
                 if let Some(url) = remote.url() {
-                    if let Some((owner, repo_name)) = github::parse_github_remote(url) {
+                    if let Some((owner, repo_name)) = hosting_remote::parse_github_remote(url, &host) {
                         let info = GitHubRemoteInfo {
                             owner,
                             repo: repo_name,
@@ -209,7 +210,7 @@ pub async fn github_create_pull_request(
 ) -> Result<GitHubPullRequest, TwigError> {
     let token = get_token(&app).await?;
     let client = build_client()?;
-    github::create_pull_request(&client, &token, &owner, &repo, &title, &body, &head, &base).await
+    github::create_pull_request(&client, &endpoint(&app).api_base, &token, &owner, &repo, &title, &body, &head, &base).await
 }
 
 #[tauri::command]
@@ -220,5 +221,5 @@ pub async fn github_list_branches(
 ) -> Result<Vec<String>, TwigError> {
     let token = get_token(&app).await?;
     let client = build_client()?;
-    github::list_branches(&client, &token, &owner, &repo).await
+    github::list_branches(&client, &endpoint(&app).api_base, &token, &owner, &repo).await
 }

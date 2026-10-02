@@ -4,6 +4,7 @@ import { settings } from "./settings";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
 import { trackOperation } from "./operations";
+import { invalidateCi } from "./ci";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentSeconds = -1;
@@ -24,6 +25,7 @@ async function fetchAllRepos() {
         // Failures are recorded in `lastFetch` and shown in the status bar
         // rather than interrupting the user from a background timer.
         await trackOperation(path, "fetch", "Auto-fetching…", () => tauri.fetchAll(path), { background: true });
+        invalidateCi(path);
       } catch {
         // Recorded by trackOperation; skip to the next repo.
       }

@@ -7,6 +7,7 @@
   import * as tauri from "../../lib/tauri";
   import type { GitHubRepo } from "../../lib/types/github";
   import type { RepoInfo } from "../../lib/types/git";
+  import type { ProviderKind } from "../../lib/types/hosting";
 
   interface Props {
     open_: boolean;
@@ -29,6 +30,39 @@
 
   const s = $derived($settings);
 
+  // Hosting integrations: GitLab / Gitea repo lists when configured.
+  const PROVIDER_LABEL: Record<ProviderKind, string> = { github: "GitHub", gitlab: "GitLab", gitea: "Gitea" };
+  let provider = $state<ProviderKind>("github");
+  let providers = $state<ProviderKind[]>(["github"]);
+  let useSsh = $state(false);
+
+  async function detectProviders() {
+    const extra: ProviderKind[] = [];
+    for (const p of ["gitlab", "gitea"] as const) {
+      try {
+        if (await tauri.hostingHasToken(p)) extra.push(p);
+      } catch {
+        // not configured
+      }
+    }
+    providers = ["github", ...extra];
+  }
+
+  function listPage(n: number) {
+    return provider === "github"
+      ? tauri.githubListRepos(n, 30, "updated")
+      : tauri.hostingListRepos(provider, n, 30);
+  }
+
+  function switchProvider(p: ProviderKind) {
+    if (p === provider || loading) return;
+    provider = p;
+    repos = [];
+    selectedRepo = null;
+    hasNextPage = false;
+    loadRepos();
+  }
+
   const filteredRepos = $derived(
     searchQuery.trim()
       ? repos.filter((r) =>
@@ -45,6 +79,7 @@
     if (isOpen) {
       untrack(() => {
         if (repos.length === 0) loadRepos();
+        detectProviders();
       });
     }
   });
@@ -54,7 +89,7 @@
     loading = true;
     error = "";
     try {
-      const result = await tauri.githubListRepos(1, 30, "updated");
+      const result = await listPage(1);
       repos = result.repos;
       hasNextPage = result.has_next_page;
       page = 1;
@@ -70,7 +105,7 @@
     loadingMore = true;
     try {
       const nextPage = page + 1;
-      const result = await tauri.githubListRepos(nextPage, 30, "updated");
+      const result = await listPage(nextPage);
       repos = [...repos, ...result.repos];
       hasNextPage = result.has_next_page;
       page = nextPage;
@@ -108,7 +143,7 @@
     error = "";
     try {
       const info = await tauri.githubCloneRepo(
-        selectedRepo.clone_url,
+        useSsh && selectedRepo.ssh_url ? selectedRepo.ssh_url : selectedRepo.clone_url,
         destination.trim(),
       );
       oncloned(info);
@@ -140,7 +175,7 @@
   }
 </script>
 
-<Modal open={isOpen} title="Clone from GitHub" onclose={handleClose} width="560px">
+<Modal open={isOpen} title="Clone from {PROVIDER_LABEL[provider]}" onclose={handleClose} width="560px">
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -168,6 +203,11 @@
         </div>
       </label>
 
+      <label class="ssh-toggle">
+        <input type="checkbox" bind:checked={useSsh} />
+        <span>Clone over SSH <code>{selectedRepo.ssh_url}</code></span>
+      </label>
+
       <button
         class="btn-primary"
         onclick={handleClone}
@@ -183,6 +223,15 @@
     </div>
   {:else}
     <!-- Repo list -->
+    {#if providers.length > 1}
+      <div class="provider-tabs" role="tablist">
+        {#each providers as p (p)}
+          <button class="provider-tab" class:active={provider === p} role="tab" aria-selected={provider === p} onclick={() => switchProvider(p)}>
+            {PROVIDER_LABEL[p]}
+          </button>
+        {/each}
+      </div>
+    {/if}
     <div class="search-bar">
       <Search size={14} />
       <input
@@ -519,5 +568,49 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  /* Hosting integrations */
+  .provider-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .provider-tab {
+    padding: 6px 12px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .provider-tab.active {
+    color: var(--color-text-primary);
+    border-bottom-color: var(--color-accent);
+  }
+
+  .ssh-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    min-width: 0;
+  }
+
+  .ssh-toggle span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ssh-toggle code {
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
 </style>

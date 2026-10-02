@@ -30,3 +30,5 @@ pub mod submodules;
 pub mod worktrees;
 // App shell (status bar, recent repos, settings import/export)
 pub mod app_shell;
+// Hosting integrations (PRs, CI, OAuth, GitLab/Gitea)
+pub mod hosting;

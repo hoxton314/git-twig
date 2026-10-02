@@ -144,6 +144,12 @@ export interface AppSettings {
   restore_tabs_on_startup: boolean;
   // Appearance
   theme: "dark" | "light";
+  // Hosting integrations
+  github_https_auth: boolean;
+  github_host: string;
+  github_api_url: string;
+  gitlab_base_url: string;
+  gitea_base_url: string;
   // App shell: fonts & updater
   ui_font_family: string;
   mono_font_family: string;

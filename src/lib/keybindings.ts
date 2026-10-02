@@ -100,6 +100,10 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "open_settings_folder", label: "Open settings folder",            category: "Application", defaultShortcut: "" },
   { id: "export_settings",      label: "Export settings…",                category: "Application", defaultShortcut: "" },
   { id: "import_settings",      label: "Import settings…",                category: "Application", defaultShortcut: "" },
+  // Hosting integrations (GitHub / GitLab / Gitea)
+  { id: "open_pull_requests",  label: "Show pull requests",   category: "Hosting", defaultShortcut: "" },
+  { id: "create_pull_request", label: "Create pull request",  category: "Hosting", defaultShortcut: "" },
+  { id: "refresh_ci_status",   label: "Refresh CI status",    category: "Hosting", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

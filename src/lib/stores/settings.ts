@@ -39,6 +39,12 @@ const defaults: AppSettings = {
   mono_font_family: "",
   check_updates_on_startup: true,
   skipped_update_version: null,
+  // Hosting integrations
+  github_https_auth: true,
+  github_host: "github.com",
+  github_api_url: "",
+  gitlab_base_url: "https://gitlab.com",
+  gitea_base_url: "",
 };
 
 /** Default values for every setting (used by reset/import). */

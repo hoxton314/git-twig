@@ -100,6 +100,23 @@ pub struct AppSettings {
     /// Release version the user chose to skip in the update prompt.
     #[serde(default)]
     pub skipped_update_version: Option<String>,
+    // ── Hosting integrations ────────────────────────────────────────
+    /// Authenticate HTTPS fetch/pull/push to the GitHub host with the
+    /// keyring token (passed via environment-only git config).
+    #[serde(default = "default_true")]
+    pub github_https_auth: bool,
+    /// GitHub host: `github.com` or a GitHub Enterprise Server hostname.
+    #[serde(default = "default_github_host")]
+    pub github_host: String,
+    /// Optional REST API base override (default: derived from the host).
+    #[serde(default)]
+    pub github_api_url: String,
+    /// GitLab instance URL (gitlab.com or self-hosted).
+    #[serde(default = "default_gitlab_url")]
+    pub gitlab_base_url: String,
+    /// Gitea / Forgejo instance URL (empty = not configured).
+    #[serde(default)]
+    pub gitea_base_url: String,
 }
 
 fn default_true() -> bool {
@@ -146,6 +163,13 @@ fn default_graph_row_density() -> String {
     "normal".to_string()
 }
 
+fn default_github_host() -> String {
+    "github.com".to_string()
+}
+fn default_gitlab_url() -> String {
+    "https://gitlab.com".to_string()
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -183,11 +207,17 @@ impl Default for AppSettings {
             mono_font_family: String::new(),
             check_updates_on_startup: true,
             skipped_update_version: None,
+            // Hosting integrations
+            github_https_auth: true,
+            github_host: default_github_host(),
+            github_api_url: String::new(),
+            gitlab_base_url: default_gitlab_url(),
+            gitea_base_url: String::new(),
         }
     }
 }
 
-fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
+pub(crate) fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
     let dir = app
         .path()
         .app_data_dir()
