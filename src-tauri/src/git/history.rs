@@ -182,9 +182,9 @@ pub fn list_rebase_commits_opts(
         commits.push(RebaseCommit {
             short_oid: id.chars().take(7).collect(),
             oid: id,
-            summary: commit.summary().unwrap_or("").to_string(),
-            message: commit.message().unwrap_or("").trim_end().to_string(),
-            author_name: commit.author().name().unwrap_or("").to_string(),
+            summary: crate::git::graph::commit_summary(&commit),
+            message: crate::git::graph::commit_message(&commit).trim_end().to_string(),
+            author_name: crate::git::graph::commit_author_name(&commit),
             timestamp: commit.time().seconds(),
             already_upstream,
         });

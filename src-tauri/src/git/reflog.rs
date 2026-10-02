@@ -51,11 +51,14 @@ pub fn read_head_reflog(repo: &Repository, limit: usize) -> Result<Vec<ReflogEnt
         if new_id == Oid::zero() {
             continue;
         }
-        let message = entry.message().unwrap_or("").to_string();
+        let message = entry
+            .message_bytes()
+            .map(|b| crate::git::graph::decode_text(b, None))
+            .unwrap_or_default();
         let commit_summary = repo
             .find_commit(new_id)
             .ok()
-            .map(|c| c.summary().unwrap_or("").to_string());
+            .map(|c| crate::git::graph::commit_summary(&c));
         let checkout_branch = checkout_target(&message).and_then(|name| {
             let r = repo.find_branch(name, git2::BranchType::Local).ok()?;
             (r.get().target()? == new_id).then(|| name.to_string())

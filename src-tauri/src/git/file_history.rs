@@ -8,6 +8,7 @@ use git2::{BlameOptions, Commit, DiffOptions, ObjectType, Oid, Repository, Sort,
 use serde::Serialize;
 
 use crate::error::TwigError;
+use crate::git::graph;
 use crate::git::reader::{self, CommitInfo, DiffFile};
 
 /// Only plain repo-relative paths are accepted (no `..`, no absolute paths).
@@ -32,20 +33,7 @@ fn short(oid: Oid) -> String {
 }
 
 pub(crate) fn commit_info(commit: &Commit) -> CommitInfo {
-    let author = commit.author();
-    let email = author.email().unwrap_or("").to_string();
-    let gravatar = format!("{:x}", md5::compute(email.trim().to_lowercase().as_bytes()));
-    CommitInfo {
-        oid: commit.id().to_string(),
-        short_oid: short(commit.id()),
-        summary: commit.summary().unwrap_or("").to_string(),
-        body: commit.body().unwrap_or("").to_string(),
-        author_name: author.name().unwrap_or("Unknown").to_string(),
-        author_email: email,
-        author_gravatar: gravatar,
-        timestamp: commit.time().seconds(),
-        parent_oids: commit.parent_ids().map(|id| id.to_string()).collect(),
-    }
+    graph::commit_info(commit)
 }
 
 /// Resolve any revision expression (`HEAD`, a branch, `abc123^`) to a commit.
@@ -339,21 +327,23 @@ pub fn read_blame(repo: &Repository, path: &str, rev: Option<&str>) -> Result<Bl
                 let i = match repo.find_commit(oid) {
                     Ok(c) => {
                         let a = c.author();
+                        let name = graph::commit_author_name(&c);
                         (
-                            a.name().unwrap_or("Unknown").to_string(),
+                            if name.is_empty() { "Unknown".to_string() } else { name },
                             c.time().seconds(),
-                            c.summary().unwrap_or("").to_string(),
-                            a.email().unwrap_or("").to_string(),
+                            graph::commit_summary(&c),
+                            graph::decode_text(a.email_bytes(), c.message_encoding()),
                             c.parent_count() > 0,
                         )
                     }
                     Err(_) => {
                         let sig = h.final_signature();
+                        let name = graph::decode_text(sig.name_bytes(), None);
                         (
-                            sig.name().unwrap_or("Unknown").to_string(),
+                            if name.is_empty() { "Unknown".to_string() } else { name },
                             sig.when().seconds(),
                             String::new(),
-                            sig.email().unwrap_or("").to_string(),
+                            graph::decode_text(sig.email_bytes(), None),
                             false,
                         )
                     }

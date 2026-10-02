@@ -174,7 +174,7 @@ fn commit_subject(repo: &Repository, spec: &str) -> Option<(String, String)> {
     let commit = obj.peel_to_commit().ok()?;
     Some((
         commit.id().to_string(),
-        commit.summary().unwrap_or("").to_string(),
+        crate::git::graph::commit_summary(&commit),
     ))
 }
 
