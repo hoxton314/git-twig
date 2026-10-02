@@ -13,7 +13,7 @@ Order within a release is rough priority.
   line staging, conflict resolution, history pagination.
 - [ ] Verify hosting integrations against live services: pull requests, CI status, GitLab, Gitea.
 - [x] CI on every push and pull request (type check, build, clippy, tests) via `.github/workflows/ci.yml`.
-- [ ] Settle open decisions: whether whitespace-only changes are hidden by default; register the
+- [ ] Settle open decisions: ~~whether whitespace-only changes are hidden by default~~ (shown, like git); register the
   OAuth app (`GITHUB_OAUTH_CLIENT_ID`) to enable "Sign in with GitHub".
 
 ## v0.4 — Foundations and everyday gaps
