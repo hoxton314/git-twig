@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { get, writable } from "svelte/store";
 
 const result = { matches: [], truncated: false, scanned: 0, tips: "t" };
-const tauri = vi.hoisted(() => ({ searchCommits: vi.fn(), searchChanges: vi.fn(), getCommitGraph: vi.fn() }));
+const tauri = vi.hoisted(() => ({
+  searchCommits: vi.fn(),
+  searchChanges: vi.fn(),
+  cancelSearchChanges: vi.fn(async () => {}),
+  getCommitGraph: vi.fn(),
+}));
 vi.mock("../tauri", () => tauri);
 vi.mock("./settings", () => ({
   settings: writable({ max_commits: 100, graph_hide_remotes: false, graph_current_branch_only: false }),
@@ -55,5 +60,20 @@ describe("graph search kinds", () => {
     s.scheduleSearch(0, true);
     await vi.runAllTimersAsync();
     expect(tauri.searchChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops a running code search when closed", async () => {
+    s.searchKind.set("changes");
+    s.searchQuery.set("slow");
+    let release: (v: unknown) => void = () => {};
+    tauri.searchChanges.mockReturnValue(new Promise((r) => (release = r)));
+    const running = s.runSearch();
+    expect(get(s.searchBusy)).toBe(true);
+    s.closeSearch();
+    expect(tauri.cancelSearchChanges).toHaveBeenCalledWith("/r");
+    release(result);
+    await running;
+    // The late result is dropped.
+    expect(get(s.searchResult)).toBeNull();
   });
 });

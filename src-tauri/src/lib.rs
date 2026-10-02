@@ -153,6 +153,7 @@ pub fn run() {
             // Commit graph: search & locate
             commands::graph::search_commits,
             commands::graph::search_changes,
+            commands::graph::cancel_search_changes,
             commands::graph::locate_commit,
             // File history & blame
             commands::file_views::get_file_history,

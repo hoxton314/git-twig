@@ -67,6 +67,14 @@ pub async fn search_changes(
         .await
 }
 
+/// Stop a running code-change search for the repository (search closed).
+#[tauri::command]
+pub async fn cancel_search_changes(state: State<'_, AppState>, path: String) -> Result<(), TwigError> {
+    let repo_path = state.repo_path(&path)?;
+    crate::git::pickaxe::cancel(&repo_path);
+    Ok(())
+}
+
 /// Resolve a revision (branch, tag, HEAD, SHA) and find its graph row.
 #[tauri::command]
 pub async fn locate_commit(

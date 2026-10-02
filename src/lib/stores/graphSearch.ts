@@ -54,6 +54,7 @@ export function scheduleSearch(delay = 250, force = false) {
     gen++;
     searchResult.set(null);
     searchError.set(null);
+    if (get(searchBusy)) stopChangeSearch();
     searchBusy.set(false);
     return;
   }
@@ -108,8 +109,15 @@ export async function runSearch(): Promise<void> {
   }
 }
 
+/** Kill a running code-change search in the backend (best effort). */
+function stopChangeSearch() {
+  const path = get(activeRepoPath);
+  if (path) tauri.cancelSearchChanges(path).catch(() => {});
+}
+
 /** Close the search bar and clear everything. */
 export function closeSearch() {
+  if (get(searchBusy) && get(searchKind) === "changes") stopChangeSearch();
   gen++;
   if (timer) clearTimeout(timer);
   timer = null;
@@ -125,6 +133,10 @@ export function closeSearch() {
 let lastPath: string | null = null;
 activeRepoPath.subscribe((p) => {
   if (p === lastPath) return;
+  // A code-change search still scanning the previous repo's history.
+  if (lastPath && get(searchBusy) && get(searchKind) === "changes") {
+    tauri.cancelSearchChanges(lastPath).catch(() => {});
+  }
   lastPath = p;
   gen++;
   searchResult.set(null);

@@ -68,6 +68,11 @@ export function searchChanges(
   });
 }
 
+/** Stop a running code-change search (the search bar closed or switched). */
+export function cancelSearchChanges(path: string): Promise<void> {
+  return invoke<void>("cancel_search_changes", { path });
+}
+
 /** Resolve a revision (branch, tag, HEAD, SHA) to a commit and its graph row. */
 export function locateCommit(
   path: string,
