@@ -26,7 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Repo management
             commands::repo::open_repo,
-            commands::cli::take_startup_paths,
+            commands::cli::take_pending_paths,
             commands::repo::init_repository,
             commands::repo::clone_repository,
             commands::repo::close_repo,

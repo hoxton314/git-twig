@@ -63,7 +63,30 @@ if (await listening()) {
   console.error(`Port ${port} is already in use; set TWIG_E2E_PORT to a free port.`);
   process.exit(2);
 }
-const driver = spawn(driverBin, ["--port", String(port)], { env, stdio: ["ignore", "inherit", "inherit"] });
+// A private D-Bus session: Twig's single-instance lock is a D-Bus name, so
+// on the shared session bus the test app would hand off to a real running
+// Twig (and focus it) instead of starting.
+const hasDbusRunSession = (() => {
+  try {
+    execFileSync("dbus-run-session", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+if (!hasDbusRunSession) console.warn("dbus-run-session not found; using the shared session bus");
+const [cmd, ...cmdArgs] = hasDbusRunSession
+  ? ["dbus-run-session", "--", driverBin, "--port", String(port)]
+  : [driverBin, "--port", String(port)];
+// Own process group, so cleanup also reaches tauri-driver under dbus-run-session.
+const driver = spawn(cmd, cmdArgs, { env, stdio: ["ignore", "inherit", "inherit"], detached: true });
+const killDriver = () => {
+  try {
+    process.kill(-driver.pid, "SIGTERM");
+  } catch {
+    driver.kill();
+  }
+};
 let driverExit = null;
 driver.on("error", (err) => {
   console.error(`Could not start ${driverBin}: ${err.message}\nInstall it with: cargo install tauri-driver --locked`);
@@ -159,7 +182,7 @@ try {
   }
 } finally {
   await session?.close().catch(() => {});
-  driver.kill();
+  killDriver();
   // Keep the temp dir only when it holds failure evidence.
   if (!failed) rmSync(tmp, { recursive: true, force: true });
 }

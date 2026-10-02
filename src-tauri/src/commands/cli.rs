@@ -1,9 +1,10 @@
 //! `twig [path…]` command-line launching.
 //!
-//! The first instance keeps its own paths until the frontend asks for them
-//! (after it restored the session). Later invocations are forwarded by the
-//! single-instance plugin to the running window as an `open-paths` event,
-//! resolved against the caller's working directory.
+//! Paths are queued in Rust and drained by the frontend (`take_pending_paths`)
+//! only once it has restored the session and is listening, so nothing is
+//! lost while the webview loads. The queue starts with this process's own
+//! arguments; later `twig …` launches (forwarded by the single-instance
+//! plugin) append to it and send an `open-paths` ping.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -12,15 +13,26 @@ use tauri::{Emitter, Manager};
 
 use crate::error::TwigError;
 
-static STARTUP_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PENDING_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// Paths given on a command line (`argv[0]` excluded). Flags (`-…`) are
-/// ignored; relative paths resolve against `cwd`. No arguments means no
-/// path: a desktop launcher's working directory is usually `$HOME`.
+/// Paths given on a command line (`argv[0]` excluded). Options (`-…`) are
+/// ignored until a `--`, after which every argument is a path. Relative
+/// paths resolve against `cwd`. No arguments means no path: a desktop
+/// launcher's working directory is usually `$HOME`.
 pub(crate) fn paths_from_args(args: &[String], cwd: &Path) -> Vec<String> {
+    let mut after_dashdash = false;
     args.iter()
         .skip(1)
-        .filter(|a| !a.is_empty() && !a.starts_with('-'))
+        .filter(|a| {
+            if after_dashdash {
+                return !a.is_empty();
+            }
+            if a.as_str() == "--" {
+                after_dashdash = true;
+                return false;
+            }
+            !a.is_empty() && !a.starts_with('-')
+        })
         .map(|a| {
             let p = Path::new(a);
             let full: PathBuf = if p.is_absolute() { p.to_path_buf() } else { cwd.join(p) };
@@ -29,13 +41,17 @@ pub(crate) fn paths_from_args(args: &[String], cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Remember this process's own command-line paths for the frontend.
+fn queue(paths: Vec<String>) {
+    if let Ok(mut pending) = PENDING_PATHS.lock() {
+        pending.extend(paths);
+    }
+}
+
+/// Queue this process's own command-line paths for the frontend.
 pub(crate) fn record_startup_args() {
     let args: Vec<String> = std::env::args().collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    if let Ok(mut paths) = STARTUP_PATHS.lock() {
-        *paths = paths_from_args(&args, &cwd);
-    }
+    queue(paths_from_args(&args, &cwd));
 }
 
 /// Another `twig …` was started: focus this window and hand it the paths.
@@ -45,6 +61,8 @@ pub(crate) fn record_startup_args() {
 /// the main loop and would otherwise keep the second process alive).
 pub(crate) fn on_second_instance(app: &tauri::AppHandle, args: Vec<String>, cwd: String) {
     let paths = paths_from_args(&args, Path::new(&cwd));
+    let has_paths = !paths.is_empty();
+    queue(paths);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Some(window) = app.get_webview_window("main") {
@@ -52,16 +70,17 @@ pub(crate) fn on_second_instance(app: &tauri::AppHandle, args: Vec<String>, cwd:
             let _ = window.show();
             let _ = window.set_focus();
         }
-        if !paths.is_empty() {
-            let _ = app.emit("open-paths", paths);
+        if has_paths {
+            // A ping: the frontend drains the queue when it is ready.
+            let _ = app.emit("open-paths", ());
         }
     });
 }
 
-/// Paths from this process's command line; returned once.
+/// Drain the queued command-line paths (startup and forwarded launches).
 #[tauri::command]
-pub async fn take_startup_paths() -> Result<Vec<String>, TwigError> {
-    let mut paths = STARTUP_PATHS.lock().map_err(|_| TwigError::Lock)?;
+pub async fn take_pending_paths() -> Result<Vec<String>, TwigError> {
+    let mut paths = PENDING_PATHS.lock().map_err(|_| TwigError::Lock)?;
     Ok(std::mem::take(&mut *paths))
 }
 
@@ -88,6 +107,15 @@ mod tests {
         // A missing path is kept (the frontend reports it as not a repository).
         let missing = paths_from_args(&args(&["nope"]), &cwd);
         assert!(missing[0].ends_with("nope"));
+        // `--` ends options: a folder named `-wip` can be opened.
+        std::fs::create_dir_all(cwd.join("-wip")).unwrap();
+        assert_eq!(
+            paths_from_args(&args(&["-x", "--", "-wip", "--"]), &cwd),
+            vec![
+                canon.join("-wip").to_string_lossy().to_string(),
+                canon.join("--").to_string_lossy().to_string()
+            ]
+        );
         let _ = std::fs::remove_dir_all(&cwd);
     }
 }
