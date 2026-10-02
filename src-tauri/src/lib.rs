@@ -77,6 +77,9 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // Commit graph: search & locate
+            commands::graph::search_commits,
+            commands::graph::locate_commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");
