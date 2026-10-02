@@ -75,6 +75,13 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "graph_load_all",              label: "Load entire history",                    category: "Graph", defaultShortcut: "" },
   { id: "graph_toggle_remotes",        label: "Toggle remote branches in graph",        category: "Graph", defaultShortcut: "" },
   { id: "graph_toggle_current_branch", label: "Toggle current branch only in graph",    category: "Graph", defaultShortcut: "" },
+  // File history & blame, stash extras, submodules, worktrees
+  { id: "file_history",      label: "File history…",            category: "History",    defaultShortcut: "" },
+  { id: "blame_file",        label: "Blame…",                   category: "History",    defaultShortcut: "" },
+  { id: "stash_files",       label: "Stash selected files…",    category: "Git",        defaultShortcut: "" },
+  { id: "submodules_update", label: "Update submodules (init, recursive)", category: "Git", defaultShortcut: "" },
+  { id: "submodules_sync",   label: "Sync submodule URLs",      category: "Git",        defaultShortcut: "" },
+  { id: "worktree_add",      label: "Add worktree…",            category: "Git",        defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

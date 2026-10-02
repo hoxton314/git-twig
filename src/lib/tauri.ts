@@ -21,6 +21,15 @@ import type {
 } from "./types/git";
 // Commit operations, undo history, tags
 import type { CommitOpResult, ReflogEntry, ResetMode, TagInfo } from "./types/git";
+// File history & blame, stash extras, submodules, worktrees
+import type {
+  FileHistoryPage,
+  BlameResult,
+  StashDetail,
+  StashDiff,
+  SubmoduleInfo,
+  WorktreeInfo,
+} from "./types/git";
 import type {
   GitHubUser,
   GitHubRepo,
@@ -749,4 +758,152 @@ export function locateCommit(
     rev,
     options: options ?? null,
   });
+}
+
+// ── File history & blame ─────────────────────────────────────────────
+
+export function getFileHistory(
+  path: string,
+  filePath: string,
+  skip: number,
+  limit: number,
+  rev?: string,
+): Promise<FileHistoryPage> {
+  return invoke<FileHistoryPage>("get_file_history", {
+    path,
+    filePath,
+    rev: rev ?? null,
+    skip,
+    limit,
+  });
+}
+
+export function getFileDiffAtCommit(
+  path: string,
+  oid: string,
+  filePath: string,
+  oldPath?: string | null,
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_file_diff_at_commit", {
+    path,
+    oid,
+    filePath,
+    oldPath: oldPath ?? null,
+  });
+}
+
+export function getBlame(
+  path: string,
+  filePath: string,
+  rev?: string,
+): Promise<BlameResult> {
+  return invoke<BlameResult>("get_blame", { path, filePath, rev: rev ?? null });
+}
+
+export function listTrackedFiles(path: string): Promise<string[]> {
+  return invoke<string[]>("list_tracked_files", { path });
+}
+
+// ── Stash extras ─────────────────────────────────────────────────────
+
+export function stashListDetailed(path: string): Promise<StashDetail[]> {
+  return invoke<StashDetail[]>("stash_list_detailed", { path });
+}
+
+export function stashShow(path: string, oid: string): Promise<StashDiff> {
+  return invoke<StashDiff>("stash_show", { path, oid });
+}
+
+/** Apply/pop/drop the stash with commit `oid` (index is resolved server-side). */
+export function stashAct(
+  path: string,
+  oid: string,
+  action: "apply" | "pop" | "drop",
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_act", { path, oid, action });
+}
+
+export function stashRename(
+  path: string,
+  oid: string,
+  message: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_rename", { path, oid, message });
+}
+
+export function stashBranch(
+  path: string,
+  oid: string,
+  branch: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_branch", { path, oid, branch });
+}
+
+export function stashPushExt(
+  path: string,
+  opts: {
+    message?: string;
+    files?: string[];
+    keepIndex?: boolean;
+    includeUntracked?: boolean;
+  },
+): Promise<CommandResult> {
+  return invoke<CommandResult>("stash_push_ext", {
+    path,
+    message: opts.message ?? null,
+    files: opts.files ?? [],
+    keepIndex: opts.keepIndex ?? false,
+    includeUntracked: opts.includeUntracked ?? true,
+  });
+}
+
+// ── Submodules ───────────────────────────────────────────────────────
+
+export function listSubmodules(path: string): Promise<SubmoduleInfo[]> {
+  return invoke<SubmoduleInfo[]>("list_submodules", { path });
+}
+
+export function submoduleUpdate(
+  path: string,
+  subPath?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("submodule_update", { path, subPath: subPath ?? null });
+}
+
+export function submoduleSync(
+  path: string,
+  subPath?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("submodule_sync", { path, subPath: subPath ?? null });
+}
+
+// ── Worktrees ────────────────────────────────────────────────────────
+
+export function listWorktrees(path: string): Promise<WorktreeInfo[]> {
+  return invoke<WorktreeInfo[]>("list_worktrees", { path });
+}
+
+export function worktreeAdd(
+  path: string,
+  worktreePath: string,
+  opts: { commitish?: string; newBranch?: string },
+): Promise<CommandResult> {
+  return invoke<CommandResult>("worktree_add", {
+    path,
+    worktreePath,
+    commitish: opts.commitish ?? null,
+    newBranch: opts.newBranch ?? null,
+  });
+}
+
+export function worktreeRemove(
+  path: string,
+  worktreePath: string,
+  force: boolean = false,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("worktree_remove", { path, worktreePath, force });
+}
+
+export function worktreePrune(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("worktree_prune", { path });
 }

@@ -18,3 +18,8 @@ pub mod history;
 
 // Commit graph: pagination, search, locate
 pub mod graph;
+// File history & blame, stash extras, submodules, worktrees
+pub mod file_history;
+pub mod stash_extra;
+pub mod submodules;
+pub mod worktrees;

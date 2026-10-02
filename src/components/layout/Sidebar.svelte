@@ -3,6 +3,8 @@
   import BranchList from "../branches/BranchList.svelte";
   import TagList from "../tags/TagList.svelte";
   import BranchActionsHost from "../branches/BranchActionsHost.svelte";
+  import WorktreeList from "../worktrees/WorktreeList.svelte";
+  import SubmoduleList from "../submodules/SubmoduleList.svelte";
 
   const isOpen = $derived($sidebarOpen);
   const width = $derived($sidebarWidth);
@@ -12,6 +14,8 @@
   <aside class="sidebar" style="width: {width}px; min-width: 160px;">
     <BranchList />
     <TagList />
+    <WorktreeList />
+    <SubmoduleList />
   </aside>
 {/if}
 <!-- Branch list / remotes: global actions + remotes dialog, mounted even when the sidebar is hidden -->

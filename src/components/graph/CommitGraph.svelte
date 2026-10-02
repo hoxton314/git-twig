@@ -45,6 +45,7 @@
   import { Loader2, Pencil } from "lucide-svelte";
   import CommitContextMenu from "./CommitContextMenu.svelte";
   import { openCommitMenu, revealRequest } from "../../lib/stores/commitUi";
+  import { revealCommit } from "../../lib/stores/fileviews";
 
   const repoPath = $derived($activeRepoPath);
   const graph = $derived($commitGraph);
@@ -493,6 +494,14 @@
     if (oid === currentMatchOid) return "current";
     return $matchOids.has(oid) ? "match" : "none";
   }
+  // File history / blame "Show in graph": scroll the requested commit into view.
+  $effect(() => {
+    const oid = $revealCommit;
+    if (!oid || !graph) return;
+    const idx = entries.findIndex((en) => en.commit.oid === oid);
+    $revealCommit = null;
+    if (idx >= 0) centerRow(idx);
+  });
 </script>
 
 <div

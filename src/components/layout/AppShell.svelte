@@ -11,6 +11,8 @@
   import SettingsScreen from "../settings/SettingsScreen.svelte";
   import OperationBanner from "../conflicts/OperationBanner.svelte";
   import OperationHost from "../conflicts/OperationHost.svelte";
+  import FileViewHost from "../history/FileViewHost.svelte";
+  import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
@@ -279,6 +281,9 @@
   <OperationHost />
   <Toaster />
   <UndoHistory />
+  <!-- File history & blame overlay; worktree/submodule actions -->
+  <FileViewHost />
+  <RepoToolsHost />
 </div>
 
 <style>
