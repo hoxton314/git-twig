@@ -20,6 +20,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Repo management
             commands::repo::open_repo,
+            commands::repo::init_repository,
+            commands::repo::clone_repository,
             commands::repo::close_repo,
             commands::repo::get_repo_info,
             commands::repo::list_open_repos,

@@ -1,6 +1,8 @@
 /** Repository tabs, session, window and app-shell commands. */
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  CloneProgress,
   AppSettings,
   RepoHistory,
   RepoInfo,
@@ -98,4 +100,21 @@ export function exportSettings(path: string, settings: AppSettings): Promise<voi
 
 export function importSettings(path: string): Promise<AppSettings> {
   return invoke<AppSettings>("import_settings", { path });
+}
+
+// ── Create repositories (git init / clone from any URL) ─────────────
+
+/** `git init` a folder (created if missing) and open it. */
+export function initRepository(path: string, initialBranch: string | null): Promise<RepoInfo> {
+  return invoke<RepoInfo>("init_repository", { path, initialBranch });
+}
+
+/** Clone any URL into `destination` (absolute, missing or empty) and open it. */
+export function cloneRepository(url: string, destination: string, opId: number): Promise<RepoInfo> {
+  return invoke<RepoInfo>("clone_repository", { url, destination, opId });
+}
+
+/** Subscribe to `git clone` progress lines (filter by `op_id`). */
+export function onCloneProgress(handler: (p: CloneProgress) => void): Promise<UnlistenFn> {
+  return listen<CloneProgress>("clone-progress", (e) => handler(e.payload));
 }

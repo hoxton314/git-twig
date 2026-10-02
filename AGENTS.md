@@ -30,6 +30,8 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/state.rs` | `AppState` with `Mutex<HashMap<String, OpenRepo>>` |
 | `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
 | `src-tauri/src/git/reader.rs` | git2-based reads: branches, diffs, status (graph IPC structs) |
+| `src-tauri/src/git/create.rs` | `git init` (folder created if missing) and `git clone` from any URL with streamed progress; commands `init_repository` / `clone_repository` in `commands/repo.rs` (`register_repo` opens the result as a tab) |
+| `src/components/layout/NewRepoDialog.svelte` | Clone-from-URL / initialize dialogs, opened via the `newRepoDialog` store (`src/lib/newRepo.ts`) |
 | `src-tauri/src/git/graph.rs` | Commit graph: paginated walk + lane assignment (`LaneState`), full-history search, locate ref/commit row |
 | `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
 | `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
@@ -83,6 +85,10 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 1. Add the action to `ACTIONS` array in `src/lib/keybindings.ts` with `id`, `label`, `category`, `defaultShortcut`
 2. Register a handler with `onAction(actionId, handler)` in the component where the action logic lives
 3. Handlers registered in `AppShell.svelte` for global actions; component-specific actions register in their own `onMount`
+
+### Backend → UI events
+
+Long-running commands report progress with `app.emit("<event>", payload)` (`tauri::Emitter`), e.g. `clone-progress` from `clone_repository`. Payloads carry an `op_id` chosen by the caller so concurrent operations don't mix. Subscribe through a typed wrapper in `src/lib/api/` (like `onCloneProgress`), never `listen()` directly in components.
 
 ### Shared UI primitives
 

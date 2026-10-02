@@ -1,4 +1,6 @@
 pub mod reader;
+// git init / clone from any URL
+pub mod create;
 #[allow(dead_code)]
 pub mod writer;
 // Commit context menu, undo history (reflog), tags
