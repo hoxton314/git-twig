@@ -22,6 +22,8 @@
     scheduleSearch,
     runSearch,
     closeSearch,
+    searchKind,
+    changeOptions,
     SEARCH_MAX_RESULTS,
   } from "../../lib/stores/graphSearch";
   import GraphViewOptions from "./GraphViewOptions.svelte";
@@ -71,8 +73,12 @@
   const countLabel = $derived.by(() => {
     if ($searchError) return "Search failed";
     if (!hasQuery) return "";
-    if (!result) return $searchBusy ? "Searching…" : "";
-    if (total === 0) return "No matches";
+    if (!result) return $searchBusy ? "Searching…" : $searchKind === "changes" ? "Enter to search" : "";
+    if (total === 0) return $searchKind === "changes" ? "No commits" : "No matches";
+    if ($searchKind === "changes" && $currentMatch < 0) {
+      const t = result.truncated ? `${SEARCH_MAX_RESULTS}+` : String(total);
+      return `${t} commit${total === 1 ? "" : "s"}`;
+    }
     const totalText = result.truncated ? `${SEARCH_MAX_RESULTS}+` : String(total);
     if ($searchMode === "filter") return `${totalText} ${total === 1 ? "match" : "matches"}`;
     return $currentMatch >= 0 ? `${$currentMatch + 1} of ${totalText}` : `${totalText} ${total === 1 ? "match" : "matches"}`;
@@ -108,6 +114,21 @@
     }
   }
 
+  function setKind(kind: "commits" | "changes") {
+    if ($searchKind === kind) return;
+    searchKind.set(kind);
+    currentMatch.set(-1);
+    // Commit searches run as you type; a code-change search waits for Enter.
+    scheduleSearch(0);
+    inputEl?.focus();
+  }
+
+  /** A code-search option changed: results no longer match it. */
+  function changedOption() {
+    currentMatch.set(-1);
+    scheduleSearch();
+  }
+
   function setMode(mode: "highlight" | "filter") {
     searchMode.set(mode);
     inputEl?.focus();
@@ -133,7 +154,9 @@
         bind:value={$searchQuery}
         class="search-input"
         type="text"
-        placeholder="Search message, author, email or SHA…"
+        placeholder={$searchKind === "changes"
+          ? ($changeOptions.regex ? "Regex for added/removed lines (git log -G)…" : "Text added or removed (git log -S)…")
+          : "Search message, author, email or SHA…"}
         spellcheck="false"
         autocomplete="off"
         aria-label="Search commits"
@@ -142,6 +165,42 @@
         onkeydown={onSearchKeydown}
       />
       <span class="count" class:error={$searchError !== null} aria-live="polite">{countLabel}</span>
+      <div class="segmented" role="radiogroup" aria-label="Search in">
+        <button
+          role="radio"
+          aria-checked={$searchKind === "commits"}
+          class:on={$searchKind === "commits"}
+          title="Search commit messages, authors and SHAs"
+          onclick={() => setKind("commits")}>Commits</button
+        >
+        <button
+          role="radio"
+          aria-checked={$searchKind === "changes"}
+          class:on={$searchKind === "changes"}
+          title="Find commits whose changes add or remove the text (pickaxe)"
+          onclick={() => setKind("changes")}>Code</button
+        >
+      </div>
+      {#if $searchKind === "changes"}
+        <label class="opt" title="Regular expression: commits whose added or removed lines match (git log -G)">
+          <input type="checkbox" bind:checked={$changeOptions.regex} onchange={changedOption} /> .*
+        </label>
+        <label class="opt" title="Match case">
+          <input type="checkbox" bind:checked={$changeOptions.matchCase} onchange={changedOption} /> Aa
+        </label>
+        <input
+          class="paths-input"
+          type="text"
+          bind:value={$changeOptions.paths}
+          oninput={changedOption}
+          onkeydown={onSearchKeydown}
+          placeholder="paths"
+          spellcheck="false"
+          autocomplete="off"
+          aria-label="Limit code search to paths"
+          title="Only commits touching these paths (e.g. src/ *.rs)"
+        />
+      {/if}
       <div class="segmented" role="radiogroup" aria-label="Search mode">
         <button
           role="radio"
@@ -260,6 +319,32 @@
 </div>
 
 <style>
+  .opt {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .opt input { margin: 0; accent-color: var(--color-accent); }
+  .paths-input {
+    width: 90px;
+    flex-shrink: 1;
+    min-width: 50px;
+    padding: 2px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-bg);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    outline: none;
+  }
+  .paths-input:focus { border-color: var(--color-accent); }
   .graph-toolbar {
     display: flex;
     align-items: center;

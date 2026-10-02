@@ -10,6 +10,8 @@ import { activeRepoPath } from "./repos";
 import { commitGraph, graphOptions } from "./graph";
 
 export type GraphSearchMode = "highlight" | "filter";
+/** What to search: commit metadata, or code changes (pickaxe). */
+export type GraphSearchKind = "commits" | "changes";
 
 /** Most matches a search returns; the UI says when results were cut off. */
 export const SEARCH_MAX_RESULTS = 5000;
@@ -17,6 +19,9 @@ export const SEARCH_MAX_RESULTS = 5000;
 export const searchOpen = writable(false);
 export const searchQuery = writable("");
 export const searchMode = writable<GraphSearchMode>("highlight");
+export const searchKind = writable<GraphSearchKind>("commits");
+/** Options for code-change searches. */
+export const changeOptions = writable({ regex: false, matchCase: false, paths: "" });
 export const searchResult = writable<CommitSearchResult | null>(null);
 export const searchBusy = writable(false);
 export const searchError = writable<string | null>(null);
@@ -37,9 +42,21 @@ export const searchActive = derived(
 let gen = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** Debounced search (use while typing). */
-export function scheduleSearch(delay = 250) {
+/**
+ * Debounced search (use while typing). Code-change searches walk every
+ * diff in history, so typing only clears them; they run on Enter, or when
+ * `force`d (repo or history changed).
+ */
+export function scheduleSearch(delay = 250, force = false) {
   if (timer) clearTimeout(timer);
+  timer = null;
+  if (get(searchKind) === "changes" && !force) {
+    gen++;
+    searchResult.set(null);
+    searchError.set(null);
+    searchBusy.set(false);
+    return;
+  }
   timer = setTimeout(() => {
     timer = null;
     void runSearch();
@@ -66,7 +83,17 @@ export async function runSearch(): Promise<void> {
   const prev = get(searchResult)?.matches[get(currentMatch)]?.commit.oid ?? null;
   searchBusy.set(true);
   try {
-    const r = await tauri.searchCommits(path, q, graphOptions(), SEARCH_MAX_RESULTS);
+    const opts = get(changeOptions);
+    const r =
+      get(searchKind) === "changes"
+        ? await tauri.searchChanges(
+            path,
+            q,
+            { regex: opts.regex, ignoreCase: !opts.matchCase, paths: opts.paths.split(/[,\s]+/).filter(Boolean) },
+            graphOptions(),
+            SEARCH_MAX_RESULTS,
+          )
+        : await tauri.searchCommits(path, q, graphOptions(), SEARCH_MAX_RESULTS);
     if (my !== gen || get(activeRepoPath) !== path) return;
     searchResult.set(r);
     searchError.set(null);
@@ -102,10 +129,10 @@ activeRepoPath.subscribe((p) => {
   gen++;
   searchResult.set(null);
   currentMatch.set(-1);
-  if (get(searchQuery).trim()) scheduleSearch(0);
+  if (get(searchQuery).trim()) scheduleSearch(0, true);
 });
 
 commitGraph.subscribe((g) => {
   const r = get(searchResult);
-  if (g && r && g.tips !== r.tips && get(searchQuery).trim()) scheduleSearch(0);
+  if (g && r && g.tips !== r.tips && get(searchQuery).trim()) scheduleSearch(0, true);
 });

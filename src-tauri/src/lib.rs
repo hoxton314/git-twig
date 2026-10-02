@@ -152,6 +152,7 @@ pub fn run() {
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,
+            commands::graph::search_changes,
             commands::graph::locate_commit,
             // File history & blame
             commands::file_views::get_file_history,
