@@ -90,6 +90,15 @@ pub fn run() {
             commands::tags::delete_tag,
             commands::tags::push_tag,
             commands::tags::delete_remote_tag,
+            // Staging panel: commit helpers & file actions
+            commands::commit_tools::create_commit_with_options,
+            commands::commit_tools::get_head_commit_info,
+            commands::commit_tools::get_recent_authors,
+            commands::commit_tools::get_commit_template,
+            commands::file_ops::open_repo_file,
+            commands::file_ops::reveal_repo_file,
+            commands::file_ops::add_to_gitignore,
+            commands::file_ops::open_external_diff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

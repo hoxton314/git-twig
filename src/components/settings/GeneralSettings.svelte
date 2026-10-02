@@ -130,6 +130,24 @@
         </label>
       </div>
     </div>
+
+    <!-- Staging panel -->
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Show changed files as a tree</span>
+        <span class="label-hint">Group staged and unstaged files by folder in the staging panel</span>
+      </div>
+      <div class="setting-control">
+        <label class="toggle">
+          <input
+            type="checkbox"
+            checked={s.staging_tree_view}
+            onchange={() => updateSettings({ staging_tree_view: !s.staging_tree_view })}
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
   </div>
 </div>
 

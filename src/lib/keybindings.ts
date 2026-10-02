@@ -43,6 +43,16 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "copy_commit_sha",      label: "Copy selected commit SHA",          category: "Commit", defaultShortcut: "" },
   { id: "show_undo_history",    label: "Undo history (reflog)…",            category: "Git",    defaultShortcut: "Ctrl+Shift+H" },
   { id: "push_all_tags",        label: "Push all tags",                     category: "Git",    defaultShortcut: "" },
+  // Staging panel: file lists & commit helpers
+  { id: "staging_stage_all",      label: "Stage all changes",              category: "Staging", defaultShortcut: "" },
+  { id: "staging_unstage_all",    label: "Unstage all changes",            category: "Staging", defaultShortcut: "" },
+  { id: "staging_toggle_tree",    label: "Toggle tree / flat file list",   category: "Staging", defaultShortcut: "" },
+  { id: "staging_filter_files",   label: "Filter changed files",           category: "Staging", defaultShortcut: "" },
+  { id: "commit_toggle_amend",    label: "Toggle amend last commit",       category: "Staging", defaultShortcut: "" },
+  { id: "commit_toggle_signoff",  label: "Toggle Signed-off-by trailer",   category: "Staging", defaultShortcut: "" },
+  { id: "commit_add_coauthor",    label: "Add co-author to commit",        category: "Staging", defaultShortcut: "" },
+  { id: "commit_insert_template", label: "Insert commit message template", category: "Staging", defaultShortcut: "" },
+  { id: "commit_message_history", label: "Recent commit messages",         category: "Staging", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
