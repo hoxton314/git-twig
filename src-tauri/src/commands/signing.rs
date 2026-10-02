@@ -178,6 +178,22 @@ pub async fn test_signing() -> Result<crate::commands::staging::CommandResult, T
     })
 }
 
+/// Signature status of commits (graph badge). Unsigned commits are left
+/// out of the result; only signed ones are verified (at most
+/// `signatures::MAX_BATCH` per call).
+#[tauri::command]
+pub async fn commit_signatures(
+    state: tauri::State<'_, crate::state::AppState>,
+    path: String,
+    oids: Vec<String>,
+) -> Result<Vec<crate::git::signatures::SignatureInfo>, TwigError> {
+    let repo_path = state.repo_path(&path)?;
+    let signed = state
+        .read_repo(&path, move |repo| crate::git::signatures::signed_commits(repo, &oids))
+        .await?;
+    crate::git::signatures::verify(&repo_path, &signed).await
+}
+
 /// `CommandResult` for a commit, with a hint when it failed to sign.
 pub(crate) fn commit_result(out: crate::git::writer::GitOutput) -> crate::commands::staging::CommandResult {
     if out.success {

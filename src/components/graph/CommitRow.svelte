@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { GraphEntry, RefLabel, GraphDateFormat } from "../../lib/types/git";
-  import { ArrowUp } from "lucide-svelte";
+  import { ArrowUp, ShieldCheck, ShieldAlert, ShieldX } from "lucide-svelte";
   import { formatCommitDate } from "./graphLayout";
+  import { activeRepoPath } from "../../lib/stores/repos";
+  import { signatureFor } from "../../lib/stores/signatures";
 
   interface Props {
     entry: GraphEntry;
@@ -52,6 +54,32 @@
   );
 
   const dateLabel = $derived(formatCommitDate(commit.timestamp, dateFormat, now));
+
+  // Signed commits get a badge; unsigned ones show nothing.
+  const signature = $derived(signatureFor($activeRepoPath, commit.oid));
+  const sigTone = $derived(
+    $signature?.status === "good"
+      ? "good"
+      : $signature?.status === "bad" || $signature?.status === "revoked"
+        ? "bad"
+        : "warn",
+  );
+  const SIG_TEXT: Record<string, string> = {
+    good: "Verified signature",
+    untrusted: "Good signature, key not trusted",
+    expired: "Expired signature",
+    expired_key: "Signed with an expired key",
+    revoked: "Signed with a revoked key",
+    unknown_key: "Signed, but the key could not be checked",
+    bad: "Bad signature",
+  };
+  const sigTitle = $derived(
+    $signature
+      ? [SIG_TEXT[$signature.status] ?? "Signed", $signature.signer, $signature.key && `key ${$signature.key}`]
+          .filter(Boolean)
+          .join(" — ")
+      : "",
+  );
 </script>
 
 <button
@@ -82,6 +110,11 @@
   {/if}
   <span class="summary" title={commit.summary}>{commit.summary}</span>
   <span class="spacer"></span>
+  {#if $signature}
+    <span class="signature sig-{sigTone}" title={sigTitle} aria-label={sigTitle}>
+      {#if sigTone === "good"}<ShieldCheck size={12} />{:else if sigTone === "bad"}<ShieldX size={12} />{:else}<ShieldAlert size={12} />{/if}
+    </span>
+  {/if}
   {#if isUnpushed}
     <span class="unpushed" title="Not pushed to remote">
       <ArrowUp size={11} />
@@ -182,6 +215,15 @@
     background: color-mix(in srgb, var(--color-lane-2) 20%, transparent);
     color: var(--color-lane-2);
   }
+
+  .signature {
+    display: inline-flex;
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+  .sig-good { color: var(--color-diff-add-text); }
+  .sig-warn { color: var(--color-lane-2); }
+  .sig-bad { color: var(--color-diff-del-text); }
 
   .summary {
     flex: 1;

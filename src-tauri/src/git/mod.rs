@@ -29,3 +29,5 @@ pub mod worktrees;
 pub mod repo_state;
 // Diff viewer: partial (hunk/line) staging
 pub mod hunks;
+// Commit signature verification (graph badge)
+pub mod signatures;
