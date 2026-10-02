@@ -22,6 +22,7 @@ const defaults: AppSettings = {
   external_diff_tool: null,
   external_merge_tool: null,
   keybinding_overrides: {},
+  staging_tree_view: false,
 };
 
 export const settings = writable<AppSettings>({ ...defaults });

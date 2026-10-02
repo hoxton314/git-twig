@@ -14,6 +14,10 @@ import type {
   AppSettings,
   GitConfig,
   StashEntry,
+  HeadCommitInfo,
+  AuthorInfo,
+  IgnoreKind,
+  IgnoreResult,
 } from "./types/git";
 import type {
   GitHubUser,
@@ -395,4 +399,48 @@ export function githubListBranches(
   repo: string,
 ): Promise<string[]> {
   return invoke<string[]>("github_list_branches", { owner, repo });
+}
+
+// ── Staging panel: commit helpers & file actions ─────────────────────
+
+export function createCommitWithOptions(
+  path: string,
+  message: string,
+  amend: boolean,
+  signoff: boolean,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("create_commit_with_options", { path, message, amend, signoff });
+}
+
+export function getHeadCommitInfo(path: string): Promise<HeadCommitInfo> {
+  return invoke<HeadCommitInfo>("get_head_commit_info", { path });
+}
+
+export function getRecentAuthors(path: string, maxCommits?: number): Promise<AuthorInfo[]> {
+  return invoke<AuthorInfo[]>("get_recent_authors", { path, maxCommits: maxCommits ?? null });
+}
+
+export function getCommitTemplate(path: string): Promise<string | null> {
+  return invoke<string | null>("get_commit_template", { path });
+}
+
+export function openRepoFile(path: string, file: string): Promise<void> {
+  return invoke<void>("open_repo_file", { path, file });
+}
+
+export function revealRepoFile(path: string, file: string): Promise<void> {
+  return invoke<void>("reveal_repo_file", { path, file });
+}
+
+export function addToGitignore(path: string, file: string, kind: IgnoreKind): Promise<IgnoreResult> {
+  return invoke<IgnoreResult>("add_to_gitignore", { path, file, kind });
+}
+
+export function openExternalDiff(
+  path: string,
+  file: string,
+  staged: boolean,
+  tool: string | null,
+): Promise<void> {
+  return invoke<void>("open_external_diff", { path, file, staged, tool });
 }

@@ -60,6 +60,11 @@ pub struct AppSettings {
     /// is neither sent to the webview nor written back to disk.
     #[serde(default, rename = "github_token", skip_serializing)]
     pub legacy_github_token: Option<String>,
+
+    // ── Staging panel ───────────────────────────────────────────────
+    /// Show the staged/unstaged file lists as a folder tree instead of flat.
+    #[serde(default)]
+    pub staging_tree_view: bool,
 }
 
 fn default_true() -> bool {
@@ -111,6 +116,7 @@ impl Default for AppSettings {
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
+            staging_tree_view: false,
         }
     }
 }

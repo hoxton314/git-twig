@@ -144,6 +144,8 @@ export interface AppSettings {
   external_merge_tool: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
+  // Staging panel
+  staging_tree_view: boolean;
 }
 
 // ── Git Config ───────────────────────────────────────────────────
@@ -179,4 +181,29 @@ export const LANE_COLORS = [
 
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
+}
+
+// ── Staging panel: commit helpers & file actions ─────────────────────
+
+export interface HeadCommitInfo {
+  oid: string;
+  /** Full commit message (summary + body). */
+  message: string;
+  /** HEAD is already contained in a remote-tracking branch. */
+  pushed: boolean;
+  pushed_to: string | null;
+}
+
+export interface AuthorInfo {
+  name: string;
+  email: string;
+  count: number;
+}
+
+export type IgnoreKind = "path" | "extension" | "folder";
+
+export interface IgnoreResult {
+  pattern: string;
+  already_present: boolean;
+  tracked: boolean;
 }

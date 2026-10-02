@@ -10,3 +10,6 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Staging panel: commit helpers & file actions
+pub mod commit_tools;
+pub mod file_ops;
