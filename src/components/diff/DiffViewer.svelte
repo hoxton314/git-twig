@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { searchResult } from "../../lib/stores/graphSearch";
   import { onMount, tick } from "svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import {
@@ -222,9 +223,12 @@
   }
 
   function parentOidOf(oid: string): string | null {
-    const g = $commitGraph;
-    const entry = g?.entries.find((e) => e.commit.oid === oid);
-    return entry && entry.commit.parent_oids.length > 0 ? entry.commit.parent_oids[0] : null;
+    // Commits picked from search/filter results may be beyond the loaded
+    // graph rows, so fall back to the search matches.
+    const commit =
+      $commitGraph?.entries.find((e) => e.commit.oid === oid)?.commit ??
+      $searchResult?.matches.find((m) => m.commit.oid === oid)?.commit;
+    return commit && commit.parent_oids.length > 0 ? commit.parent_oids[0] : null;
   }
 
   async function loadImageBlobs(f: DiffFile) {

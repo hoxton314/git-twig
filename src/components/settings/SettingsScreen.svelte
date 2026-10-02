@@ -16,7 +16,7 @@
     { id: "appearance", label: "Appearance" },
     { id: "editor", label: "Editor & Diff" },
     { id: "git", label: "Git Configuration" },
-    { id: "github", label: "GitHub" },
+    { id: "github", label: "Hosting" },
     { id: "keybindings", label: "Keybindings" },
     { id: "about", label: "About & Updates" },
   ];

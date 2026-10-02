@@ -37,6 +37,7 @@
   import BranchNameDialog from "./BranchNameDialog.svelte";
   import SetUpstreamDialog from "./SetUpstreamDialog.svelte";
   import CompareDialog from "./CompareDialog.svelte";
+  import CiBadge from "../github/CiBadge.svelte";
   import { shortcutLabels, withShortcut } from "../../lib/keybindings";
   import { trackOperation } from "../../lib/stores/operations";
 
@@ -666,6 +667,10 @@
       <span class="dot"></span>
     {/if}
     <span class="branch-name">{label}</span>
+    {#if !branch.is_remote && branch.upstream}
+      <!-- Only pushed branches can have CI; keeps API calls to tracked branches. -->
+      <CiBadge sha={branch.oid} remote={allRemote.find((r) => r.name === branch.upstream)?.remote_name ?? null} size={10} />
+    {/if}
     {#if branch.ahead > 0 || branch.behind > 0}
       <span class="ahead-behind">
         {#if branch.ahead > 0}
