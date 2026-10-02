@@ -398,15 +398,24 @@ pub async fn ci_status(
 
 // ── OAuth device flow ───────────────────────────────────────────────
 
-/// Client ID of the GitHub OAuth App used for "Sign in with GitHub".
+/// Client ID of the GitHub OAuth App used for "Sign in with GitHub", baked
+/// in at build time from `TWIG_GITHUB_OAUTH_CLIENT_ID` (release builds get
+/// it from the repository variable of the same name).
 ///
-/// TODO(maintainer): register an OAuth App at
-/// https://github.com/settings/applications/new (any homepage/callback
-/// URL works), tick "Enable Device Flow", and paste its Client ID here.
-/// The device flow needs no client secret. While this is empty the
-/// sign-in button is hidden and only the personal-access-token flow is
-/// offered.
-pub const GITHUB_OAUTH_CLIENT_ID: &str = "";
+/// Register an OAuth App at https://github.com/settings/applications/new
+/// (any homepage/callback URL works) and tick "Enable Device Flow". The
+/// device flow needs no client secret, and a client ID is not a secret.
+/// While this is empty the sign-in button is hidden and only the
+/// personal-access-token flow is offered.
+const GITHUB_OAUTH_CLIENT_ID_RAW: &str = match option_env!("TWIG_GITHUB_OAUTH_CLIENT_ID") {
+    Some(id) => id,
+    None => "",
+};
+
+/// The configured OAuth client ID (`""` when this build has none).
+pub fn github_oauth_client_id() -> &'static str {
+    GITHUB_OAUTH_CLIENT_ID_RAW.trim()
+}
 
 /// Scopes requested by the device flow (private repos + org membership).
 pub const OAUTH_SCOPES: &str = "repo read:org";
@@ -470,7 +479,7 @@ pub async fn request_device_code(client: &Client, ep: &GitHubEndpoint) -> Result
     let resp = client
         .post(format!("{}/login/device/code", ep.web_base))
         .header("Accept", "application/json")
-        .form(&[("client_id", GITHUB_OAUTH_CLIENT_ID), ("scope", OAUTH_SCOPES)])
+        .form(&[("client_id", github_oauth_client_id()), ("scope", OAUTH_SCOPES)])
         .send()
         .await?;
     let resp = check_response(resp).await?;
@@ -492,7 +501,7 @@ pub async fn poll_device_token(
         .post(format!("{}/login/oauth/access_token", ep.web_base))
         .header("Accept", "application/json")
         .form(&[
-            ("client_id", GITHUB_OAUTH_CLIENT_ID),
+            ("client_id", github_oauth_client_id()),
             ("device_code", device_code),
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ])
@@ -706,5 +715,15 @@ mod tests {
         let ci = ci_status(&client, &ep, &token, owner, repo, &sha).await.unwrap();
         assert_ne!(ci.state, "none", "{ci:?}");
         assert!(ci.checks.iter().any(|c| c.name.contains("check")), "{ci:?}");
+    }
+
+    #[test]
+    fn oauth_client_id_comes_from_build_env() {
+        let expected = option_env!("TWIG_GITHUB_OAUTH_CLIENT_ID").map(str::trim).unwrap_or("");
+        assert_eq!(github_oauth_client_id(), expected);
+        assert_eq!(github_oauth_client_id(), github_oauth_client_id().trim());
+        if let Ok(want) = std::env::var("TWIG_EXPECT_OAUTH_CLIENT_ID") {
+            assert_eq!(github_oauth_client_id(), want);
+        }
     }
 }

@@ -9,12 +9,14 @@ Order within a release is rough priority.
 
 ## v0.3.x — Stabilize
 
-- [ ] Hands-on QA pass over every 0.3 feature; fix what breaks. Highest risk: interactive rebase,
+- [x] Hands-on QA pass over every 0.3 feature; fix what breaks. Highest risk: interactive rebase,
   line staging, conflict resolution, history pagination.
 - [ ] Verify hosting integrations against live services: pull requests, CI status, GitLab, Gitea.
+  (GitHub verified by an opt-in live test; GitLab and Gitea still need accounts.)
 - [x] CI on every push and pull request (type check, build, clippy, tests) via `.github/workflows/ci.yml`.
 - [ ] Settle open decisions: ~~whether whitespace-only changes are hidden by default~~ (shown, like git); register the
-  OAuth app (`GITHUB_OAUTH_CLIENT_ID`) to enable "Sign in with GitHub".
+  OAuth app to enable "Sign in with GitHub" (the build reads `TWIG_GITHUB_OAUTH_CLIENT_ID`;
+  the app itself still needs registering).
 
 ## v0.4 — Foundations and everyday gaps
 

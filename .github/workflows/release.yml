@@ -58,6 +58,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_KEY_PASSWORD }}
+          # Public OAuth App client ID for "Sign in with GitHub" (device flow).
+          # A repository *variable*, not a secret; unset = sign-in hidden.
+          TWIG_GITHUB_OAUTH_CLIENT_ID: ${{ vars.TWIG_GITHUB_OAUTH_CLIENT_ID }}
         with:
           tagName: v__VERSION__
           releaseName: 'Twig v__VERSION__'
