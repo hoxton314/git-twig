@@ -31,3 +31,5 @@ pub mod repo_state;
 pub mod hunks;
 // Commit signature verification (graph badge)
 pub mod signatures;
+#[cfg(test)]
+mod bench;
