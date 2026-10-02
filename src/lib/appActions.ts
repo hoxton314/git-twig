@@ -98,3 +98,17 @@ export async function openRepoInEditor(repoPath: string, file: string | null = n
     toastError("Could not open editor", err);
   }
 }
+
+/**
+ * Open paths from the command line as tabs (a path inside a repository opens
+ * that repository), switching to the last one. Errors are reported per path.
+ */
+export async function openPathsAsTabs(paths: string[]): Promise<void> {
+  for (const p of paths) {
+    try {
+      addRepo(await tauri.openRepo(p));
+    } catch (err) {
+      toastError(`Could not open ${p}`, err);
+    }
+  }
+}

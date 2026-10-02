@@ -128,3 +128,15 @@ export function openInTerminal(path: string): Promise<void> {
 export function openInEditor(path: string, file: string | null = null): Promise<void> {
   return invoke("open_in_editor", { path, file });
 }
+
+// ── Command line (`twig [path…]`) ───────────────────────────────────
+
+/** Drain queued command-line paths (startup args and forwarded launches). */
+export function takePendingPaths(): Promise<string[]> {
+  return invoke<string[]>("take_pending_paths");
+}
+
+/** Ping when a later `twig <path>` queued paths; call `takePendingPaths`. */
+export function onOpenPaths(handler: () => void): Promise<UnlistenFn> {
+  return listen("open-paths", () => handler());
+}

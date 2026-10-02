@@ -30,6 +30,7 @@
   import {
     openRepoWithDialog,
     openRepoInTerminal,
+    openPathsAsTabs,
     openRepoInEditor,
     openSettingsFolder,
     exportSettingsToFile,
@@ -71,7 +72,21 @@
 
   onMount(() => {
     // Settings first so restore honors "restore tabs on startup".
-    loadSettings().then(() => restoreSession(get(settings).restore_tabs_on_startup));
+    // Command-line paths (startup args and later `twig <path>` launches) are
+    // queued in Rust and only drained after the session is restored, so they
+    // open last and end up active, and none are lost while loading.
+    const drainPaths = () => tauri.takePendingPaths().then(openPathsAsTabs);
+    const stopOpenPaths = loadSettings()
+      .then(() => restoreSession(get(settings).restore_tabs_on_startup))
+      .then(() => tauri.onOpenPaths(() => void drainPaths()))
+      .then(async (unlisten) => {
+        await drainPaths();
+        return unlisten;
+      })
+      .catch((err) => {
+        console.error("command-line paths:", err);
+        return () => {};
+      });
     loadRepoHistory();
     const stopAutoFetch = initAutoFetch();
     installKeybindings();
@@ -224,6 +239,7 @@
       unlisten.then((fn) => fn());
       unlistenClose.then((fn) => fn());
       stopAutoFetch();
+      stopOpenPaths.then((unlisten) => unlisten());
       stopDrag?.();
     };
   });
