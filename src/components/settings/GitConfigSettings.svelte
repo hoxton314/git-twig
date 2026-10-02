@@ -10,7 +10,8 @@
   let fetchPrune = $state(false);
   let gpgSign = $state(false);
   let signingKey = $state("");
-  let gpgFormat = $state<"openpgp" | "ssh">("openpgp");
+  /** "openpgp" | "ssh", or another git value (e.g. "x509") kept unchanged. */
+  let gpgFormat = $state("openpgp");
   let keys = $state<SigningKey[]>([]);
   let keysLoading = $state(false);
   let testing = $state(false);
@@ -29,7 +30,7 @@
       fetchPrune = cfg.fetch_prune;
       gpgSign = cfg.gpg_sign;
       signingKey = cfg.signing_key;
-      gpgFormat = cfg.gpg_format === "ssh" ? "ssh" : "openpgp";
+      gpgFormat = cfg.gpg_format || "openpgp";
       lfsInstalled = cfg.lfs_installed;
     } catch (e) {
       // Don't show (and later save) placeholder values over the real config.
@@ -43,6 +44,10 @@
   $effect(() => {
     if (loading || !gpgSign) return;
     const format = gpgFormat;
+    if (format !== "openpgp" && format !== "ssh") {
+      keys = [];
+      return;
+    }
     let cancelled = false;
     keysLoading = true;
     tauri
@@ -61,7 +66,12 @@
       if (saveTimeout) {
         clearTimeout(saveTimeout);
         saveTimeout = null;
-        await saveNow();
+        void saveNow();
+      }
+      await savePromise;
+      if (saveError) {
+        toast("error", `Settings could not be saved: ${saveError}`, { title: "Commit signing" });
+        return;
       }
       const res = await tauri.testSigning();
       toast(res.success ? "success" : "error", res.message, { title: "Commit signing" });
@@ -74,8 +84,17 @@
 
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  async function saveNow() {
+  /** The latest save (awaited by "Test signing"). */
+  let savePromise: Promise<void> = Promise.resolve();
+
+  function saveNow(): Promise<void> {
+    savePromise = savePromise.then(doSave);
+    return savePromise;
+  }
+
+  async function doSave() {
     saving = true;
+    saveError = null;
     try {
       const config: GitConfig = {
         user_name: userName,
@@ -230,13 +249,16 @@
               aria-label="Signing format"
               value={gpgFormat}
               onchange={(e) => {
-                gpgFormat = e.currentTarget.value === "ssh" ? "ssh" : "openpgp";
+                gpgFormat = e.currentTarget.value;
                 signingKey = "";
                 scheduleGitConfigSave();
               }}
             >
               <option value="openpgp">GPG (OpenPGP)</option>
               <option value="ssh">SSH key</option>
+              {#if gpgFormat !== "openpgp" && gpgFormat !== "ssh"}
+                <option value={gpgFormat}>{gpgFormat === "x509" ? "X.509 (gpgsm)" : gpgFormat}</option>
+              {/if}
             </select>
           </div>
         </div>

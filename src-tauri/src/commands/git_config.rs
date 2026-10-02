@@ -12,7 +12,7 @@ pub struct GitConfig {
     pub fetch_prune: bool,
     pub gpg_sign: bool,
     pub signing_key: String,
-    /// `gpg.format`: "openpgp" (default) or "ssh".
+    /// `gpg.format`: "openpgp" (default), "ssh" or "x509".
     pub gpg_format: String,
     pub lfs_installed: bool,
 }
@@ -73,6 +73,20 @@ async fn git_config_set(key: &str, value: &str) -> Result<(), TwigError> {
         return Err(TwigError::GitCli(format!(
             "git config --global {key} failed: {stderr}"
         )));
+    }
+    Ok(())
+}
+
+async fn git_config_unset(key: &str) -> Result<(), TwigError> {
+    let output = Command::new("git")
+        .args(["config", "--global", "--unset-all", "--", key])
+        .output()
+        .await
+        .map_err(|e| TwigError::GitCli(format!("Failed to execute git config: {e}")))?;
+    // Exit code 5: the key was not set — nothing to do.
+    if !output.status.success() && output.status.code() != Some(5) {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(TwigError::GitCli(format!("git config --global --unset {key} failed: {stderr}")));
     }
     Ok(())
 }
@@ -153,17 +167,22 @@ pub async fn set_git_config(config: GitConfig) -> Result<(), TwigError> {
     git_config_set_bool("fetch.prune", config.fetch_prune).await?;
     git_config_set_bool("commit.gpgsign", config.gpg_sign).await?;
 
-    // Only touch gpg.format when it changed (an unset value means openpgp).
+    // Only touch gpg.format when it changed (an unset value means openpgp);
+    // values Twig doesn't offer are passed through untouched.
     let format = config.gpg_format.trim();
-    if matches!(format, "openpgp" | "ssh") {
+    if matches!(format, "openpgp" | "ssh" | "x509") {
         let current = git_config_get("gpg.format").await;
         let current = if current.is_empty() { "openpgp" } else { current.as_str() };
         if current != format {
             git_config_set("gpg.format", format).await?;
         }
     }
+    // An emptied key is unset (e.g. after switching format), so git doesn't
+    // keep signing with a key of the other kind.
     if !config.signing_key.is_empty() {
         git_config_set("user.signingkey", &config.signing_key).await?;
+    } else if !git_config_get("user.signingkey").await.is_empty() {
+        git_config_unset("user.signingkey").await?;
     }
 
     Ok(())

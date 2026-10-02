@@ -105,12 +105,16 @@ async fn output_of(program: &str, args: &[&str]) -> Option<String> {
 pub async fn list_signing_keys(format: String) -> Result<Vec<SigningKey>, TwigError> {
     match format.as_str() {
         "openpgp" => {
-            let gpg = run_git(&std::env::temp_dir(), &["config", "--global", "--get", "gpg.program"])
-                .await
-                .ok()
-                .map(|o| o.stdout.trim().to_string())
-                .filter(|p| !p.is_empty())
-                .unwrap_or_else(|| "gpg".to_string());
+            // The program git signs with: gpg.openpgp.program, then gpg.program.
+            let mut gpg = "gpg".to_string();
+            for key in ["gpg.openpgp.program", "gpg.program"] {
+                let out = run_git(&std::env::temp_dir(), &["config", "--global", "--get", key]).await?;
+                let value = out.stdout.trim();
+                if out.success && !value.is_empty() {
+                    gpg = value.to_string();
+                    break;
+                }
+            }
             let out = output_of(&gpg, &["--list-secret-keys", "--with-colons"]).await.unwrap_or_default();
             Ok(parse_gpg_secret_keys(&out))
         }

@@ -67,8 +67,8 @@ export interface GitConfig {
   fetch_prune: boolean;
   gpg_sign: boolean;
   signing_key: string;
-  /** `gpg.format`: OpenPGP (gpg) or SSH signing. */
-  gpg_format: "openpgp" | "ssh";
+  /** `gpg.format`: "openpgp" (gpg), "ssh", or "x509" (gpgsm; kept as-is). */
+  gpg_format: string;
   lfs_installed: boolean;
 }
 
