@@ -170,6 +170,7 @@ pub fn run() {
             commands::launch::open_in_terminal,
             commands::signing::list_signing_keys,
             commands::signing::test_signing,
+            commands::signing::commit_signatures,
             commands::launch::open_in_editor,
             commands::app_shell::open_settings_folder,
             commands::app_shell::export_settings,

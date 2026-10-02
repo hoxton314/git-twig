@@ -91,3 +91,11 @@ export interface LocatedCommit {
   index: number | null;
   tips: string;
 }
+
+/** Signature verification result for one signed commit (`commit_signatures`). */
+export interface SignatureInfo {
+  oid: string;
+  status: "good" | "bad" | "untrusted" | "expired" | "expired_key" | "revoked" | "unknown_key" | "unsigned";
+  signer: string | null;
+  key: string | null;
+}

@@ -1,6 +1,7 @@
 /** Commit graph paging, search and locate. */
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  SignatureInfo,
   CommitGraph,
   CommitSearchResult,
   GraphOptions,
@@ -56,4 +57,9 @@ export function locateCommit(
     rev,
     options: options ?? null,
   });
+}
+
+/** Verify signatures of `oids`; unsigned commits are left out of the result. */
+export function commitSignatures(path: string, oids: string[]): Promise<SignatureInfo[]> {
+  return invoke<SignatureInfo[]>("commit_signatures", { path, oids });
 }
