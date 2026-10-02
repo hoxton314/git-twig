@@ -23,3 +23,5 @@ pub mod file_history;
 pub mod stash_extra;
 pub mod submodules;
 pub mod worktrees;
+// App shell: repo operation state for the status bar
+pub mod repo_state;

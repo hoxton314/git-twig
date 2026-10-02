@@ -37,6 +37,8 @@
   import BranchNameDialog from "./BranchNameDialog.svelte";
   import SetUpstreamDialog from "./SetUpstreamDialog.svelte";
   import CompareDialog from "./CompareDialog.svelte";
+  import { shortcutLabels, withShortcut } from "../../lib/keybindings";
+  import { trackOperation } from "../../lib/stores/operations";
 
   const repoPath = $derived($activeRepoPath);
   const allBranches = $derived($branches);
@@ -639,7 +641,11 @@
   }
 
   async function handleFetch() {
-    const result = await runOp("Fetch Failed", (p) => tauri.fetchAll(p), { success: null });
+    const result = await runOp(
+      "Fetch Failed",
+      (p) => trackOperation(p, "fetch", "Fetching…", () => tauri.fetchAll(p)),
+      { success: null },
+    );
     if (result?.success) toast("success", "Fetched all remotes", { duration: 2000 });
   }
 </script>
@@ -764,7 +770,7 @@
       <button class="icon-btn" onclick={() => remotesDialogOpen.set(true)} title="Manage remotes" aria-label="Manage remotes">
         <Server size={14} />
       </button>
-      <button class="icon-btn" onclick={handleFetch} title="Fetch all" aria-label="Fetch all" disabled={loading}>
+      <button class="icon-btn" onclick={handleFetch} title={withShortcut("Fetch all", $shortcutLabels["fetch"])} aria-label="Fetch all" disabled={loading}>
         <RefreshCw size={14} class={loading ? "spin" : ""} />
       </button>
     </div>

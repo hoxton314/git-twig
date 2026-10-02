@@ -2,6 +2,7 @@ import { writable, derived, get } from "svelte/store";
 import type { RepoInfo } from "../types/git";
 import * as tauri from "../tauri";
 import { sidebarWidth, stagingWidth, diffPanelRatio, currentView } from "./ui";
+import { recordRecentRepo } from "./repoHistory";
 
 /** All open repos, keyed by path. */
 export const openRepos = writable<Map<string, RepoInfo>>(new Map());
@@ -25,6 +26,24 @@ export function addRepo(info: RepoInfo) {
   // Opening a repo from the Settings screen (e.g. via the tab "+" menu)
   // must leave Settings, otherwise the new tab is active but hidden.
   currentView.set("repos");
+  recordRecentRepo(info);
+}
+
+/**
+ * Move an open tab to `toIndex` (clamped). Tab order is the Map's insertion
+ * order, which the session persists, so the new order survives restarts.
+ */
+export function moveRepo(path: string, toIndex: number) {
+  openRepos.update((m) => {
+    const entries = [...m.entries()];
+    const from = entries.findIndex(([p]) => p === path);
+    if (from === -1) return m;
+    const to = Math.max(0, Math.min(entries.length - 1, toIndex));
+    if (from === to) return m;
+    const [moved] = entries.splice(from, 1);
+    entries.splice(to, 0, moved);
+    return new Map(entries);
+  });
 }
 
 /** Remove a repo tab. Switches to the nearest remaining tab. */

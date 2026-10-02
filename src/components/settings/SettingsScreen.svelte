@@ -6,9 +6,10 @@
   import GitConfigSettings from "./GitConfigSettings.svelte";
   import KeybindingsSettings from "./KeybindingsSettings.svelte";
   import GitHubSettings from "./GitHubSettings.svelte";
+  import AboutSettings from "./AboutSettings.svelte";
   import { currentView } from "../../lib/stores/ui";
 
-  type Section = "general" | "appearance" | "editor" | "git" | "github" | "keybindings";
+  type Section = "general" | "appearance" | "editor" | "git" | "github" | "keybindings" | "about";
 
   const sections: { id: Section; label: string }[] = [
     { id: "general", label: "General" },
@@ -17,6 +18,7 @@
     { id: "git", label: "Git Configuration" },
     { id: "github", label: "GitHub" },
     { id: "keybindings", label: "Keybindings" },
+    { id: "about", label: "About & Updates" },
   ];
 
   let activeSection = $state<Section>("general");
@@ -27,7 +29,7 @@
 </script>
 
 <div class="settings-screen">
-  <nav class="settings-nav">
+  <nav class="settings-nav" aria-label="Settings sections">
     <button class="back-btn" onclick={goBack}>
       <ArrowLeft size={16} />
       <span>Back</span>
@@ -40,6 +42,7 @@
         <button
           class="nav-item"
           class:active={activeSection === section.id}
+          aria-current={activeSection === section.id ? "page" : undefined}
           onclick={() => (activeSection = section.id)}
         >
           {section.label}
@@ -61,6 +64,8 @@
       <GitHubSettings />
     {:else if activeSection === "keybindings"}
       <KeybindingsSettings />
+    {:else if activeSection === "about"}
+      <AboutSettings />
     {/if}
   </div>
 </div>

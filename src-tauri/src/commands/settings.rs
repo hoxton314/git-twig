@@ -88,6 +88,18 @@ pub struct AppSettings {
     pub graph_hide_remotes: bool,
     #[serde(default)]
     pub graph_current_branch_only: bool,
+    // ── App shell: fonts & updater ──────────────────────────────────
+    /// Interface font family (CSS font-family list); empty = system UI font.
+    #[serde(default)]
+    pub ui_font_family: String,
+    /// Monospace font family for code/diffs/hashes; empty = system monospace.
+    #[serde(default)]
+    pub mono_font_family: String,
+    #[serde(default = "default_true")]
+    pub check_updates_on_startup: bool,
+    /// Release version the user chose to skip in the update prompt.
+    #[serde(default)]
+    pub skipped_update_version: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -167,6 +179,10 @@ impl Default for AppSettings {
             graph_row_density: default_graph_row_density(),
             graph_hide_remotes: false,
             graph_current_branch_only: false,
+            ui_font_family: String::new(),
+            mono_font_family: String::new(),
+            check_updates_on_startup: true,
+            skipped_update_version: None,
         }
     }
 }

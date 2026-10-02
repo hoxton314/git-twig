@@ -13,13 +13,26 @@
   import OperationHost from "../conflicts/OperationHost.svelte";
   import FileViewHost from "../history/FileViewHost.svelte";
   import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
-  import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
+  import StatusBar from "./StatusBar.svelte";
+  import CommandPalette from "./CommandPalette.svelte";
+  import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo, moveRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
   import { loadSettings, settings, flushSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
   import { installKeybindings, onAction } from "../../lib/keybindings";
-  import { open, message as dialogMessage } from "@tauri-apps/plugin-dialog";
+  import { togglePalette } from "../../lib/palette";
+  import { installBuiltinPaletteProviders } from "../../lib/paletteProviders";
+  import { loadRepoHistory, toggleFavoriteRepo, isFavoriteRepo } from "../../lib/stores/repoHistory";
+  import { trackOperation } from "../../lib/stores/operations";
+  import { toast, toastError } from "../../lib/stores/toasts";
+  import { updater, checkForUpdates, ensureUpdaterSupport } from "../../lib/stores/updater";
+  import {
+    openRepoWithDialog,
+    openSettingsFolder,
+    exportSettingsToFile,
+    importSettingsFromFile,
+  } from "../../lib/appActions";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getVersion } from "@tauri-apps/api/app";
   import * as tauri from "../../lib/tauri";
@@ -29,28 +42,37 @@
   let showTitleBar = $state(false);
   let appVersion = $state("");
 
-  async function showError(title: string, err: unknown) {
-    await dialogMessage(String(err), { title, kind: "error" });
+  /** Move the active tab one position left/right. */
+  function shiftActiveTab(delta: number) {
+    const path = get(activeRepoPath);
+    if (!path) return;
+    const keys = [...get(openRepos).keys()];
+    const idx = keys.indexOf(path);
+    if (idx !== -1) moveRepo(path, idx + delta);
+  }
+
+  async function manualUpdateCheck() {
+    if (!(await ensureUpdaterSupport())) {
+      toast("info", "Updates are managed by your package manager.");
+      return;
+    }
+    await checkForUpdates(true);
+    const u = get(updater);
+    if (u.status === "up-to-date") toast("success", "Twig is up to date.");
+    else if (u.status === "error") toastError("Update check failed", u.error);
   }
 
   onMount(() => {
     // Settings first so restore honors "restore tabs on startup".
     loadSettings().then(() => restoreSession(get(settings).restore_tabs_on_startup));
+    loadRepoHistory();
     const stopAutoFetch = initAutoFetch();
     installKeybindings();
+    const uninstallPalette = installBuiltinPaletteProviders();
 
     // ── Keybinding action handlers ─────────────────────────────────
     const unsubs = [
-      onAction("open_repo", async () => {
-        const selected = await open({ directory: true, multiple: false, title: "Open Git Repository" });
-        if (!selected) return;
-        try {
-          const info = await tauri.openRepo(selected as string);
-          addRepo(info);
-        } catch (err) {
-          await showError("Open Repository Failed", err);
-        }
-      }),
+      onAction("open_repo", openRepoWithDialog),
       onAction("close_tab", () => {
         const path = get(activeRepoPath);
         if (path) {
@@ -91,27 +113,25 @@
         const path = get(activeRepoPath);
         if (!path) return;
         try {
-          const result = await tauri.fetchAll(path);
+          const result = await trackOperation(path, "fetch", "Fetching…", () => tauri.fetchAll(path));
           refreshAll(path);
-          if (!result.success) await showError("Fetch Failed", result.message);
+          if (!result.success) toastError("Fetch failed", result.message);
         } catch (err) {
-          await showError("Fetch Failed", err);
+          toastError("Fetch failed", err);
         }
       }),
       onAction("pull", async () => {
         const path = get(activeRepoPath);
         if (!path) return;
         try {
-          const result = await tauri.pull(path);
+          const result = await trackOperation(path, "pull", "Pulling…", () => tauri.pull(path));
           refreshAll(path);
-          if (!result.success || result.message.includes("conflicts")) {
-            await dialogMessage(result.message, {
-              title: result.success ? "Pull — Stash Conflicts" : "Pull Failed",
-              kind: result.success ? "warning" : "error",
-            });
+          if (!result.success) toastError("Pull failed", result.message);
+          else if (result.message.includes("conflicts")) {
+            toast("warning", result.message, { title: "Pull — stash conflicts", duration: 0 });
           }
         } catch (err) {
-          await showError("Pull Failed", err);
+          toastError("Pull failed", err);
         }
       }),
       onAction("push", async () => {
@@ -122,14 +142,44 @@
           const branch = info.head_name ?? "HEAD";
           // Same behavior as the Push button in StagingArea: set upstream so
           // first pushes of new branches work.
-          const result = await tauri.pushBranch(path, branch, undefined, true);
+          const result = await trackOperation(path, "push", `Pushing ${branch}…`, () =>
+            tauri.pushBranch(path, branch, undefined, true),
+          );
           refreshAll(path);
-          if (!result.success) await showError("Push Failed", result.message);
+          if (!result.success) toastError("Push failed", result.message);
         } catch (err) {
-          await showError("Push Failed", err);
+          toastError("Push failed", err);
         }
       }),
       // commit is handled inside StagingArea via the textarea exception in keybindings.ts
+
+      // ── App shell ──
+      onAction("command_palette", togglePalette),
+      onAction("move_tab_left", () => shiftActiveTab(-1)),
+      onAction("move_tab_right", () => shiftActiveTab(1)),
+      onAction("toggle_favorite_repo", () => {
+        const info = get(activeRepo);
+        if (!info) return;
+        const pinned = !isFavoriteRepo(info.path);
+        toggleFavoriteRepo(info.path, info.name);
+        toast("info", pinned ? `Pinned ${info.name} to favorites` : `Unpinned ${info.name}`);
+      }),
+      onAction("reveal_repo", () => {
+        const path = get(activeRepoPath);
+        if (path) tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err));
+      }),
+      onAction("copy_repo_path", () => {
+        const path = get(activeRepoPath);
+        if (!path) return;
+        navigator.clipboard
+          .writeText(path)
+          .then(() => toast("success", "Repository path copied"))
+          .catch((err) => toastError("Copy failed", err));
+      }),
+      onAction("check_for_updates", manualUpdateCheck),
+      onAction("open_settings_folder", openSettingsFolder),
+      onAction("export_settings", exportSettingsToFile),
+      onAction("import_settings", importSettingsFromFile),
     ];
 
     tauri.isTilingWm().then((tiling) => {
@@ -151,6 +201,7 @@
 
     return () => {
       unsubs.forEach((fn) => fn());
+      uninstallPalette();
       unlisten.then((fn) => fn());
       unlistenClose.then((fn) => fn());
       stopAutoFetch();
@@ -270,15 +321,17 @@
         <StagingArea />
       </aside>
     </div>
+    <StatusBar version={showTitleBar ? "" : appVersion} />
   {:else}
     <HomeScreen />
   {/if}
 
-  {#if !showTitleBar && appVersion}
+  {#if !showTitleBar && appVersion && (view === "settings" || !repo)}
     <span class="version-badge">v{appVersion}</span>
   {/if}
 
   <OperationHost />
+  <CommandPalette />
   <Toaster />
   <UndoHistory />
   <!-- File history & blame overlay; worktree/submodule actions -->

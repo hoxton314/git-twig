@@ -144,6 +144,11 @@ export interface AppSettings {
   restore_tabs_on_startup: boolean;
   // Appearance
   theme: "dark" | "light";
+  // App shell: fonts & updater
+  ui_font_family: string;
+  mono_font_family: string;
+  check_updates_on_startup: boolean;
+  skipped_update_version: string | null;
   accent_color: string;
   font_size: number;
   diff_font_size: number;
@@ -488,4 +493,41 @@ export interface WorktreeInfo {
   head_short: string | null;
   is_locked: boolean;
   is_prunable: boolean;
+}
+
+// ── App shell (status bar, recent repos) ─────────────────────────────
+
+/** In-progress repository operation reported by git2 `repo.state()`. */
+export type RepoStateKind =
+  | "clean"
+  | "merge"
+  | "revert"
+  | "cherry-pick"
+  | "bisect"
+  | "rebase"
+  | "rebase-interactive"
+  | "rebase-merge"
+  | "apply-mailbox";
+
+export interface RepoStatusSummary {
+  branch: string | null;
+  detached: boolean;
+  unborn: boolean;
+  head_short_oid: string;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  state: RepoStateKind;
+}
+
+export interface RecentRepo {
+  path: string;
+  name: string;
+  /** Unix time in milliseconds. */
+  last_opened: number;
+}
+
+export interface RepoHistory {
+  recent: RecentRepo[];
+  favorites: string[];
 }

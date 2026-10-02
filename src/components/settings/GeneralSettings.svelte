@@ -1,6 +1,8 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { settings, updateSettings } from "../../lib/stores/settings";
+  import { FolderOpen, Download, Upload } from "lucide-svelte";
+  import { openSettingsFolder, exportSettingsToFile, importSettingsFromFile } from "../../lib/appActions";
 
   const s = $derived($settings);
 
@@ -106,6 +108,7 @@
         <label class="toggle">
           <input
             type="checkbox"
+            aria-label="Confirm destructive operations"
             checked={s.confirm_destructive_ops}
             onchange={() => updateSettings({ confirm_destructive_ops: !s.confirm_destructive_ops })}
           />
@@ -123,6 +126,7 @@
         <label class="toggle">
           <input
             type="checkbox"
+            aria-label="Restore tabs on startup"
             checked={s.restore_tabs_on_startup}
             onchange={() => updateSettings({ restore_tabs_on_startup: !s.restore_tabs_on_startup })}
           />
@@ -146,6 +150,36 @@
           />
           <span class="toggle-slider"></span>
         </label>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="group-heading">Settings file</h2>
+  <div class="setting-group">
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Settings folder</span>
+        <span class="label-hint">Where settings.json, session.json and the recent repositories list are stored</span>
+      </div>
+      <div class="setting-control">
+        <button class="btn-secondary" onclick={openSettingsFolder}>
+          <FolderOpen size={12} aria-hidden="true" /> Open folder
+        </button>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Import / export</span>
+        <span class="label-hint">Copy your preferences to another machine. Your GitHub token is never exported.</span>
+      </div>
+      <div class="setting-control path-control">
+        <button class="btn-secondary" onclick={exportSettingsToFile}>
+          <Download size={12} aria-hidden="true" /> Export…
+        </button>
+        <button class="btn-secondary" onclick={importSettingsFromFile}>
+          <Upload size={12} aria-hidden="true" /> Import…
+        </button>
       </div>
     </div>
   </div>
@@ -244,7 +278,19 @@
     width: 90px;
   }
 
+  .group-heading {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    margin: 28px 0 4px;
+  }
+
   .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 5px 12px;
     border: 1px solid var(--color-border);
     border-radius: 4px;

@@ -907,3 +907,41 @@ export function worktreeRemove(
 export function worktreePrune(path: string): Promise<CommandResult> {
   return invoke<CommandResult>("worktree_prune", { path });
 }
+
+// ── App shell (status bar, recent repos, settings import/export) ──────
+
+import type { RepoStatusSummary, RepoHistory } from "./types/git";
+
+export function getRepoStatusSummary(path: string): Promise<RepoStatusSummary> {
+  return invoke<RepoStatusSummary>("get_repo_status_summary", { path });
+}
+
+export function loadRepoHistory(): Promise<RepoHistory> {
+  return invoke<RepoHistory>("load_repo_history");
+}
+
+export function saveRepoHistory(history: RepoHistory): Promise<void> {
+  return invoke<void>("save_repo_history", { history });
+}
+
+/** Whether each path still exists as a directory. */
+export function repoPathsExist(paths: string[]): Promise<boolean[]> {
+  return invoke<boolean[]>("repo_paths_exist", { paths });
+}
+
+export function openInFileManager(path: string): Promise<void> {
+  return invoke<void>("open_in_file_manager", { path });
+}
+
+/** Opens the app-data folder; resolves to its path. */
+export function openSettingsFolder(): Promise<string> {
+  return invoke<string>("open_settings_folder");
+}
+
+export function exportSettings(path: string, settings: AppSettings): Promise<void> {
+  return invoke<void>("export_settings", { path, settings });
+}
+
+export function importSettings(path: string): Promise<AppSettings> {
+  return invoke<AppSettings>("import_settings", { path });
+}
