@@ -117,6 +117,30 @@ export interface RebaseCommit {
   already_upstream: boolean;
 }
 
+/** Code search (`git grep`) options. */
+export interface GrepOptions {
+  pattern: string;
+  regex: boolean;
+  ignore_case: boolean;
+  whole_word: boolean;
+  /** Search this commit instead of the working tree. */
+  rev: string | null;
+  paths: string[];
+  max_results?: number | null;
+}
+
+export interface GrepFile {
+  path: string;
+  matches: { line: number; text: string }[];
+}
+
+export interface GrepResult {
+  files: GrepFile[];
+  total: number;
+  /** The match limit was hit. */
+  truncated: boolean;
+}
+
 /** A bisect in progress. */
 export interface BisectInfo {
   /** "bad" unless custom terms were used (e.g. "new"). */

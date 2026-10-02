@@ -148,6 +148,7 @@ pub fn run() {
             commands::bisect::bisect_start,
             commands::bisect::bisect_mark,
             commands::bisect::bisect_reset,
+            commands::grep::search_code,
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,

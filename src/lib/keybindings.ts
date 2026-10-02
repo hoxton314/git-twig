@@ -51,6 +51,7 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "save_patch_selected",  label: "Save selected commit(s) as patch…",  category: "Commit", defaultShortcut: "" },
   { id: "save_working_patch",   label: "Save working changes as patch…",    category: "Commit", defaultShortcut: "" },
   { id: "apply_patch",          label: "Apply patch file…",                 category: "Commit", defaultShortcut: "" },
+  { id: "search_code",          label: "Search code…",                      category: "Navigation", defaultShortcut: "Ctrl+Shift+G" },
   { id: "bisect_start",         label: "Bisect: start (selected commit is bad)", category: "Commit", defaultShortcut: "" },
   { id: "bisect_good",          label: "Bisect: mark current commit good",  category: "Commit", defaultShortcut: "" },
   { id: "bisect_bad",           label: "Bisect: mark current commit bad",   category: "Commit", defaultShortcut: "" },

@@ -36,6 +36,7 @@
   } from "../../lib/commitActions";
   import { pushTagAction } from "../../lib/tagActions";
   import { markBisect, startBisect } from "../../lib/bisectActions";
+  import { openCodeSearch } from "../../lib/codeSearch";
   import { abortOperation, bisectState, operationState } from "../../lib/stores/operation";
   import {
     applyPatchAction,
@@ -114,6 +115,7 @@
         action: () => savePatchesAction(path, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) }),
       },
       { separator: true },
+      { label: "Search code at this commit…", action: () => openCodeSearch(c.oid, c.short_oid) },
       ...bisectItems(c),
       { separator: true },
       { label: "Apply patch file…", action: () => applyPatchAction(path) },
