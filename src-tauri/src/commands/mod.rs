@@ -1,3 +1,4 @@
+pub mod launch;
 pub mod branches;
 pub mod diff;
 pub mod git_config;

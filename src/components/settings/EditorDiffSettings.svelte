@@ -171,6 +171,40 @@
         />
       </div>
     </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Terminal</span>
+        <span class="label-hint">Command for “Open in terminal”; runs in the repository folder</span>
+      </div>
+      <div class="setting-control">
+        <input
+          type="text"
+          class="text-input"
+          placeholder="Default ($TERMINAL or a found terminal)"
+          aria-label="Terminal command"
+          value={s.terminal_command ?? ""}
+          onchange={(e) => updateSettings({ terminal_command: e.currentTarget.value.trim() || null })}
+        />
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Editor</span>
+        <span class="label-hint">Command for “Open in editor”; {"{path}"} is replaced, otherwise the path is appended</span>
+      </div>
+      <div class="setting-control">
+        <input
+          type="text"
+          class="text-input"
+          placeholder="Default (code, else the system opener)"
+          aria-label="Editor command"
+          value={s.editor_command ?? ""}
+          onchange={(e) => updateSettings({ editor_command: e.currentTarget.value.trim() || null })}
+        />
+      </div>
+    </div>
   </div>
 </div>
 

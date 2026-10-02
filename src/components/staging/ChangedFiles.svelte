@@ -255,6 +255,13 @@
     items.push({ label: "Blame", disabled: !tracked || deleted, action: () => showBlame(file.path) });
     items.push({ separator: true });
     items.push({ label: "Open in default app", disabled: deleted, action: () => openFile(file.path) });
+    items.push({
+      label: "Open in editor",
+      disabled: deleted,
+      action: () => {
+        if (repoPath) tauri.openInEditor(repoPath, file.path).catch((err) => toastError("Could not open editor", err));
+      },
+    });
     items.push({ label: "Reveal in file manager", action: () => revealFile(file.path) });
     items.push({ label: "Open in external diff tool", disabled: !canDiff, action: () => externalDiff(file, area) });
     items.push({ separator: true });

@@ -177,6 +177,14 @@
         const path = get(activeRepoPath);
         if (path) tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err));
       }),
+      onAction("open_terminal", () => {
+        const path = get(activeRepoPath);
+        if (path) tauri.openInTerminal(path).catch((err) => toastError("Could not open terminal", err));
+      }),
+      onAction("open_editor", () => {
+        const path = get(activeRepoPath);
+        if (path) tauri.openInEditor(path).catch((err) => toastError("Could not open editor", err));
+      }),
       onAction("copy_repo_path", () => {
         const path = get(activeRepoPath);
         if (!path) return;

@@ -47,6 +47,10 @@ export interface AppSettings {
   context_lines: number;
   external_diff_tool: string | null;
   external_merge_tool: string | null;
+  /** "Open in terminal" command (null = platform default). */
+  terminal_command: string | null;
+  /** "Open in editor" command; `{path}` is replaced, else appended (null = default). */
+  editor_command: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
   // Staging panel

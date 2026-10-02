@@ -97,6 +97,8 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "move_tab_right",       label: "Move tab right",                  category: "Navigation",  defaultShortcut: "Ctrl+Shift+PageDown" },
   { id: "toggle_favorite_repo", label: "Pin/unpin repository to favorites", category: "Repository", defaultShortcut: "" },
   { id: "reveal_repo",          label: "Open repository folder",          category: "Repository", defaultShortcut: "" },
+  { id: "open_terminal",        label: "Open repository in terminal",     category: "Repository", defaultShortcut: "" },
+  { id: "open_editor",          label: "Open repository in editor",       category: "Repository", defaultShortcut: "" },
   { id: "copy_repo_path",       label: "Copy repository path",            category: "Repository", defaultShortcut: "" },
   { id: "check_for_updates",    label: "Check for updates",               category: "Application", defaultShortcut: "" },
   { id: "open_settings_folder", label: "Open settings folder",            category: "Application", defaultShortcut: "" },
