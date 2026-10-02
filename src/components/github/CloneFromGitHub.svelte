@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Search, Lock, Star, GitFork, Loader2, FolderOpen } from "lucide-svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { untrack } from "svelte";
   import Modal from "../shared/Modal.svelte";
   import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
@@ -37,9 +38,14 @@
       : repos,
   );
 
+  // Only `isOpen` should trigger a load. loadRepos() reads/writes `loading`,
+  // `repos` and `error`; tracking those here would re-run the effect when a
+  // load finishes, looping forever on errors or an empty account.
   $effect(() => {
-    if (isOpen && repos.length === 0) {
-      loadRepos();
+    if (isOpen) {
+      untrack(() => {
+        if (repos.length === 0) loadRepos();
+      });
     }
   });
 
@@ -60,6 +66,7 @@
   }
 
   async function loadMore() {
+    if (loadingMore) return;
     loadingMore = true;
     try {
       const nextPage = page + 1;
@@ -76,8 +83,10 @@
 
   function selectRepo(repo: GitHubRepo) {
     selectedRepo = repo;
-    const baseDir = s.default_repo_dir ?? "";
-    destination = baseDir ? `${baseDir}/${repo.name}` : repo.name;
+    const baseDir = (s.default_repo_dir ?? "").replace(/[\\/]+$/, "");
+    // Without a default directory, leave it empty so the user picks one:
+    // a bare relative name would clone into the app's working directory.
+    destination = baseDir ? `${baseDir}/${repo.name}` : "";
   }
 
   async function pickDestination() {
@@ -94,7 +103,7 @@
   }
 
   async function handleClone() {
-    if (!selectedRepo || !destination.trim()) return;
+    if (!selectedRepo || !destination.trim() || cloning) return;
     cloning = true;
     error = "";
     try {

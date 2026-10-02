@@ -1,6 +1,6 @@
 <script lang="ts">
   import { X, Plus, GitBranch, House, Settings, FolderOpen, GitFork } from "lucide-svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, message } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath, removeRepo, addRepo } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
   import { settings } from "../../lib/stores/settings";
@@ -20,12 +20,20 @@
   let showCreateRepoModal = $state(false);
   let plusBtnEl: HTMLButtonElement | undefined = $state(undefined);
   let menuLeft = $state(0);
+  let menuTop = $state(0);
   let suggestedRepos = $state<RepoInfo[]>([]);
+
+  const MENU_WIDTH = 280;
 
   function toggleMenu() {
     showMenu = !showMenu;
     if (showMenu && plusBtnEl) {
-      menuLeft = plusBtnEl.getBoundingClientRect().left;
+      // Keep the menu on-screen when the "+" button sits near the right edge.
+      const rect = plusBtnEl.getBoundingClientRect();
+      const left = rect.left;
+      // Anchor below the button (the custom title bar may sit above the tabs).
+      menuTop = rect.bottom;
+      menuLeft = Math.max(4, Math.min(left, window.innerWidth - MENU_WIDTH - 4));
       const dir = $settings.default_repo_dir;
       if (dir) {
         tauri.listReposInDir(dir).then((r) => (suggestedRepos = r)).catch(() => (suggestedRepos = []));
@@ -43,7 +51,7 @@
       const info = await tauri.openRepo(selected as string);
       addRepo(info);
     } catch (err) {
-      console.error("Failed to open repo:", err);
+      await message(String(err), { title: "Open Repository Failed", kind: "error" });
     }
   }
 
@@ -53,7 +61,7 @@
       const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
-      console.error("Failed to open repo:", err);
+      await message(String(err), { title: "Open Repository Failed", kind: "error" });
     }
   }
 
@@ -65,6 +73,13 @@
   function handleRepoCreated(info: RepoInfo) {
     addRepo(info);
     $currentView = "repos";
+  }
+
+  function handleMenuKeydown(e: KeyboardEvent) {
+    if (showMenu && e.key === "Escape") {
+      showMenu = false;
+      plusBtnEl?.focus();
+    }
   }
 
   async function handleCloseTab(e: MouseEvent, path: string) {
@@ -88,7 +103,9 @@
   }
 </script>
 
-<div class="tab-bar" data-tauri-drag-region>
+<svelte:window onkeydown={handleMenuKeydown} />
+
+<div class="tab-bar" data-tauri-drag-region role="tablist" aria-label="Open repositories">
   <button
     class="home-btn"
     class:active={homeActive}
@@ -98,13 +115,15 @@
     <House size={15} />
   </button>
 
-  {#each repos as [path, info]}
+  {#each repos as [path, info] (path)}
     <div
       class="tab"
       class:active={active === path}
       onclick={() => handleSelectTab(path)}
-      onkeydown={(e) => e.key === "Enter" && handleSelectTab(path)}
+      onauxclick={(e) => e.button === 1 && handleCloseTab(e, path)}
+      onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), handleSelectTab(path))}
       role="tab"
+      aria-selected={active === path}
       tabindex="0"
       title={path}
     >
@@ -117,6 +136,7 @@
         class="tab-close"
         onclick={(e) => handleCloseTab(e, path)}
         title="Close tab"
+        aria-label="Close {info.name}"
       >
         <X size={12} />
       </button>
@@ -150,7 +170,7 @@
   <div class="tab-menu-backdrop" onclick={() => (showMenu = false)}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="tab-menu" style="left: {menuLeft}px" onclick={(e) => e.stopPropagation()}>
+    <div class="tab-menu" role="menu" tabindex="-1" style="left: {menuLeft}px; top: {menuTop}px; max-width: {MENU_WIDTH}px" onclick={(e) => e.stopPropagation()}>
       {#if suggestedRepos.length > 0}
         <div class="tab-menu-section">Repositories</div>
         <div class="tab-menu-suggestions">

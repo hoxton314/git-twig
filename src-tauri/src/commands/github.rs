@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::PathBuf;
 
+use base64::Engine;
 use git2::Repository;
 use tauri::{Manager, State};
 use tokio::process::Command;
 
-use crate::commands::repo::RepoInfo;
+use crate::commands::repo::{build_repo_info, RepoInfo};
 use crate::commands::settings::AppSettings;
 use crate::error::TwigError;
 use crate::github::{self, GitHubPullRequest, GitHubRemoteInfo, GitHubRepo, GitHubUser, RepoListPage};
@@ -37,7 +38,9 @@ fn get_token(app: &tauri::AppHandle) -> Result<String, TwigError> {
 
 fn build_client() -> Result<reqwest::Client, TwigError> {
     reqwest::Client::builder()
-        .user_agent("Twig/0.1.0")
+        .user_agent(concat!("Twig/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| TwigError::Http(e.to_string()))
 }
@@ -65,6 +68,7 @@ pub async fn github_list_repos(
 
 #[tauri::command]
 pub async fn github_clone_repo(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     clone_url: String,
     destination: String,
@@ -77,9 +81,34 @@ pub async fn github_clone_repo(
             "clone URL and destination must not start with '-'".to_string(),
         ));
     }
+    // A relative destination would resolve against the app's working
+    // directory (wherever Twig was launched from), not anywhere meaningful.
+    if !dest.is_absolute() {
+        return Err(TwigError::GitCli(
+            "Clone destination must be an absolute path".to_string(),
+        ));
+    }
 
-    let output = Command::new("git")
-        .args(["clone", "--", &clone_url, &destination])
+    let mut cmd = Command::new("git");
+    cmd.args(["clone", "--", &clone_url, &destination])
+        // Never block on an interactive username/password prompt.
+        .env("GIT_TERMINAL_PROMPT", "0");
+
+    // Authenticate HTTPS clones of GitHub repos (needed for private repos)
+    // with the configured PAT. It is passed as a one-off http.extraHeader via
+    // GIT_CONFIG_* env vars so it is neither visible in the process list nor
+    // persisted into the clone's .git/config remote URL.
+    if clone_url.to_ascii_lowercase().starts_with("https://github.com/") {
+        if let Ok(token) = get_token(&app) {
+            let basic = base64::engine::general_purpose::STANDARD
+                .encode(format!("x-access-token:{token}"));
+            cmd.env("GIT_CONFIG_COUNT", "1")
+                .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
+                .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: basic {basic}"));
+        }
+    }
+
+    let output = cmd
         .output()
         .await
         .map_err(|e| TwigError::GitCli(format!("Failed to execute git clone: {e}")))?;
@@ -90,53 +119,15 @@ pub async fn github_clone_repo(
     }
 
     // Open the cloned repo in state (same logic as open_repo)
-    let repo =
-        Repository::discover(&dest).map_err(|_| TwigError::NotARepo(destination.clone()))?;
+    let repo = Repository::open(&dest).map_err(|_| TwigError::NotARepo(destination.clone()))?;
 
     let workdir = repo.workdir().unwrap_or(repo.path()).to_path_buf();
     let canonical = workdir.canonicalize().unwrap_or_else(|_| workdir.clone());
     let key = canonical.to_string_lossy().to_string();
-
-    let head_name = repo.head().ok().and_then(|h| {
-        if h.is_branch() {
-            h.shorthand().map(String::from)
-        } else {
-            h.target().map(|o| {
-                let s = o.to_string();
-                s[..7.min(s.len())].to_string()
-            })
-        }
-    });
-
-    let name = canonical
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "repo".to_string());
-
-    let last_commit_time = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .map(|c| c.time().seconds())
-        .unwrap_or(0);
-
-    let info = RepoInfo {
-        path: key.clone(),
-        name,
-        head_name,
-        is_bare: repo.is_bare(),
-        is_empty: repo.is_empty().unwrap_or(false),
-        last_commit_time,
-    };
+    let info = build_repo_info(&repo, key.clone(), &canonical);
 
     let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.insert(
-        key,
-        OpenRepo {
-            repository: repo,
-            path: canonical,
-        },
-    );
+    repos.insert(key, OpenRepo { path: canonical });
 
     Ok(info)
 }
@@ -167,38 +158,35 @@ pub async fn github_detect_remote(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Option<GitHubRemoteInfo>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
+    state.read_repo(&path, |repo| {
+        let remotes = repo.remotes().map_err(TwigError::Git)?;
 
-    let repo = &open.repository;
-    let remotes = repo.remotes().map_err(TwigError::Git)?;
+        // Prefer "origin", fall back to first GitHub remote found
+        let mut result: Option<GitHubRemoteInfo> = None;
 
-    // Prefer "origin", fall back to first GitHub remote found
-    let mut result: Option<GitHubRemoteInfo> = None;
-
-    for remote_name in remotes.iter().flatten() {
-        if let Ok(remote) = repo.find_remote(remote_name) {
-            if let Some(url) = remote.url() {
-                if let Some((owner, repo_name)) = github::parse_github_remote(url) {
-                    let info = GitHubRemoteInfo {
-                        owner,
-                        repo: repo_name,
-                        remote_name: remote_name.to_string(),
-                    };
-                    if remote_name == "origin" {
-                        return Ok(Some(info));
-                    }
-                    if result.is_none() {
-                        result = Some(info);
+        for remote_name in remotes.iter().flatten() {
+            if let Ok(remote) = repo.find_remote(remote_name) {
+                if let Some(url) = remote.url() {
+                    if let Some((owner, repo_name)) = github::parse_github_remote(url) {
+                        let info = GitHubRemoteInfo {
+                            owner,
+                            repo: repo_name,
+                            remote_name: remote_name.to_string(),
+                        };
+                        if remote_name == "origin" {
+                            return Ok(Some(info));
+                        }
+                        if result.is_none() {
+                            result = Some(info);
+                        }
                     }
                 }
             }
         }
-    }
 
-    Ok(result)
+        Ok(result)
+    })
+    .await
 }
 
 #[tauri::command]

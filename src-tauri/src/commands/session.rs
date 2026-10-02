@@ -4,11 +4,14 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+use crate::commands::settings::{quarantine_corrupt, write_atomic};
 use crate::error::TwigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    #[serde(default)]
     pub paths: Vec<String>,
+    #[serde(default)]
     pub active: Option<String>,
     #[serde(default)]
     pub sidebar_width: Option<f64>,
@@ -36,9 +39,6 @@ pub async fn save_session(
     diff_panel_ratio: Option<f64>,
 ) -> Result<(), TwigError> {
     let file = session_file(&app)?;
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let session = Session {
         paths,
         active,
@@ -47,23 +47,30 @@ pub async fn save_session(
         diff_panel_ratio,
     };
     let json = serde_json::to_string_pretty(&session)?;
-    fs::write(&file, json)?;
+    write_atomic(&file, &json, false)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn load_session(app: tauri::AppHandle) -> Result<Session, TwigError> {
     let file = session_file(&app)?;
+    let empty = Session {
+        paths: vec![],
+        active: None,
+        sidebar_width: None,
+        staging_width: None,
+        diff_panel_ratio: None,
+    };
     if !file.exists() {
-        return Ok(Session {
-            paths: vec![],
-            active: None,
-            sidebar_width: None,
-            staging_width: None,
-            diff_panel_ratio: None,
-        });
+        return Ok(empty);
     }
     let json = fs::read_to_string(&file)?;
-    let session: Session = serde_json::from_str(&json)?;
-    Ok(session)
+    match serde_json::from_str::<Session>(&json) {
+        Ok(session) => Ok(session),
+        Err(e) => {
+            // A corrupt session must not block startup; fall back to no tabs.
+            quarantine_corrupt(&file, &e);
+            Ok(empty)
+        }
+    }
 }

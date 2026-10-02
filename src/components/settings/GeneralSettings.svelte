@@ -12,8 +12,30 @@
     { value: 1800, label: "30 minutes" },
   ];
 
+  /** Parse and clamp a numeric input; on invalid input restore the current value. */
+  function commitNumber(
+    input: HTMLInputElement,
+    current: number,
+    min: number,
+    max: number,
+  ): number | null {
+    const n = Math.round(Number(input.value));
+    if (input.value.trim() === "" || !Number.isFinite(n)) {
+      input.value = String(current);
+      return null;
+    }
+    const clamped = Math.min(max, Math.max(min, n));
+    input.value = String(clamped);
+    return clamped;
+  }
+
   async function pickDefaultDir() {
-    const selected = await open({ directory: true, multiple: false, title: "Default Repository Directory" });
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Default Repository Directory",
+      defaultPath: s.default_repo_dir ?? undefined,
+    });
     if (selected) {
       updateSettings({ default_repo_dir: selected as string });
     }
@@ -67,7 +89,10 @@
           max="50000"
           step="500"
           value={s.max_commits}
-          onchange={(e) => updateSettings({ max_commits: Number(e.currentTarget.value) })}
+          onchange={(e) => {
+            const v = commitNumber(e.currentTarget, s.max_commits, 100, 50000);
+            if (v !== null) updateSettings({ max_commits: v });
+          }}
         />
       </div>
     </div>

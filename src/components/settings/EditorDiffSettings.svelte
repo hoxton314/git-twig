@@ -4,10 +4,24 @@
 
   const s = $derived($settings);
 
-  // Sync diff view mode to the UI store when changed in settings
-  $effect(() => {
-    $diffViewMode = s.diff_view_mode as "unified" | "split";
-  });
+  // Changing the default also switches the current view. (Done in the click
+  // handler rather than an $effect, which re-ran on *any* settings change and
+  // on mount, clobbering a view mode the user had toggled in the diff panel.)
+  function setDiffView(mode: "unified" | "split") {
+    updateSettings({ diff_view_mode: mode });
+    $diffViewMode = mode;
+  }
+
+  function commitContextLines(input: HTMLInputElement) {
+    const n = Math.round(Number(input.value));
+    if (input.value.trim() === "" || !Number.isFinite(n)) {
+      input.value = String(s.context_lines);
+      return;
+    }
+    const clamped = Math.min(20, Math.max(0, n));
+    input.value = String(clamped);
+    updateSettings({ context_lines: clamped });
+  }
 </script>
 
 <div class="section">
@@ -24,14 +38,14 @@
           <button
             class="segment"
             class:active={s.diff_view_mode === "unified"}
-            onclick={() => updateSettings({ diff_view_mode: "unified" })}
+            onclick={() => setDiffView("unified")}
           >
             Unified
           </button>
           <button
             class="segment"
             class:active={s.diff_view_mode === "split"}
-            onclick={() => updateSettings({ diff_view_mode: "split" })}
+            onclick={() => setDiffView("split")}
           >
             Split
           </button>
@@ -68,7 +82,7 @@
           max="20"
           step="1"
           value={s.context_lines}
-          onchange={(e) => updateSettings({ context_lines: Number(e.currentTarget.value) })}
+          onchange={(e) => commitContextLines(e.currentTarget)}
         />
       </div>
     </div>
@@ -118,7 +132,7 @@
           class="text-input"
           placeholder="Not set"
           value={s.external_diff_tool ?? ""}
-          onchange={(e) => updateSettings({ external_diff_tool: e.currentTarget.value || null })}
+          onchange={(e) => updateSettings({ external_diff_tool: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>
@@ -134,7 +148,7 @@
           class="text-input"
           placeholder="Not set"
           value={s.external_merge_tool ?? ""}
-          onchange={(e) => updateSettings({ external_merge_tool: e.currentTarget.value || null })}
+          onchange={(e) => updateSettings({ external_merge_tool: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>

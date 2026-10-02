@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Check, AlertCircle, Loader2 } from "lucide-svelte";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
-  import { settings, updateSettings } from "../../lib/stores/settings";
+  import { settings, updateSettings, flushSettings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
   import type { GitHubUser } from "../../lib/types/github";
   import { onMount } from "svelte";
@@ -20,19 +20,29 @@
     }
   });
 
+  let validationSeq = 0;
+
   async function validateToken() {
     if (!tokenInput.trim()) {
       status = "idle";
+      user = null;
+      errorMsg = "";
       return;
     }
+    const seq = ++validationSeq;
     status = "loading";
-    // Save first so the backend can read it
-    updateSettings({ github_token: tokenInput.trim() });
     try {
-      user = await tauri.githubValidateToken();
+      // Save first, and flush the debounced write: the backend reads the
+      // token from settings.json, so it must be on disk before validating.
+      updateSettings({ github_token: tokenInput.trim() });
+      await flushSettings();
+      const u = await tauri.githubValidateToken();
+      if (seq !== validationSeq) return; // superseded by a newer save/clear
+      user = u;
       status = "connected";
       errorMsg = "";
     } catch (err) {
+      if (seq !== validationSeq) return;
       status = "error";
       errorMsg = String(err);
       user = null;
@@ -40,11 +50,15 @@
   }
 
   function handleSave() {
-    updateSettings({ github_token: tokenInput.trim() || null });
+    if (!tokenInput.trim()) {
+      handleClear();
+      return;
+    }
     validateToken();
   }
 
   function handleClear() {
+    validationSeq++;
     tokenInput = "";
     updateSettings({ github_token: null });
     status = "idle";
@@ -64,7 +78,7 @@
           Create a token at
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <span class="link" onclick={() => openUrl("https://github.com/settings/tokens")}>github.com/settings/tokens</span>
+          <span class="link" role="link" tabindex="0" onclick={() => openUrl("https://github.com/settings/tokens")} onkeydown={(e) => e.key === "Enter" && openUrl("https://github.com/settings/tokens")}>github.com/settings/tokens</span>
           with <code>repo</code> scope
         </span>
       </div>
@@ -72,6 +86,9 @@
         <input
           type="password"
           class="token-input"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="GitHub personal access token"
           placeholder="ghp_..."
           bind:value={tokenInput}
           onkeydown={(e) => e.key === "Enter" && handleSave()}

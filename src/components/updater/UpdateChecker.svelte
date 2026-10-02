@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { check } from '@tauri-apps/plugin-updater';
+  import { check, type Update } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { message } from '@tauri-apps/plugin-dialog';
 
@@ -10,6 +10,7 @@
   let downloading = $state(false);
   let downloadProgress = $state(0);
   let contentLength = $state(0);
+  let pendingUpdate: Update | null = null;
 
   let progressPercent = $derived(
     contentLength > 0 ? Math.round((downloadProgress / contentLength) * 100) : 0
@@ -18,7 +19,8 @@
   onMount(async () => {
     try {
       const update = await check();
-      if (update?.available) {
+      if (update) {
+        pendingUpdate = update;
         updateAvailable = true;
         updateVersion = update.version;
         updateBody = update.body ?? '';
@@ -29,12 +31,18 @@
   });
 
   async function installUpdate() {
+    if (downloading) return; // guard against double-clicks starting two downloads
+    downloading = true;
+    downloadProgress = 0;
+    contentLength = 0;
     try {
-      const update = await check();
-      if (!update?.available) return;
-
-      downloading = true;
-      downloadProgress = 0;
+      // Reuse the update found at startup; re-check only if we lost it.
+      const update = pendingUpdate ?? (await check());
+      if (!update) {
+        downloading = false;
+        updateAvailable = false;
+        return;
+      }
 
       await update.downloadAndInstall((event) => {
         if (event.event === 'Started') {
@@ -53,6 +61,8 @@
 
   function dismiss() {
     updateAvailable = false;
+    pendingUpdate?.close().catch(() => {});
+    pendingUpdate = null;
   }
 </script>
 

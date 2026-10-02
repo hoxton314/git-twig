@@ -19,6 +19,19 @@
   let { open, title, onclose, width = "480px", children }: Props = $props();
 
   const id = Symbol("modal");
+  const titleId = `modal-title-${Math.random().toString(36).slice(2, 10)}`;
+
+  let card = $state<HTMLDivElement | null>(null);
+
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function focusables(): HTMLElement[] {
+    if (!card) return [];
+    return Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.offsetParent !== null || el === document.activeElement,
+    );
+  }
 
   // Keep this modal's presence in the shared stack in sync with `open`.
   $effect(() => {
@@ -31,17 +44,66 @@
     }
   });
 
+  // Move focus into the dialog when it opens and restore it on close.
+  $effect(() => {
+    if (!open || !card) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const el = card;
+    queueMicrotask(() => {
+      if (el.contains(document.activeElement)) return;
+      // Prefer the first form field; otherwise focus the dialog itself rather
+      // than a button, so a stray Enter can't trigger e.g. "Merge".
+      const field = focusables().find((f) => /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName));
+      (field ?? el).focus();
+    });
+    return () => {
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  });
+
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && open && openStack[openStack.length - 1] === id) {
+    if (!open || openStack[openStack.length - 1] !== id) return;
+    if (e.key === "Escape") {
       e.stopPropagation();
       onclose();
+      return;
+    }
+    // Trap Tab focus within the topmost dialog.
+    if (e.key === "Tab" && card) {
+      const items = focusables();
+      if (items.length === 0) {
+        e.preventDefault();
+        card.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !card.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !card.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   }
 
+  // Only close when the press *started* on the backdrop too; otherwise a text
+  // selection drag that ends outside the card would dismiss the dialog.
+  let pressStartedOnBackdrop = false;
+
+  function handleBackdropMousedown(e: MouseEvent) {
+    pressStartedOnBackdrop = e.target === e.currentTarget;
+  }
+
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
+    if (pressStartedOnBackdrop && e.target === e.currentTarget) {
       onclose();
     }
+    pressStartedOnBackdrop = false;
   }
 
   onMount(() => {
@@ -53,11 +115,19 @@
 {#if open}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal-backdrop" onclick={handleBackdropClick}>
-    <div class="modal-card" style="width: {width}; max-width: calc(100vw - 48px);">
+  <div class="modal-backdrop" onmousedown={handleBackdropMousedown} onclick={handleBackdropClick}>
+    <div
+      class="modal-card"
+      style="width: {width}; max-width: calc(100vw - 48px);"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabindex="-1"
+      bind:this={card}
+    >
       <div class="modal-header">
-        <h2 class="modal-title">{title}</h2>
-        <button class="modal-close" onclick={onclose} title="Close">
+        <h2 class="modal-title" id={titleId}>{title}</h2>
+        <button class="modal-close" onclick={onclose} title="Close" aria-label="Close">
           <X size={16} />
         </button>
       </div>
@@ -90,6 +160,7 @@
     flex-direction: column;
     max-height: calc(100vh - 80px);
     overflow: hidden;
+    outline: none;
   }
 
   .modal-header {

@@ -7,11 +7,11 @@
     workingStatus,
     selectedWorkingFile,
     workingFileDiff,
+    loadGraph,
   } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import CommitRow from "./CommitRow.svelte";
   import GraphCanvas from "./GraphCanvas.svelte";
-  import type { GraphEntry } from "../../lib/types/git";
   import { Loader2, Pencil } from "lucide-svelte";
 
   const repoPath = $derived($activeRepoPath);
@@ -30,6 +30,7 @@
   // Virtualization state
   let containerEl: HTMLDivElement | undefined = $state(undefined);
   let scrollTop = $state(0);
+  let viewportHeight = $state(0);
   const ROW_HEIGHT = 34;
   const OVERSCAN = 10;
 
@@ -40,10 +41,16 @@
   // Adjust scroll offset to account for the WIP row above the virtual scroll
   const graphScrollTop = $derived(Math.max(0, scrollTop - (hasWip ? ROW_HEIGHT : 0)));
   const visibleStart = $derived(Math.max(0, Math.floor(graphScrollTop / ROW_HEIGHT) - OVERSCAN));
-  const visibleCount = $derived.by(() =>
-    containerEl
-      ? Math.min(graphEntryCount - visibleStart, Math.ceil(containerEl.clientHeight / ROW_HEIGHT) + 2 * OVERSCAN)
-      : 50
+  // viewportHeight is bound to the container, so this updates on resize
+  // (window resize, diff panel open/close) instead of only on first mount.
+  const visibleCount = $derived(
+    Math.max(
+      0,
+      Math.min(
+        graphEntryCount - visibleStart,
+        Math.ceil((viewportHeight || 600) / ROW_HEIGHT) + 2 * OVERSCAN
+      )
+    )
   );
   const visibleEntries = $derived(
     graph ? graph.entries.slice(visibleStart, visibleStart + visibleCount) : []
@@ -55,6 +62,8 @@
 
   function selectCommit(oid: string) {
     $selectedCommitOid = selected === oid ? null : oid;
+    // WebKit doesn't focus buttons on click; focus the list so arrow keys work.
+    containerEl?.focus({ preventScroll: true });
   }
 
   function selectWip() {
@@ -66,12 +75,78 @@
     }
     $selectedCommitOid = "__wip__";
     // Load combined working diff
-    if (repoPath) {
-      tauri.getWorkingDiff(repoPath).then((diff) => {
-        $workingFileDiff = diff;
-        $selectedWorkingFile = { path: "__all__", area: "unstaged" };
-      });
+    const path = repoPath;
+    if (path) {
+      tauri
+        .getWorkingDiff(path)
+        .then((diff) => {
+          // Ignore if the user switched repos or deselected WIP meanwhile.
+          if ($activeRepoPath !== path || $selectedCommitOid !== "__wip__") return;
+          $workingFileDiff = diff;
+          $selectedWorkingFile = { path: "__all__", area: "unstaged" };
+        })
+        .catch((err) => console.error("Failed to load working diff:", err));
     }
+  }
+
+  // ── Keyboard navigation ─────────────────────────────────────────────
+
+  /** Scroll so the graph row at `index` is fully visible. */
+  function scrollRowIntoView(index: number) {
+    if (!containerEl) return;
+    const offset = hasWip ? ROW_HEIGHT : 0;
+    const top = offset + index * ROW_HEIGHT;
+    const bottom = top + ROW_HEIGHT;
+    if (top < containerEl.scrollTop) {
+      containerEl.scrollTop = top;
+    } else if (bottom > containerEl.scrollTop + containerEl.clientHeight) {
+      containerEl.scrollTop = bottom - containerEl.clientHeight;
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!graph || graph.entries.length === 0) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const entries = graph.entries;
+    const current = selected && selected !== "__wip__"
+      ? entries.findIndex((en) => en.commit.oid === selected)
+      : -1;
+    const pageRows = Math.max(1, Math.floor((viewportHeight || 600) / ROW_HEIGHT) - 1);
+
+    let next: number | null = null;
+    switch (e.key) {
+      case "ArrowDown":
+      case "j":
+        next = current < 0 ? 0 : Math.min(entries.length - 1, current + 1);
+        break;
+      case "ArrowUp":
+      case "k":
+        next = current < 0 ? 0 : Math.max(0, current - 1);
+        break;
+      case "PageDown":
+        next = Math.min(entries.length - 1, Math.max(0, current) + pageRows);
+        break;
+      case "PageUp":
+        next = Math.max(0, current - pageRows);
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = entries.length - 1;
+        break;
+      case "Escape":
+        if (selected) {
+          e.preventDefault();
+          $selectedCommitOid = null;
+        }
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    $selectedCommitOid = entries[next].commit.oid;
+    scrollRowIntoView(next);
   }
 
   // Load graph when active repo changes
@@ -80,52 +155,32 @@
     const path = repoPath;
     if (path && path !== lastLoadedPath) {
       lastLoadedPath = path;
+      // New repo: start at the top instead of keeping the old scroll offset.
+      scrollTop = 0;
+      if (containerEl) containerEl.scrollTop = 0;
       loadGraph(path);
     }
   });
-
-  async function loadGraph(path: string) {
-    $graphLoading = true;
-    try {
-      const result = await tauri.getCommitGraph(path, 5000);
-      $commitGraph = result;
-    } catch (err) {
-      console.error("Failed to load commit graph:", err);
-      $commitGraph = null;
-    } finally {
-      $graphLoading = false;
-    }
-  }
 </script>
 
-<div class="commit-graph" bind:this={containerEl} onscroll={handleScroll}>
-  {#if loading}
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+<div
+  class="commit-graph"
+  bind:this={containerEl}
+  bind:clientHeight={viewportHeight}
+  onscroll={handleScroll}
+  onkeydown={handleKeydown}
+  tabindex="0"
+  role="region"
+  aria-label="Commit history"
+>
+  {#if loading && !graph}
     <div class="loading">
       <Loader2 size={24} class="spinner" />
       <span>Loading commits...</span>
     </div>
   {:else if graph && graph.entries.length > 0}
-    {#if hasWip}
-      <button
-        class="wip-row"
-        class:selected={wipSelected}
-        style="height: {ROW_HEIGHT}px;"
-        onclick={selectWip}
-      >
-        <div class="wip-icon">
-          <Pencil size={12} />
-        </div>
-        <span class="wip-label">Uncommitted changes</span>
-        <span class="wip-counts">
-          {#if status.staged.length > 0}
-            <span class="wip-staged">{status.staged.length} staged</span>
-          {/if}
-          {#if status.unstaged.length > 0}
-            <span class="wip-unstaged">{status.unstaged.length} modified</span>
-          {/if}
-        </span>
-      </button>
-    {/if}
+    {@render wipRow()}
     <div class="virtual-scroll" style="height: {totalHeight}px; position: relative;">
       <div
         class="virtual-window"
@@ -156,13 +211,41 @@
       </div>
     </div>
   {:else if graph}
-    <div class="empty">No commits found.</div>
+    {@render wipRow()}
+    <div class="empty">No commits yet.</div>
+  {:else if !loading && repoPath}
+    <div class="empty">Could not load commit history.</div>
   {/if}
 </div>
+
+{#snippet wipRow()}
+    {#if hasWip}
+      <button
+        class="wip-row"
+        class:selected={wipSelected}
+        style="height: {ROW_HEIGHT}px;"
+        onclick={selectWip}
+      >
+        <div class="wip-icon">
+          <Pencil size={12} />
+        </div>
+        <span class="wip-label">Uncommitted changes</span>
+        <span class="wip-counts">
+          {#if status.staged.length > 0}
+            <span class="wip-staged">{status.staged.length} staged</span>
+          {/if}
+          {#if status.unstaged.length > 0}
+            <span class="wip-unstaged">{status.unstaged.length} modified</span>
+          {/if}
+        </span>
+      </button>
+    {/if}
+{/snippet}
 
 <style>
   .commit-graph {
     flex: 1;
+    outline: none;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--color-bg);
@@ -209,7 +292,7 @@
 
   .wip-row.selected {
     background: rgba(224, 175, 104, 0.15);
-    border-left: 2px solid #e0af68;
+    border-left: 2px solid var(--color-lane-2);
   }
 
   .wip-icon {
@@ -219,14 +302,14 @@
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 1.5px dashed #e0af68;
-    color: #e0af68;
+    border: 1.5px dashed var(--color-lane-2);
+    color: var(--color-lane-2);
     flex-shrink: 0;
   }
 
   .wip-label {
     font-weight: 500;
-    color: #e0af68;
+    color: var(--color-lane-2);
   }
 
   .wip-counts {

@@ -141,12 +141,12 @@
 
   .label-old,
   .label-removed {
-    color: #f7768e;
+    color: var(--color-diff-del-text);
   }
 
   .label-new,
   .label-added {
-    color: #9ece6a;
+    color: var(--color-diff-add-text);
   }
 
   .meta {

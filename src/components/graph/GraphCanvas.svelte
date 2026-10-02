@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { GraphEntry } from "../../lib/types/git";
-  import { laneColor } from "../../lib/types/git";
+  import { LANE_COLORS } from "../../lib/types/git";
 
   interface Props {
     entry: GraphEntry;
@@ -20,6 +20,15 @@
   const svgWidth = $derived(Math.max((totalLanes + 1) * LANE_WIDTH + LEFT_PAD, 48 + LEFT_PAD));
   const cy = $derived(height / 2);
 
+  /**
+   * Lane color as a CSS variable (themed in app.css, so light mode gets
+   * darker lane colors). Applied via `style:` since SVG presentation
+   * attributes don't resolve var().
+   */
+  function laneColor(lane: number): string {
+    return `var(--color-lane-${lane % LANE_COLORS.length})`;
+  }
+
   /** X center for a given lane index. */
   function lx(lane: number): number {
     return LEFT_PAD + lane * LANE_WIDTH + LANE_WIDTH / 2;
@@ -30,6 +39,7 @@
   width={svgWidth}
   height={height}
   class="graph-canvas"
+  aria-hidden="true"
   style="min-width: {svgWidth}px; flex-shrink: 0;"
 >
   <!-- Pass-through rails: straight vertical lines for other active branches -->
@@ -37,7 +47,7 @@
     <line
       x1={lx(rail)} y1={0}
       x2={lx(rail)} y2={height}
-      stroke={laneColor(rail)}
+      style:stroke={laneColor(rail)}
       stroke-width={STROKE_WIDTH}
       opacity={OPACITY}
     />
@@ -48,7 +58,7 @@
     <line
       x1={lx(entry.lane)} y1={0}
       x2={lx(entry.lane)} y2={cy}
-      stroke={laneColor(entry.lane)}
+      style:stroke={laneColor(entry.lane)}
       stroke-width={STROKE_WIDTH}
       opacity={OPACITY}
     />
@@ -61,7 +71,7 @@
       <line
         x1={lx(entry.lane)} y1={cy}
         x2={lx(entry.lane)} y2={height}
-        stroke={laneColor(entry.lane)}
+        style:stroke={laneColor(entry.lane)}
         stroke-width={STROKE_WIDTH}
         opacity={OPACITY}
       />
@@ -73,7 +83,7 @@
              {lx(parentLane)} {cy},
              {lx(parentLane)} {height}"
         fill="none"
-        stroke={laneColor(parentLane)}
+        style:stroke={laneColor(parentLane)}
         stroke-width={STROKE_WIDTH}
         opacity={OPACITY}
       />
@@ -86,8 +96,8 @@
       cx={lx(entry.lane)}
       cy={cy}
       r={NODE_RADIUS}
-      fill="none"
-      stroke={laneColor(entry.lane)}
+      style:fill="var(--color-bg)"
+      style:stroke={laneColor(entry.lane)}
       stroke-width={STROKE_WIDTH}
     />
   {:else}
@@ -95,7 +105,7 @@
       cx={lx(entry.lane)}
       cy={cy}
       r={NODE_RADIUS}
-      fill={laneColor(entry.lane)}
+      style:fill={laneColor(entry.lane)}
     />
   {/if}
 </svg>

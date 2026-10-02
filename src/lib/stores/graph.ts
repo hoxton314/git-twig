@@ -8,6 +8,13 @@ import type {
 } from "../types/git";
 import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
+import { settings } from "./settings";
+
+/** Commit limit for graph loads, from user settings. */
+function maxCommits(): number {
+  const n = get(settings).max_commits;
+  return n > 0 ? n : 5000;
+}
 
 /** Commit graph for the active repo. */
 export const commitGraph = writable<CommitGraph | null>(null);
@@ -49,6 +56,25 @@ export const workingFileDiff = writable<DiffFile[]>([]);
 /** Stash entries for the active repo. */
 export const stashEntries = writable<StashEntry[]>([]);
 
+// Reset per-repo state whenever the active repo changes so a selection (or
+// graph/branches) from repo A is never shown or queried against repo B.
+let lastActivePath: string | null = null;
+activeRepoPath.subscribe((p) => {
+  if (p === lastActivePath) return;
+  lastActivePath = p;
+  commitGraph.set(null);
+  // CommitGraph's mount/repo-change effect kicks off loadGraph for the new
+  // path; mark loading now so it doesn't flash an error/empty state first.
+  graphLoading.set(p !== null);
+  branches.set([]);
+  selectedCommitOid.set(null);
+  selectedDiff.set([]);
+  selectedWorkingFile.set(null);
+  workingFileDiff.set([]);
+  workingStatus.set({ staged: [], unstaged: [] });
+  stashEntries.set([]);
+});
+
 /**
  * True if `p` is still the active repo. Used to discard results from a refresh
  * that the user navigated away from before it resolved, so a slow response for
@@ -80,6 +106,23 @@ async function resyncSelectedFile(repoPath: string, status: WorkingStatus) {
   const sel = get(selectedWorkingFile);
   if (!sel) return;
 
+  // "__all__" is the combined WIP diff (uncommitted-changes row), not a real file.
+  if (sel.path === "__all__") {
+    if (status.staged.length === 0 && status.unstaged.length === 0) {
+      selectedWorkingFile.set(null);
+      workingFileDiff.set([]);
+      if (get(selectedCommitOid) === "__wip__") selectedCommitOid.set(null);
+      return;
+    }
+    try {
+      const diff = await tauri.getWorkingDiff(repoPath);
+      if (stillActive(repoPath)) workingFileDiff.set(diff);
+    } catch {
+      if (stillActive(repoPath)) workingFileDiff.set([]);
+    }
+    return;
+  }
+
   const inStaged = status.staged.some((f) => f.path === sel.path);
   const inUnstaged = status.unstaged.some((f) => f.path === sel.path);
 
@@ -105,9 +148,9 @@ async function resyncSelectedFile(repoPath: string, status: WorkingStatus) {
       newArea === "staged"
         ? await tauri.getStagedDiff(repoPath, sel.path)
         : await tauri.getUnstagedDiff(repoPath, sel.path);
-    workingFileDiff.set(diff);
+    if (stillActive(repoPath)) workingFileDiff.set(diff);
   } catch {
-    workingFileDiff.set([]);
+    if (stillActive(repoPath)) workingFileDiff.set([]);
   }
 }
 
@@ -125,21 +168,41 @@ export async function refreshStatus(path?: string) {
   }
 }
 
+/** Load only the commit graph for `path` (used when switching repos). */
+export async function loadGraph(path: string) {
+  const gen = ++refreshGen;
+  graphLoading.set(true);
+  try {
+    const graph = await tauri.getCommitGraph(path, maxCommits());
+    if (gen === refreshGen && stillActive(path)) commitGraph.set(graph);
+  } catch (err) {
+    console.error("Failed to load commit graph:", err);
+    if (gen === refreshGen && stillActive(path)) commitGraph.set(null);
+  } finally {
+    if (gen === refreshGen) graphLoading.set(false);
+  }
+}
+
+/** Monotonic counter so an older in-flight refresh never overwrites a newer one. */
+let refreshGen = 0;
+
 /** Refresh commit graph, branches, repo info, and working status. */
 export async function refreshAll(path?: string) {
   const p = path ?? get(activeRepoPath);
   if (!p) return;
+  const gen = ++refreshGen;
   graphLoading.set(true);
   try {
     const [graph, branchList, info, status, stash] = await Promise.all([
-      tauri.getCommitGraph(p, 5000),
+      tauri.getCommitGraph(p, maxCommits()),
       tauri.getBranches(p),
       tauri.getRepoInfo(p),
       tauri.getWorkingStatus(p),
       tauri.stashList(p),
     ]);
-    // Discard if the user switched repos while this was in flight.
-    if (!stillActive(p)) return;
+    // Discard if the user switched repos (or a newer refresh started)
+    // while this was in flight.
+    if (gen !== refreshGen || !stillActive(p)) return;
     commitGraph.set(graph);
     branches.set(branchList);
     updateRepo(info);
@@ -149,6 +212,6 @@ export async function refreshAll(path?: string) {
   } catch (err) {
     console.error("Failed to refresh:", err);
   } finally {
-    if (stillActive(p)) graphLoading.set(false);
+    if (gen === refreshGen) graphLoading.set(false);
   }
 }

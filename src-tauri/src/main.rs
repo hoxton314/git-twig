@@ -28,7 +28,7 @@ fn setup_linux_display() {
     use std::path::Path;
 
     let on_wayland = env::var("WAYLAND_DISPLAY").is_ok()
-        || env::var("XDG_SESSION_TYPE").map_or(false, |v| v == "wayland");
+        || env::var("XDG_SESSION_TYPE").is_ok_and(|v| v == "wayland");
 
     if !on_wayland {
         return;

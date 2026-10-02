@@ -31,6 +31,12 @@ pub enum TwigError {
 
     #[error("Lock error: failed to acquire state lock")]
     Lock,
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+
+    #[error("Background task failed: {0}")]
+    Task(String),
 }
 
 impl From<reqwest::Error> for TwigError {

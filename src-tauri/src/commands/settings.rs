@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -118,6 +119,69 @@ fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
     Ok(dir.join("settings.json"))
 }
 
+/// Serialises writers of the app-data JSON files so concurrent saves can't
+/// interleave on the shared temp file.
+static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Atomically replace `path` with `contents`: write a sibling temp file,
+/// fsync it, then rename over the target. A crash mid-write can therefore
+/// never leave a truncated/corrupt file behind. When `private` is set the
+/// file is created owner-read/write only (it may contain secrets).
+pub(crate) fn write_atomic(path: &Path, contents: &str, private: bool) -> Result<(), TwigError> {
+    let _guard = WRITE_LOCK.lock().map_err(|_| TwigError::Lock)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut tmp_name = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    tmp_name.push(".tmp");
+    let tmp = path.with_file_name(tmp_name);
+
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    if private {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+
+    // Remove any stale temp file so `mode` applies to a freshly created file.
+    let _ = fs::remove_file(&tmp);
+    let result = (|| -> Result<(), TwigError> {
+        let mut f = opts.open(&tmp)?;
+        f.write_all(contents.as_bytes())?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+/// Move an unreadable JSON file aside (so it is not silently overwritten and
+/// can be inspected/recovered) and log why.
+pub(crate) fn quarantine_corrupt(path: &Path, err: &serde_json::Error) {
+    let mut bad_name = path
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    bad_name.push(".corrupt");
+    let bad = path.with_file_name(bad_name);
+    log::warn!(
+        "{} is not valid ({err}); moved to {} and using defaults",
+        path.display(),
+        bad.display()
+    );
+    let _ = fs::rename(path, bad);
+}
+
 #[tauri::command]
 pub async fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TwigError> {
     let file = settings_file(&app)?;
@@ -125,8 +189,13 @@ pub async fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TwigErr
         return Ok(AppSettings::default());
     }
     let json = fs::read_to_string(&file)?;
-    let settings: AppSettings = serde_json::from_str(&json)?;
-    Ok(settings)
+    match serde_json::from_str::<AppSettings>(&json) {
+        Ok(settings) => Ok(settings),
+        Err(e) => {
+            quarantine_corrupt(&file, &e);
+            Ok(AppSettings::default())
+        }
+    }
 }
 
 #[tauri::command]
@@ -135,10 +204,8 @@ pub async fn save_settings(
     settings: AppSettings,
 ) -> Result<(), TwigError> {
     let file = settings_file(&app)?;
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let json = serde_json::to_string_pretty(&settings)?;
-    fs::write(&file, json)?;
+    // settings.json holds the GitHub PAT, so keep it owner-only.
+    write_atomic(&file, &json, true)?;
     Ok(())
 }

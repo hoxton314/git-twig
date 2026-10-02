@@ -21,13 +21,7 @@ pub async fn stash_list(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Vec<StashEntry>, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::stash_list(&repo_path).await?;
     if !output.success || output.stdout.trim().is_empty() {
@@ -69,23 +63,10 @@ pub async fn stash_push(
     path: String,
     message: Option<String>,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::stash_push(&repo_path, message.as_deref()).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Pop a stash entry (apply + remove).
@@ -95,23 +76,10 @@ pub async fn stash_pop(
     path: String,
     index: u32,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::stash_pop(&repo_path, index).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Apply a stash entry without removing it.
@@ -121,23 +89,10 @@ pub async fn stash_apply(
     path: String,
     index: u32,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::stash_apply(&repo_path, index).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Drop (delete) a stash entry.
@@ -147,21 +102,8 @@ pub async fn stash_drop(
     path: String,
     index: u32,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::stash_drop(&repo_path, index).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }

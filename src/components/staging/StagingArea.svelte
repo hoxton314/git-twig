@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  // Unsent commit messages per repo path. Module-level so drafts survive both
+  // tab switches (this component is shared across repos) and remounts.
+  const commitDrafts = new Map<string, string>();
+</script>
+
 <script lang="ts">
   import {
     Plus,
@@ -32,9 +38,10 @@
     refreshAll,
   } from "../../lib/stores/graph";
   import { onAction } from "../../lib/keybindings";
+  import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
   import type { FileStatus } from "../../lib/types/git";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { message, ask } from "@tauri-apps/plugin-dialog";
 
   const repoPath = $derived($activeRepoPath);
@@ -54,47 +61,92 @@
   let pullLoading = $state(false);
   let showPrModal = $state(false);
 
-  // Load working status when repo changes
+  // First line of the commit message, for the summary length hint.
+  const summaryLength = $derived(commitMessage.split("\n", 1)[0].length);
+
+  // Load working status when repo changes, and swap the commit message draft
+  // so a half-written message doesn't follow the user into another repo.
   let lastLoadedPath: string | null = null;
   $effect(() => {
     const path = repoPath;
     if (path && path !== lastLoadedPath) {
+      untrack(() => {
+        if (lastLoadedPath) commitDrafts.set(lastLoadedPath, commitMessage);
+        commitMessage = commitDrafts.get(path) ?? "";
+      });
       lastLoadedPath = path;
       refreshStatus(path);
     }
   });
 
-  // Run a write command and surface any failure to the user instead of
-  // swallowing it. Returns true on success.
-  async function runWrite(
+  onMount(() => () => {
+    if (lastLoadedPath) commitDrafts.set(lastLoadedPath, commitMessage);
+  });
+
+  // Write operations are serialized: concurrent `git add`/`reset`/`checkout`
+  // calls race on .git/index.lock and fail, and overlapping status refreshes
+  // can resolve out of order and show stale lists.
+  let writeQueue: Promise<unknown> = Promise.resolve();
+
+  // Run a write command (then refresh status) and surface any failure to the
+  // user instead of swallowing it. Returns true on success.
+  function runWrite(
     op: () => Promise<{ success: boolean; message: string }>,
     title: string,
   ): Promise<boolean> {
-    try {
-      const result = await op();
-      if (!result.success) {
-        await message(result.message, { title, kind: "error" });
-        return false;
+    const task = writeQueue.then(async () => {
+      let ok = false;
+      try {
+        const result = await op();
+        if (!result.success) {
+          await message(result.message, { title, kind: "error" });
+        } else {
+          ok = true;
+        }
+      } catch (err) {
+        await message(String(err), { title, kind: "error" });
       }
-      return true;
-    } catch (err) {
-      await message(String(err), { title, kind: "error" });
-      return false;
+      await refreshStatus();
+      return ok;
+    });
+    writeQueue = task;
+    return task;
+  }
+
+  function confirmDestructive(text: string, title: string): Promise<boolean> {
+    if (!$settings.confirm_destructive_ops) return Promise.resolve(true);
+    return ask(text, { title, kind: "warning" });
+  }
+
+  // Keyboard activation for div[role=button] rows/headers. Ignores keys that
+  // originate from nested buttons so pressing Enter on "Stage" doesn't also
+  // select the row or collapse the section.
+  function activateOnKey(e: KeyboardEvent, fn: () => void) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fn();
     }
   }
 
+  let selectRequest = 0;
   async function selectFile(file: FileStatus, area: "staged" | "unstaged") {
     if (!repoPath) return;
+    const path = repoPath;
+    const req = ++selectRequest;
     // Clear commit selection so diff viewer shows working file diff
     $selectedCommitOid = null;
     $selectedWorkingFile = { path: file.path, area };
     try {
       const diff =
         area === "staged"
-          ? await tauri.getStagedDiff(repoPath, file.path)
-          : await tauri.getUnstagedDiff(repoPath, file.path);
+          ? await tauri.getStagedDiff(path, file.path)
+          : await tauri.getUnstagedDiff(path, file.path);
+      // Drop the result if the user clicked another file meanwhile.
+      if (req !== selectRequest) return;
       $workingFileDiff = diff;
     } catch (err) {
+      if (req !== selectRequest) return;
       console.error("Failed to load file diff:", err);
       $workingFileDiff = [];
     }
@@ -105,7 +157,6 @@
     if (!repoPath) return;
     const path = repoPath;
     await runWrite(() => tauri.stageFiles(path, [file.path]), "Stage Failed");
-    await refreshStatus();
   }
 
   async function unstageFile(e: MouseEvent, file: FileStatus) {
@@ -113,15 +164,21 @@
     if (!repoPath) return;
     const path = repoPath;
     await runWrite(() => tauri.unstageFiles(path, [file.path]), "Unstage Failed");
-    await refreshStatus();
   }
 
   async function stageAll() {
     if (!repoPath || status.unstaged.length === 0) return;
     const path = repoPath;
+    const conflicted = status.unstaged.filter((f) => f.status === "conflicted");
+    if (conflicted.length > 0) {
+      const ok = await ask(
+        `${conflicted.length} conflicted file${conflicted.length !== 1 ? "s" : ""} will be marked as resolved. Make sure all conflict markers have been removed. Continue?`,
+        { title: "Stage Conflicted Files", kind: "warning" },
+      );
+      if (!ok) return;
+    }
     const paths = status.unstaged.map((f) => f.path);
     await runWrite(() => tauri.stageFiles(path, paths), "Stage Failed");
-    await refreshStatus();
   }
 
   async function unstageAll() {
@@ -129,31 +186,36 @@
     const path = repoPath;
     const paths = status.staged.map((f) => f.path);
     await runWrite(() => tauri.unstageFiles(path, paths), "Unstage Failed");
-    await refreshStatus();
   }
 
   async function discardFile(e: MouseEvent, file: FileStatus) {
     e.stopPropagation();
     if (!repoPath) return;
     const path = repoPath;
+    const ok = await confirmDestructive(
+      file.is_new
+        ? `Delete untracked file "${file.path}"? This cannot be undone.`
+        : `Discard changes to "${file.path}"? This cannot be undone.`,
+      "Discard Changes",
+    );
+    if (!ok) return;
     const tracked = file.is_new ? [] : [file.path];
     const untracked = file.is_new ? [file.path] : [];
     await runWrite(() => tauri.discardFiles(path, tracked, untracked), "Discard Failed");
-    await refreshStatus();
   }
 
   async function discardAll() {
     if (!repoPath || status.unstaged.length === 0) return;
     const path = repoPath;
-    const ok = await ask("Discard all unstaged changes? This cannot be undone.", {
-      title: "Discard Changes",
-      kind: "warning",
-    });
+    const untrackedCount = status.unstaged.filter((f) => f.is_new).length;
+    const ok = await confirmDestructive(
+      `Discard all unstaged changes${untrackedCount > 0 ? ` and delete ${untrackedCount} untracked file${untrackedCount !== 1 ? "s" : ""}` : ""}? This cannot be undone.`,
+      "Discard Changes",
+    );
     if (!ok) return;
     const tracked = status.unstaged.filter((f) => !f.is_new).map((f) => f.path);
     const untracked = status.unstaged.filter((f) => f.is_new).map((f) => f.path);
     await runWrite(() => tauri.discardFiles(path, tracked, untracked), "Discard Failed");
-    await refreshStatus();
   }
 
   async function handleUndoCommit() {
@@ -176,13 +238,18 @@
   }
 
   async function handleCommit() {
-    if (!repoPath || !commitMessage.trim() || status.staged.length === 0)
+    // `loading` guard: Ctrl+Enter bypasses the disabled button.
+    if (loading || !repoPath || !commitMessage.trim() || status.staged.length === 0)
       return;
+    const path = repoPath;
     loading = true;
     try {
-      const result = await tauri.createCommit(repoPath, commitMessage.trim());
+      // Wait for any queued stage/unstage so the commit sees the final index.
+      await writeQueue;
+      const result = await tauri.createCommit(path, commitMessage.trim());
       if (result.success) {
-        commitMessage = "";
+        commitDrafts.delete(path);
+        if (repoPath === path) commitMessage = "";
         await refreshAll();
       } else {
         await message(result.message, { title: "Commit Failed", kind: "error" });
@@ -255,9 +322,10 @@
       case "deleted":
         return "var(--color-diff-del-text)";
       case "modified":
-        return "#e0af68";
+      case "renamed":
+        return "var(--color-lane-2)";
       case "conflicted":
-        return "#f7768e";
+        return "var(--color-diff-del-text)";
       default:
         return "var(--color-text-muted)";
     }
@@ -327,9 +395,10 @@
     <div
       class="section-header"
       onclick={() => (unstagedExpanded = !unstagedExpanded)}
-      onkeydown={(e) => e.key === "Enter" && (unstagedExpanded = !unstagedExpanded)}
+      onkeydown={(e) => activateOnKey(e, () => (unstagedExpanded = !unstagedExpanded))}
       role="button"
       tabindex="0"
+      aria-expanded={unstagedExpanded}
     >
       {#if unstagedExpanded}
         <ChevronDown size={14} />
@@ -364,12 +433,12 @@
             class="file-item"
             class:selected={selectedFile?.path === file.path && selectedFile?.area === "unstaged"}
             onclick={() => selectFile(file, "unstaged")}
-            onkeydown={(e) => e.key === "Enter" && selectFile(file, "unstaged")}
+            onkeydown={(e) => activateOnKey(e, () => selectFile(file, "unstaged"))}
             role="button"
             tabindex="0"
           >
             <Icon size={13} color={statusColor(file.status)} />
-            <span class="file-name" title={file.path}>{file.path}</span>
+            <span class="file-name" title="{file.path} ({file.status})">{file.path}</span>
             <button
               class="action-btn discard-btn"
               onclick={(e) => discardFile(e, file)}
@@ -398,9 +467,10 @@
     <div
       class="section-header"
       onclick={() => (stagedExpanded = !stagedExpanded)}
-      onkeydown={(e) => e.key === "Enter" && (stagedExpanded = !stagedExpanded)}
+      onkeydown={(e) => activateOnKey(e, () => (stagedExpanded = !stagedExpanded))}
       role="button"
       tabindex="0"
+      aria-expanded={stagedExpanded}
     >
       {#if stagedExpanded}
         <ChevronDown size={14} />
@@ -428,12 +498,12 @@
             class="file-item"
             class:selected={selectedFile?.path === file.path && selectedFile?.area === "staged"}
             onclick={() => selectFile(file, "staged")}
-            onkeydown={(e) => e.key === "Enter" && selectFile(file, "staged")}
+            onkeydown={(e) => activateOnKey(e, () => selectFile(file, "staged"))}
             role="button"
             tabindex="0"
           >
             <Icon size={13} color={statusColor(file.status)} />
-            <span class="file-name" title={file.path}>{file.path}</span>
+            <span class="file-name" title="{file.path} ({file.status})">{file.path}</span>
             <button
               class="action-btn unstage-btn"
               onclick={(e) => unstageFile(e, file)}
@@ -460,7 +530,19 @@
       placeholder="Commit message..."
       bind:value={commitMessage}
       rows="3"
+      spellcheck="true"
+      aria-label="Commit message"
     ></textarea>
+    {#if summaryLength > 0}
+      <div
+        class="summary-hint"
+        class:warn={summaryLength > 50}
+        class:over={summaryLength > 72}
+        title="Summary (first line) length — keep it under 50, at most 72 characters"
+      >
+        {summaryLength}
+      </div>
+    {/if}
     <div class="commit-actions">
       <button
         class="commit-btn"
@@ -591,7 +673,7 @@
   }
 
   .stage-all-btn:hover {
-    background: rgba(122, 162, 247, 0.2);
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
     color: var(--color-accent);
   }
 
@@ -646,18 +728,42 @@
     flex-shrink: 0;
   }
 
-  .file-item:hover .action-btn {
+  .file-item:hover .action-btn,
+  .file-item:focus-within .action-btn,
+  .file-item.selected .action-btn {
     display: flex;
   }
 
+  .file-item:focus-visible,
+  .section-header:focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+  }
+
   .stage-btn:hover {
-    background: rgba(158, 206, 106, 0.2);
+    background: var(--color-diff-add-bg);
     color: var(--color-diff-add-text);
   }
 
   .unstage-btn:hover,
   .discard-btn:hover {
-    background: rgba(247, 118, 142, 0.2);
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
+  }
+
+  .summary-hint {
+    align-self: flex-end;
+    margin-top: -4px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--color-text-muted);
+  }
+
+  .summary-hint.warn {
+    color: var(--color-lane-2);
+  }
+
+  .summary-hint.over {
     color: var(--color-diff-del-text);
   }
 
@@ -740,9 +846,9 @@
   }
 
   .undo-btn:hover {
-    background: rgba(247, 118, 142, 0.15);
-    color: #f7768e;
-    border-color: rgba(247, 118, 142, 0.4);
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
+    border-color: var(--color-diff-del-text);
   }
 
   .commit-btn:hover {

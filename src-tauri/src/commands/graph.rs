@@ -12,11 +12,8 @@ pub async fn get_commit_graph(
     path: String,
     max_commits: Option<usize>,
 ) -> Result<CommitGraph, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
     let limit = max_commits.unwrap_or(5000);
-    reader::read_commit_graph(&open.repository, limit)
+    state
+        .read_repo(&path, move |repo| reader::read_commit_graph(repo, limit))
+        .await
 }

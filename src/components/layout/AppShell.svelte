@@ -8,9 +8,9 @@
   import HomeScreen from "./HomeScreen.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
-  import { selectedCommitOid, selectedWorkingFile, workingFileDiff, refreshAll } from "../../lib/stores/graph";
+  import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
-  import { loadSettings } from "../../lib/stores/settings";
+  import { loadSettings, settings, flushSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
   import { installKeybindings, onAction } from "../../lib/keybindings";
   import { open, message as dialogMessage } from "@tauri-apps/plugin-dialog";
@@ -23,10 +23,14 @@
   let showTitleBar = $state(false);
   let appVersion = $state("");
 
+  async function showError(title: string, err: unknown) {
+    await dialogMessage(String(err), { title, kind: "error" });
+  }
+
   onMount(() => {
-    restoreSession();
-    loadSettings();
-    initAutoFetch();
+    // Settings first so restore honors "restore tabs on startup".
+    loadSettings().then(() => restoreSession(get(settings).restore_tabs_on_startup));
+    const stopAutoFetch = initAutoFetch();
     installKeybindings();
 
     // ── Keybinding action handlers ─────────────────────────────────
@@ -37,9 +41,8 @@
         try {
           const info = await tauri.openRepo(selected as string);
           addRepo(info);
-          $currentView = "repos";
         } catch (err) {
-          console.error("Failed to open repo:", err);
+          await showError("Open Repository Failed", err);
         }
       }),
       onAction("close_tab", () => {
@@ -80,8 +83,13 @@
       }),
       onAction("fetch", async () => {
         const path = get(activeRepoPath);
-        if (path) {
-          try { await tauri.fetchAll(path); refreshAll(); } catch {}
+        if (!path) return;
+        try {
+          const result = await tauri.fetchAll(path);
+          refreshAll(path);
+          if (!result.success) await showError("Fetch Failed", result.message);
+        } catch (err) {
+          await showError("Fetch Failed", err);
         }
       }),
       onAction("pull", async () => {
@@ -89,14 +97,16 @@
         if (!path) return;
         try {
           const result = await tauri.pull(path);
-          refreshAll();
+          refreshAll(path);
           if (!result.success || result.message.includes("conflicts")) {
             await dialogMessage(result.message, {
               title: result.success ? "Pull — Stash Conflicts" : "Pull Failed",
               kind: result.success ? "warning" : "error",
             });
           }
-        } catch {}
+        } catch (err) {
+          await showError("Pull Failed", err);
+        }
       }),
       onAction("push", async () => {
         const path = get(activeRepoPath);
@@ -104,9 +114,14 @@
         try {
           const info = await tauri.getRepoInfo(path);
           const branch = info.head_name ?? "HEAD";
-          await tauri.pushBranch(path, branch);
-          refreshAll();
-        } catch {}
+          // Same behavior as the Push button in StagingArea: set upstream so
+          // first pushes of new branches work.
+          const result = await tauri.pushBranch(path, branch, undefined, true);
+          refreshAll(path);
+          if (!result.success) await showError("Push Failed", result.message);
+        } catch (err) {
+          await showError("Push Failed", err);
+        }
       }),
       // commit is handled inside StagingArea via the textarea exception in keybindings.ts
     ];
@@ -123,9 +138,17 @@
       }
     });
 
+    // Settings saves are debounced; don't lose a change made right before quit.
+    const unlistenClose = getCurrentWindow().onCloseRequested(async () => {
+      await flushSettings().catch(() => {});
+    });
+
     return () => {
       unsubs.forEach((fn) => fn());
       unlisten.then((fn) => fn());
+      unlistenClose.then((fn) => fn());
+      stopAutoFetch();
+      stopDrag?.();
     };
   });
 
@@ -150,6 +173,8 @@
   let mainAreaEl: HTMLElement | undefined = $state(undefined);
   let contentEl: HTMLElement | undefined = $state(undefined);
   let dragging = $state<"sidebar" | "diff" | "staging" | null>(null);
+  /** Ends an in-progress resize drag (also called on unmount). */
+  let stopDrag: (() => void) | null = null;
 
   function onDragStart(kind: "sidebar" | "diff" | "staging") {
     return (e: MouseEvent) => {
@@ -174,14 +199,19 @@
 
       const onUp = () => {
         dragging = null;
+        stopDrag = null;
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        window.removeEventListener("blur", onUp);
       };
+      stopDrag = onUp;
 
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+      // Releasing the mouse outside the window never fires mouseup here.
+      window.addEventListener("blur", onUp);
     };
   }
 

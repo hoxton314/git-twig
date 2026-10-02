@@ -12,16 +12,16 @@ pub async fn get_commit_diff(
     path: String,
     oid: String,
 ) -> Result<Vec<DiffFile>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    reader::read_commit_diff(&open.repository, &oid)
+    state
+        .read_repo(&path, move |repo| reader::read_commit_diff(repo, &oid))
+        .await
 }
 
 /// Get raw file content as base64 from a given source (workdir, index, head, or commit OID).
 /// Returns null if the file doesn't exist in that source.
+/// Largest blob `get_file_blob` will return for image/audio previews.
+const MAX_PREVIEW_BLOB_BYTES: usize = 25 * 1024 * 1024;
+
 #[tauri::command]
 pub async fn get_file_blob(
     state: State<'_, AppState>,
@@ -29,13 +29,16 @@ pub async fn get_file_blob(
     file_path: String,
     source: String,
 ) -> Result<Option<String>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    let data = reader::read_file_blob(&open.repository, &file_path, &source)?;
-    Ok(data.map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)))
+    state
+        .read_repo(&path, move |repo| {
+            let data = reader::read_file_blob(repo, &file_path, &source)?;
+            // Previews are base64-encoded across IPC; skip huge files rather
+            // than freezing the webview. The frontend shows "no preview".
+            Ok(data
+                .filter(|bytes| bytes.len() <= MAX_PREVIEW_BLOB_BYTES)
+                .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)))
+        })
+        .await
 }
 
 /// Get the working directory diff (staged + unstaged changes).
@@ -44,10 +47,5 @@ pub async fn get_working_diff(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Vec<DiffFile>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    reader::read_working_diff(&open.repository)
+    state.read_repo(&path, reader::read_working_diff).await
 }

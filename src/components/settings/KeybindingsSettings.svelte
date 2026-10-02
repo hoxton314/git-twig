@@ -1,6 +1,6 @@
 <script lang="ts">
   import { RotateCcw } from "lucide-svelte";
-  import { ACTIONS, getShortcut, eventToShortcut } from "../../lib/keybindings";
+  import { ACTIONS, eventToShortcut, normalizeShortcut } from "../../lib/keybindings";
   import { settings, updateSettings } from "../../lib/stores/settings";
 
   const s = $derived($settings);
@@ -23,6 +23,36 @@
     capturingActionId = actionId;
   }
 
+  // The overlay never receives focus, so an element-level onkeydown on it
+  // would never fire. Listen on window in the capture phase instead, which
+  // also runs before the global keybinding handler.
+  $effect(() => {
+    if (!capturingActionId) return;
+    window.addEventListener("keydown", handleCaptureKeydown, true);
+    return () => window.removeEventListener("keydown", handleCaptureKeydown, true);
+  });
+
+  // Map of action id -> labels of other actions bound to the same shortcut.
+  const conflicts = $derived.by(() => {
+    const byShortcut = new Map<string, string[]>();
+    for (const action of ACTIONS) {
+      const norm = normalizeShortcut(effectiveShortcut(action.id));
+      if (!norm) continue;
+      byShortcut.set(norm, [...(byShortcut.get(norm) ?? []), action.id]);
+    }
+    const result = new Map<string, string[]>();
+    for (const ids of byShortcut.values()) {
+      if (ids.length < 2) continue;
+      for (const id of ids) {
+        result.set(
+          id,
+          ids.filter((o) => o !== id).map((o) => ACTIONS.find((a) => a.id === o)?.label ?? o),
+        );
+      }
+    }
+    return result;
+  });
+
   function handleCaptureKeydown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -44,7 +74,7 @@
     const action = ACTIONS.find((a) => a.id === actionId);
     const overrides = { ...s.keybinding_overrides };
 
-    if (action && shortcut === action.defaultShortcut) {
+    if (action && normalizeShortcut(shortcut) === normalizeShortcut(action.defaultShortcut)) {
       delete overrides[actionId];
     } else {
       overrides[actionId] = shortcut;
@@ -72,10 +102,11 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 {#if capturingActionId}
-  <div class="capture-overlay" onkeydown={handleCaptureKeydown}>
-    <div class="capture-modal">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="capture-overlay" onclick={() => (capturingActionId = null)}>
+    <div class="capture-modal" role="status" aria-live="polite">
       <p class="capture-title">Press a key combination</p>
       <p class="capture-hint">Press Escape to cancel</p>
     </div>
@@ -105,9 +136,13 @@
               class="shortcut-btn"
               class:customized={isCustomized(action.id)}
               class:capturing={capturingActionId === action.id}
+              class:conflict={conflicts.has(action.id)}
               onclick={() => startCapture(action.id)}
+              title={conflicts.has(action.id)
+                ? `Conflicts with: ${conflicts.get(action.id)?.join(", ")}`
+                : "Click to change"}
             >
-              {#each effectiveShortcut(action.id).split("+") as part, i}
+              {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
                 {#if i > 0}<span class="key-sep">+</span>{/if}
                 <kbd class="key">{part}</kbd>
               {/each}
@@ -224,6 +259,11 @@
   .shortcut-btn.capturing {
     border-color: var(--color-accent);
     box-shadow: 0 0 0 1px var(--color-accent);
+  }
+
+  .shortcut-btn.conflict,
+  .shortcut-btn.customized.conflict {
+    border-color: #f7768e;
   }
 
   .shortcut-btn.customized {

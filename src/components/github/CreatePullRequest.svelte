@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Loader2, ExternalLink, AlertCircle } from "lucide-svelte";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
+  import { untrack } from "svelte";
   import Modal from "../shared/Modal.svelte";
   import * as tauri from "../../lib/tauri";
   import type { GitHubRemoteInfo } from "../../lib/types/github";
@@ -32,9 +33,12 @@
   let error = $state("");
   let createdPr = $state<GitHubPullRequest | null>(null);
 
+  // Re-detect only when the dialog opens or the repo changes. detectRemote()
+  // synchronously reads `detecting`; without untrack, flipping it back to
+  // false at the end would re-trigger this effect in an endless API loop.
   $effect(() => {
     if (isOpen && repoPath) {
-      detectRemote();
+      untrack(() => detectRemote());
     }
   });
 
@@ -90,7 +94,7 @@
   }
 
   async function handleCreate() {
-    if (!remote || !title.trim() || !head || !base) return;
+    if (!remote || !title.trim() || !head || !base || creating) return;
     creating = true;
     error = "";
     try {

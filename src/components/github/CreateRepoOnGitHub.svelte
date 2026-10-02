@@ -28,7 +28,7 @@
   const s = $derived($settings);
 
   async function handleCreate() {
-    if (!name.trim()) return;
+    if (!name.trim() || creating) return;
     creating = true;
     error = "";
     try {
@@ -46,26 +46,21 @@
   }
 
   async function handleCloneLocally() {
-    if (!createdRepo) return;
+    if (!createdRepo || cloning) return;
     cloning = true;
     error = "";
     try {
-      const baseDir = s.default_repo_dir ?? "";
-      let dest = baseDir
-        ? `${baseDir}/${createdRepo.name}`
-        : createdRepo.name;
-
       const selected = await openDialog({
         directory: true,
         multiple: false,
         title: "Clone destination",
+        defaultPath: s.default_repo_dir ?? undefined,
       });
-      if (selected) {
-        dest = `${selected}/${createdRepo.name}`;
-      } else {
+      if (!selected) {
         cloning = false;
         return;
       }
+      const dest = `${selected}/${createdRepo.name}`;
 
       const info = await tauri.githubCloneRepo(createdRepo.clone_url, dest);
       oncreated(info);

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use git2::Repository;
 use serde::Serialize;
@@ -18,45 +18,24 @@ pub struct RepoInfo {
     pub last_commit_time: i64,
 }
 
-/// Open a repository by path and add it to the app state.
-#[tauri::command]
-pub async fn open_repo(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<RepoInfo, TwigError> {
-    let repo_path = PathBuf::from(&path);
+/// Display name for HEAD: the branch name, or a short OID when detached.
+/// `None` for an unborn branch (empty repo).
+fn head_display_name(repo: &Repository) -> Option<String> {
+    let head = repo.head().ok()?;
+    if head.is_branch() {
+        head.shorthand().map(String::from)
+    } else {
+        head.target().map(|o| {
+            let mut s = o.to_string();
+            s.truncate(7);
+            s
+        })
+    }
+}
 
-    // Discover the git repository (handles opening from subdirectories)
-    let repo = Repository::discover(&repo_path)
-        .map_err(|_| TwigError::NotARepo(path.clone()))?;
-
-    let workdir = repo
-        .workdir()
-        .unwrap_or(repo.path())
-        .to_path_buf();
-
-    let canonical = workdir
-        .canonicalize()
-        .unwrap_or_else(|_| workdir.clone());
-
-    let key = canonical.to_string_lossy().to_string();
-
-    let head_name = repo
-        .head()
-        .ok()
-        .and_then(|h| {
-            if h.is_branch() {
-                h.shorthand().map(String::from)
-            } else {
-                // Detached HEAD — show short OID
-                h.target().map(|o| {
-                    let s = o.to_string();
-                    s[..7.min(s.len())].to_string()
-                })
-            }
-        });
-
-    let name = canonical
+/// Build `RepoInfo` for an opened repository.
+pub(crate) fn build_repo_info(repo: &Repository, key: String, dir: &Path) -> RepoInfo {
+    let name = dir
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".to_string());
@@ -68,23 +47,39 @@ pub async fn open_repo(
         .map(|c| c.time().seconds())
         .unwrap_or(0);
 
-    let info = RepoInfo {
-        path: key.clone(),
+    RepoInfo {
+        path: key,
         name,
-        head_name,
+        head_name: head_display_name(repo),
         is_bare: repo.is_bare(),
         is_empty: repo.is_empty().unwrap_or(false),
         last_commit_time,
-    };
+    }
+}
+
+/// Open a repository by path and add it to the app state.
+#[tauri::command]
+pub async fn open_repo(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<RepoInfo, TwigError> {
+    let requested = path.clone();
+    let (canonical, info) = tauri::async_runtime::spawn_blocking(move || {
+        // Discover the git repository (handles opening from subdirectories)
+        let repo = Repository::discover(PathBuf::from(&requested))
+            .map_err(|_| TwigError::NotARepo(requested.clone()))?;
+
+        let workdir = repo.workdir().unwrap_or(repo.path()).to_path_buf();
+        let canonical = workdir.canonicalize().unwrap_or(workdir);
+        let key = canonical.to_string_lossy().to_string();
+        let info = build_repo_info(&repo, key, &canonical);
+        Ok::<_, TwigError>((canonical, info))
+    })
+    .await
+    .map_err(|e| TwigError::Task(e.to_string()))??;
 
     let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.insert(
-        key,
-        OpenRepo {
-            repository: repo,
-            path: canonical,
-        },
-    );
+    repos.insert(info.path.clone(), OpenRepo { path: canonical });
 
     Ok(info)
 }
@@ -106,48 +101,10 @@ pub async fn get_repo_info(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<RepoInfo, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    let repo = &open.repository;
-
-    let head_name = repo
-        .head()
-        .ok()
-        .and_then(|h| {
-            if h.is_branch() {
-                h.shorthand().map(String::from)
-            } else {
-                h.target().map(|o| {
-                    let s = o.to_string();
-                    s[..7.min(s.len())].to_string()
-                })
-            }
-        });
-
-    let name = open
-        .path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "repo".to_string());
-
-    let last_commit_time = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_commit().ok())
-        .map(|c| c.time().seconds())
-        .unwrap_or(0);
-
-    Ok(RepoInfo {
-        path,
-        name,
-        head_name,
-        is_bare: repo.is_bare(),
-        is_empty: repo.is_empty().unwrap_or(false),
-        last_commit_time,
-    })
+    let dir = state.repo_path(&path)?;
+    state
+        .read_repo(&path.clone(), move |repo| Ok(build_repo_info(repo, path, &dir)))
+        .await
 }
 
 /// List all currently open repository paths.
@@ -163,58 +120,29 @@ pub async fn list_open_repos(
 /// Returns RepoInfo for each discovered repo, sorted by most recent commit (newest first).
 #[tauri::command]
 pub async fn list_repos_in_dir(dir: String) -> Result<Vec<RepoInfo>, TwigError> {
-    let dir_path = PathBuf::from(&dir);
+    tauri::async_runtime::spawn_blocking(move || scan_repos(&PathBuf::from(dir)))
+        .await
+        .map_err(|e| TwigError::Task(e.to_string()))?
+}
+
+fn scan_repos(dir_path: &Path) -> Result<Vec<RepoInfo>, TwigError> {
     if !dir_path.is_dir() {
         return Ok(vec![]);
     }
 
-    let entries: Vec<_> = std::fs::read_dir(&dir_path)?
+    let mut repos: Vec<RepoInfo> = std::fs::read_dir(dir_path)?
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
-        .collect();
-
-    let mut repos: Vec<(i64, RepoInfo)> = entries
-        .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
             let repo = Repository::open(&path).ok()?;
-            let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
-
-            let head_time = repo
-                .head()
-                .ok()
-                .and_then(|h| h.peel_to_commit().ok())
-                .map(|c| c.time().seconds())
-                .unwrap_or(0);
-
-            let head_name = repo.head().ok().and_then(|h| {
-                if h.is_branch() {
-                    h.shorthand().map(String::from)
-                } else {
-                    h.target().map(|o| {
-                    let s = o.to_string();
-                    s[..7.min(s.len())].to_string()
-                })
-                }
-            });
-
-            let name = canonical
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "repo".to_string());
-
-            Some((head_time, RepoInfo {
-                path: canonical.to_string_lossy().to_string(),
-                name,
-                head_name,
-                is_bare: repo.is_bare(),
-                is_empty: repo.is_empty().unwrap_or(false),
-                last_commit_time: head_time,
-            }))
+            let canonical = path.canonicalize().unwrap_or(path);
+            let key = canonical.to_string_lossy().to_string();
+            Some(build_repo_info(&repo, key, &canonical))
         })
         .collect();
 
-    repos.sort_by(|a, b| b.0.cmp(&a.0));
+    repos.sort_by(|a, b| b.last_commit_time.cmp(&a.last_commit_time));
 
-    Ok(repos.into_iter().map(|(_, info)| info).collect())
+    Ok(repos)
 }

@@ -14,8 +14,9 @@
     refreshStash,
     refreshAll,
   } from "../../lib/stores/graph";
+  import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
-  import { message } from "@tauri-apps/plugin-dialog";
+  import { message, ask } from "@tauri-apps/plugin-dialog";
 
   const repoPath = $derived($activeRepoPath);
   const entries = $derived($stashEntries);
@@ -35,8 +36,12 @@
     }
   });
 
+  // Any stash operation renumbers stash@{N}, so only one may run at a time —
+  // otherwise a second click could pop/drop the wrong entry.
+  const busy = $derived(loading || actionLoading !== null);
+
   async function handleStashPush() {
-    if (!repoPath) return;
+    if (!repoPath || busy) return;
     loading = true;
     try {
       const result = await tauri.stashPush(
@@ -57,7 +62,7 @@
   }
 
   async function handlePop(index: number) {
-    if (!repoPath) return;
+    if (!repoPath || busy) return;
     actionLoading = index;
     try {
       const result = await tauri.stashPop(repoPath, index);
@@ -74,7 +79,7 @@
   }
 
   async function handleApply(index: number) {
-    if (!repoPath) return;
+    if (!repoPath || busy) return;
     actionLoading = index;
     try {
       const result = await tauri.stashApply(repoPath, index);
@@ -89,8 +94,15 @@
     }
   }
 
-  async function handleDrop(index: number) {
-    if (!repoPath) return;
+  async function handleDrop(index: number, label: string) {
+    if (!repoPath || busy) return;
+    if ($settings.confirm_destructive_ops) {
+      const ok = await ask(`Drop stash "${label}"? This cannot be undone.`, {
+        title: "Drop Stash",
+        kind: "warning",
+      });
+      if (!ok) return;
+    }
     actionLoading = index;
     try {
       const result = await tauri.stashDrop(repoPath, index);
@@ -129,9 +141,15 @@
   <div
     class="section-header"
     onclick={() => (expanded = !expanded)}
-    onkeydown={(e) => e.key === "Enter" && (expanded = !expanded)}
+    onkeydown={(e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        expanded = !expanded;
+      }
+    }}
     role="button"
     tabindex="0"
+    aria-expanded={expanded}
   >
     {#if expanded}
       <ChevronDown size={14} />
@@ -152,12 +170,12 @@
           type="text"
           placeholder="Stash message (optional)..."
           bind:value={stashMessage}
-          onkeydown={(e) => e.key === "Enter" && handleStashPush()}
+          onkeydown={(e) => e.key === "Enter" && !e.isComposing && handleStashPush()}
         />
         <button
           class="stash-push-btn"
           onclick={handleStashPush}
-          disabled={loading}
+          disabled={busy}
           title="Stash changes"
         >
           {#if loading}
@@ -183,6 +201,7 @@
                 <button
                   class="stash-action-btn"
                   onclick={() => handlePop(entry.index)}
+                  disabled={busy}
                   title="Pop (apply & remove)"
                 >
                   <ArchiveRestore size={12} />
@@ -190,13 +209,15 @@
                 <button
                   class="stash-action-btn"
                   onclick={() => handleApply(entry.index)}
+                  disabled={busy}
                   title="Apply (keep stash)"
                 >
                   <Copy size={12} />
                 </button>
                 <button
                   class="stash-action-btn delete"
-                  onclick={() => handleDrop(entry.index)}
+                  onclick={() => handleDrop(entry.index, entry.message)}
+                  disabled={busy}
                   title="Drop"
                 >
                   <Trash2 size={12} />
@@ -360,14 +381,19 @@
     padding: 0;
   }
 
-  .stash-action-btn:hover {
-    background: rgba(122, 162, 247, 0.2);
+  .stash-action-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
     color: var(--color-accent);
   }
 
-  .stash-action-btn.delete:hover {
-    background: rgba(247, 118, 142, 0.2);
+  .stash-action-btn.delete:hover:not(:disabled) {
+    background: var(--color-diff-del-bg);
     color: var(--color-diff-del-text);
+  }
+
+  .stash-action-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .stash-actions :global(.spinner) {

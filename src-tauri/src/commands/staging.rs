@@ -1,16 +1,29 @@
 use serde::Serialize;
 use tauri::State;
 
-use git2::Repository;
-
 use crate::error::TwigError;
+use crate::git::writer::GitOutput;
 use crate::git::{reader, writer};
-use crate::state::{AppState, OpenRepo};
+use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
 pub struct CommandResult {
     pub success: bool,
     pub message: String,
+}
+
+impl From<GitOutput> for CommandResult {
+    /// Surface stdout on success and stderr on failure.
+    fn from(output: GitOutput) -> Self {
+        CommandResult {
+            success: output.success,
+            message: if output.success {
+                output.stdout
+            } else {
+                output.stderr
+            },
+        }
+    }
 }
 
 /// Get the working directory status (staged + unstaged file lists).
@@ -19,12 +32,7 @@ pub async fn get_working_status(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<reader::WorkingStatus, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    reader::read_working_status(&open.repository)
+    state.read_repo(&path, reader::read_working_status).await
 }
 
 /// Get the staged diff, optionally for a single file.
@@ -34,12 +42,11 @@ pub async fn get_staged_diff(
     path: String,
     file_path: Option<String>,
 ) -> Result<Vec<reader::DiffFile>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    reader::read_staged_diff(&open.repository, file_path.as_deref())
+    state
+        .read_repo(&path, move |repo| {
+            reader::read_staged_diff(repo, file_path.as_deref())
+        })
+        .await
 }
 
 /// Get the unstaged diff, optionally for a single file.
@@ -49,12 +56,11 @@ pub async fn get_unstaged_diff(
     path: String,
     file_path: Option<String>,
 ) -> Result<Vec<reader::DiffFile>, TwigError> {
-    let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    let open = repos
-        .get(&path)
-        .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-
-    reader::read_unstaged_diff(&open.repository, file_path.as_deref())
+    state
+        .read_repo(&path, move |repo| {
+            reader::read_unstaged_diff(repo, file_path.as_deref())
+        })
+        .await
 }
 
 /// Stage files by path.
@@ -64,27 +70,14 @@ pub async fn stage_files(
     path: String,
     files: Vec<String>,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     if files.is_empty() {
         return Ok(CommandResult { success: true, message: String::new() });
     }
     let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
     let output = writer::stage_files(&repo_path, &file_refs).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Unstage files by path.
@@ -94,27 +87,14 @@ pub async fn unstage_files(
     path: String,
     files: Vec<String>,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     if files.is_empty() {
         return Ok(CommandResult { success: true, message: String::new() });
     }
     let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
     let output = writer::unstage_files(&repo_path, &file_refs).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Create a commit with the given message.
@@ -124,23 +104,10 @@ pub async fn create_commit(
     path: String,
     message: String,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let output = writer::commit(&repo_path, &message).await?;
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Undo the last commit, keeping changes staged.
@@ -149,41 +116,12 @@ pub async fn undo_commit(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
+    // Reads open a fresh repository handle per call (see
+    // `AppState::read_repo`), so no cached handle needs refreshing here.
     let output = writer::undo_last_commit(&repo_path).await?;
-
-    if output.success {
-        // Re-open the repository so git2 sees the new HEAD
-        let fresh = Repository::discover(&repo_path)
-            .map_err(|_| TwigError::NotARepo(path.clone()))?;
-        let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        // Replace the cached handle so git2 sees the new HEAD. Insert rather than
-        // only-update-if-present so a concurrently-removed entry doesn't leave a
-        // stale repo behind (which would make later reads report the old HEAD).
-        repos.insert(
-            path.clone(),
-            OpenRepo {
-                repository: fresh,
-                path: repo_path,
-            },
-        );
-    }
-
-    Ok(CommandResult {
-        success: output.success,
-        message: if output.success {
-            output.stdout
-        } else {
-            output.stderr
-        },
-    })
+    Ok(output.into())
 }
 
 /// Discard unstaged changes. Tracked files are restored, untracked files are deleted.
@@ -194,13 +132,7 @@ pub async fn discard_files(
     tracked: Vec<String>,
     untracked: Vec<String>,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     if !tracked.is_empty() {
         let refs: Vec<&str> = tracked.iter().map(|s| s.as_str()).collect();
@@ -238,13 +170,7 @@ pub async fn pull(
     remote: Option<String>,
     branch: Option<String>,
 ) -> Result<CommandResult, TwigError> {
-    let repo_path = {
-        let repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-        let open = repos
-            .get(&path)
-            .ok_or_else(|| TwigError::RepoNotFound(path.clone()))?;
-        open.path.clone()
-    };
+    let repo_path = state.repo_path(&path)?;
 
     let dirty = writer::has_uncommitted_changes(&repo_path).await?;
 
@@ -254,6 +180,7 @@ pub async fn pull(
     // appears (e.g. a concurrent operation or rebase autostash).
     let mut autostash_sha: Option<String> = None;
     if dirty {
+        let before = writer::stash_top_sha(&repo_path).await?;
         let stash = writer::stash_push(&repo_path, Some("autostash before pull")).await?;
         if !stash.success {
             return Ok(CommandResult {
@@ -261,7 +188,13 @@ pub async fn pull(
                 message: format!("Failed to stash changes before pull: {}", stash.stderr),
             });
         }
-        autostash_sha = writer::stash_top_sha(&repo_path).await?;
+        // `git stash push` exits 0 with "No local changes to save" when there
+        // is nothing it can stash. Only treat the top entry as ours if it is
+        // new — otherwise we would later pop the user's unrelated stash.
+        let after = writer::stash_top_sha(&repo_path).await?;
+        if after != before {
+            autostash_sha = after;
+        }
     }
 
     let remote_name = remote.as_deref().unwrap_or("origin");
@@ -294,7 +227,7 @@ pub async fn pull(
             ),
         });
     }
-    if dirty {
+    if autostash_sha.is_some() {
         return Ok(CommandResult {
             success: true,
             message: format!("Pulled successfully (local changes auto-stashed and restored)\n{}", output.stdout),

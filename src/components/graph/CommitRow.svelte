@@ -46,19 +46,22 @@
 <button
   class="commit-row"
   class:selected={isSelected}
+  aria-pressed={isSelected}
+  tabindex="-1"
   onclick={onSelect}
 >
   <img
     class="avatar"
     src={gravatarUrl}
-    alt={commit.author_name}
+    alt=""
+    title={`${commit.author_name} <${commit.author_email}>`}
     width="20"
     height="20"
     loading="lazy"
   />
   {#if sortedRefs.length > 0}
     <span class="ref-labels">
-      {#each sortedRefs as ref (ref.name)}
+      {#each sortedRefs as ref (ref.ref_type + ":" + ref.name)}
         <span class="ref-pill ref-{ref.ref_type}" title={ref.name}>{ref.name}</span>
       {/each}
     </span>
@@ -72,7 +75,7 @@
   {/if}
   <span class="author">{commit.author_name}</span>
   <span class="oid">{commit.short_oid}</span>
-  <span class="time">{formatTime(commit.timestamp)}</span>
+  <span class="time" title={new Date(commit.timestamp * 1000).toLocaleString()}>{formatTime(commit.timestamp)}</span>
 </button>
 
 <style>
@@ -130,8 +133,8 @@
   }
 
   .ref-local {
-    background: rgba(122, 162, 247, 0.2);
-    color: #7aa2f7;
+    background: color-mix(in srgb, var(--color-lane-0) 20%, transparent);
+    color: var(--color-lane-0);
   }
 
   .ref-remote {
@@ -140,8 +143,8 @@
   }
 
   .ref-tag {
-    background: rgba(224, 175, 104, 0.2);
-    color: #e0af68;
+    background: color-mix(in srgb, var(--color-lane-2) 20%, transparent);
+    color: var(--color-lane-2);
   }
 
   .summary {
@@ -159,7 +162,7 @@
   .unpushed {
     display: flex;
     align-items: center;
-    color: #e0af68;
+    color: var(--color-lane-2);
     flex-shrink: 0;
     opacity: 0.8;
   }

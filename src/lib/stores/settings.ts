@@ -1,6 +1,7 @@
 import { writable, get } from "svelte/store";
 import type { AppSettings } from "../types/git";
 import { setOverrides } from "../keybindings";
+import { diffViewMode } from "./ui";
 import * as tauri from "../tauri";
 
 const defaults: AppSettings = {
@@ -33,10 +34,14 @@ let loaded = false;
 export async function loadSettings() {
   try {
     const s = await tauri.loadSettings();
-    settings.set(s);
-  } catch {
+    // Merge over defaults so fields missing from older backends/files are filled.
+    settings.set({ ...defaults, ...s, keybinding_overrides: s.keybinding_overrides ?? {} });
+  } catch (e) {
+    console.error("Failed to load settings, using defaults:", e);
     settings.set({ ...defaults });
   }
+  // Apply the persisted default diff view at startup.
+  diffViewMode.set(get(settings).diff_view_mode);
   loaded = true;
 }
 
@@ -45,10 +50,24 @@ function persistSettings() {
   if (!loaded) return;
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
+    saveTimeout = null;
     tauri.saveSettings(get(settings)).catch((e) => {
       console.error("Failed to save settings:", e);
     });
   }, 300);
+}
+
+/**
+ * Write any pending (debounced) settings to disk immediately. Use before
+ * invoking backend commands that read settings.json themselves (e.g. GitHub).
+ */
+export async function flushSettings(): Promise<void> {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  if (!loaded) return;
+  await tauri.saveSettings(get(settings));
 }
 
 /** Apply visual settings to CSS custom properties. */
@@ -63,7 +82,7 @@ function applyVisualSettings(s: AppSettings) {
 settings.subscribe((s) => {
   persistSettings();
   applyVisualSettings(s);
-  setOverrides(s.keybinding_overrides);
+  setOverrides(s.keybinding_overrides ?? {});
 });
 
 /** Update one or more settings fields and auto-save. */

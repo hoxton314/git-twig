@@ -13,6 +13,7 @@
   let lfsInstalled = $state(false);
   let saving = $state(false);
   let saveError = $state<string | null>(null);
+  let loadError = $state<string | null>(null);
 
   onMount(async () => {
     try {
@@ -25,6 +26,8 @@
       signingKey = cfg.signing_key;
       lfsInstalled = cfg.lfs_installed;
     } catch (e) {
+      // Don't show (and later save) placeholder values over the real config.
+      loadError = String(e);
       console.error("Failed to load git config:", e);
     }
     loading = false;
@@ -68,6 +71,8 @@
 
   {#if loading}
     <p class="loading-text">Loading git config...</p>
+  {:else if loadError}
+    <div class="notice error">Failed to read git config: {loadError}</div>
   {:else}
     <p class="section-desc">
       These settings map to your global <code>~/.gitconfig</code>. Changes are written directly to git config.
@@ -87,7 +92,7 @@
             class="text-input"
             placeholder="Your Name"
             value={userName}
-            onchange={(e) => { userName = e.currentTarget.value; scheduleGitConfigSave(); }}
+            onchange={(e) => { userName = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
           />
         </div>
       </div>
@@ -103,7 +108,7 @@
             class="text-input"
             placeholder="you@example.com"
             value={userEmail}
-            onchange={(e) => { userEmail = e.currentTarget.value; scheduleGitConfigSave(); }}
+            onchange={(e) => { userEmail = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
           />
         </div>
       </div>
@@ -179,7 +184,7 @@
               class="text-input"
               placeholder="Key ID"
               value={signingKey}
-              onchange={(e) => { signingKey = e.currentTarget.value; scheduleGitConfigSave(); }}
+              onchange={(e) => { signingKey = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
             />
           </div>
         </div>

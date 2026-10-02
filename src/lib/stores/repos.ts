@@ -1,7 +1,7 @@
 import { writable, derived, get } from "svelte/store";
 import type { RepoInfo } from "../types/git";
 import * as tauri from "../tauri";
-import { sidebarWidth, stagingWidth, diffPanelRatio } from "./ui";
+import { sidebarWidth, stagingWidth, diffPanelRatio, currentView } from "./ui";
 
 /** All open repos, keyed by path. */
 export const openRepos = writable<Map<string, RepoInfo>>(new Map());
@@ -22,6 +22,9 @@ export function addRepo(info: RepoInfo) {
     return m;
   });
   activeRepoPath.set(info.path);
+  // Opening a repo from the Settings screen (e.g. via the tab "+" menu)
+  // must leave Settings, otherwise the new tab is active but hidden.
+  currentView.set("repos");
 }
 
 /** Remove a repo tab. Switches to the nearest remaining tab. */
@@ -79,8 +82,11 @@ sidebarWidth.subscribe(() => persistSession());
 stagingWidth.subscribe(() => persistSession());
 diffPanelRatio.subscribe(() => persistSession());
 
-/** Restore previously open repos from disk. Call once at startup. */
-export async function restoreSession() {
+/**
+ * Restore previously open repos from disk. Call once at startup, after
+ * settings are loaded. When `restoreTabs` is false only the layout is restored.
+ */
+export async function restoreSession(restoreTabs: boolean = true) {
   try {
     const session = await tauri.loadSession();
 
@@ -89,22 +95,20 @@ export async function restoreSession() {
     if (session.staging_width != null) stagingWidth.set(session.staging_width);
     if (session.diff_panel_ratio != null) diffPanelRatio.set(session.diff_panel_ratio);
 
-    if (session.paths.length === 0) {
+    if (!restoreTabs || session.paths.length === 0) {
       sessionReady = true;
       return;
     }
 
-    for (const path of session.paths) {
-      try {
-        const info = await tauri.openRepo(path);
-        openRepos.update((m) => {
-          m.set(info.path, info);
-          return m;
-        });
-      } catch {
-        // Repo no longer exists or isn't accessible — skip it
+    // Open all repos in parallel, but insert them in their saved tab order.
+    // Repos that no longer exist or aren't accessible are skipped.
+    const results = await Promise.allSettled(session.paths.map((p) => tauri.openRepo(p)));
+    openRepos.update((m) => {
+      for (const r of results) {
+        if (r.status === "fulfilled") m.set(r.value.path, r.value);
       }
-    }
+      return m;
+    });
 
     // Restore active tab (fall back to first open repo)
     const repos = get(openRepos);
@@ -117,4 +121,6 @@ export async function restoreSession() {
     // No saved session or corrupt file — start fresh
   }
   sessionReady = true;
+  // Persist once so deleted/inaccessible repo paths are dropped from disk.
+  persistSession();
 }

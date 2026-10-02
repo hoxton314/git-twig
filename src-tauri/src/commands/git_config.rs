@@ -30,13 +30,38 @@ async fn git_config_get(key: &str) -> String {
 }
 
 async fn git_config_get_bool(key: &str) -> bool {
-    let val = git_config_get(key).await;
-    matches!(val.as_str(), "true" | "1" | "yes")
+    // `--type=bool` makes git canonicalise every accepted spelling
+    // (yes/on/1/True/...) to "true"/"false".
+    let output = Command::new("git")
+        .args(["config", "--global", "--type=bool", "--get", key])
+        .output()
+        .await;
+    matches!(output, Ok(o) if o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+}
+
+/// Map raw `pull.rebase` / `pull.ff` values onto the three modes the UI offers.
+fn normalize_pull_mode(rebase: &str, ff: &str) -> String {
+    match rebase.to_ascii_lowercase().as_str() {
+        // Any rebase flavour (true, merges, interactive, ...) except false.
+        "" | "false" | "no" | "off" | "0" => {
+            if ff.eq_ignore_ascii_case("only") {
+                "ff-only".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
+        _ => "true".to_string(),
+    }
+}
+
+async fn current_pull_mode() -> String {
+    let (rebase, ff) = tokio::join!(git_config_get("pull.rebase"), git_config_get("pull.ff"));
+    normalize_pull_mode(&rebase, &ff)
 }
 
 async fn git_config_set(key: &str, value: &str) -> Result<(), TwigError> {
     let output = Command::new("git")
-        .args(["config", "--global", key, value])
+        .args(["config", "--global", "--", key, value])
         .output()
         .await
         .map_err(|e| TwigError::GitCli(format!("Failed to execute git config: {e}")))?;
@@ -67,23 +92,16 @@ async fn detect_lfs() -> bool {
 
 #[tauri::command]
 pub async fn get_git_config() -> Result<GitConfig, TwigError> {
-    let (user_name, user_email, pull_rebase_raw, fetch_prune, gpg_sign, signing_key, lfs_installed) =
+    let (user_name, user_email, pull_rebase, fetch_prune, gpg_sign, signing_key, lfs_installed) =
         tokio::join!(
             git_config_get("user.name"),
             git_config_get("user.email"),
-            git_config_get("pull.rebase"),
+            current_pull_mode(),
             git_config_get_bool("fetch.prune"),
             git_config_get_bool("commit.gpgsign"),
             git_config_get("user.signingkey"),
             detect_lfs(),
         );
-
-    // Normalize pull.rebase: empty means "false" (merge)
-    let pull_rebase = if pull_rebase_raw.is_empty() {
-        "false".to_string()
-    } else {
-        pull_rebase_raw
-    };
 
     Ok(GitConfig {
         user_name,
@@ -106,26 +124,32 @@ pub async fn set_git_config(config: GitConfig) -> Result<(), TwigError> {
         git_config_set("user.email", &config.user_email).await?;
     }
 
-    // pull.rebase — explicitly set all values to override any XDG config
-    match config.pull_rebase.as_str() {
-        "true" => {
-            git_config_set("pull.rebase", "true").await?;
-            git_config_set("pull.ff", "false").await?;
-        }
-        "ff-only" => {
-            git_config_set("pull.rebase", "false").await?;
-            git_config_set("pull.ff", "only").await?;
-        }
-        _ => {
-            git_config_set("pull.rebase", "false").await?;
-            git_config_set("pull.ff", "false").await?;
+    // pull.rebase / pull.ff — only touch them when the mode actually changed,
+    // so saving an unrelated field doesn't clobber e.g. `pull.rebase=merges`.
+    // When written, values are set explicitly to override any XDG config.
+    // Note: `pull.ff=false` would force a merge commit on *every* pull (--no-ff),
+    // so merge mode uses `pull.ff=true` (fast-forward when possible), git's default.
+    if current_pull_mode().await != config.pull_rebase {
+        match config.pull_rebase.as_str() {
+            "true" => {
+                git_config_set("pull.rebase", "true").await?;
+                git_config_set("pull.ff", "true").await?;
+            }
+            "ff-only" => {
+                git_config_set("pull.rebase", "false").await?;
+                git_config_set("pull.ff", "only").await?;
+            }
+            _ => {
+                git_config_set("pull.rebase", "false").await?;
+                git_config_set("pull.ff", "true").await?;
+            }
         }
     }
 
     git_config_set_bool("fetch.prune", config.fetch_prune).await?;
     git_config_set_bool("commit.gpgsign", config.gpg_sign).await?;
 
-    if config.gpg_sign && !config.signing_key.is_empty() {
+    if !config.signing_key.is_empty() {
         git_config_set("user.signingkey", &config.signing_key).await?;
     }
 

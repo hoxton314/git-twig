@@ -40,6 +40,11 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+html {
+  /* Native widgets (scrollbars, form controls, pickers) match the theme. */
+  color-scheme: dark;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -114,6 +119,12 @@ select option {
   color: var(--color-text-primary);
 }
 
+/* Visible keyboard focus for custom buttons/rows (mouse clicks unaffected). */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
 input[type="number"] {
   -moz-appearance: textfield;
 }
@@ -127,6 +138,7 @@ input[type="number"]::-webkit-outer-spin-button {
 /* ── Light theme ────────────────────────────────────────────────── */
 
 [data-theme="light"] {
+  color-scheme: light;
   --color-bg: #f0f0f5;
   --color-surface: #e4e4ec;
   --color-surface-elevated: #ffffff;

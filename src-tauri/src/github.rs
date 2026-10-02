@@ -78,16 +78,70 @@ async fn check_response(response: reqwest::Response) -> Result<reqwest::Response
     if status.is_success() {
         return Ok(response);
     }
-    let body = response.text().await.unwrap_or_default();
+    let headers = response.headers().clone();
+    let raw = response.text().await.unwrap_or_default();
+    // GitHub error bodies are JSON like {"message": "...", "errors": [...]}.
+    // Surface the human-readable message instead of the raw JSON blob.
+    let body = serde_json::from_str::<serde_json::Value>(&raw)
+        .ok()
+        .and_then(|v| {
+            let msg = v.get("message")?.as_str()?.to_string();
+            let details: Vec<String> = v
+                .get("errors")
+                .and_then(|e| e.as_array())
+                .map(|errs| {
+                    errs.iter()
+                        .filter_map(|e| {
+                            e.get("message")
+                                .and_then(|m| m.as_str())
+                                .map(String::from)
+                                .or_else(|| e.as_str().map(String::from))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(if details.is_empty() {
+                msg
+            } else {
+                format!("{msg} ({})", details.join("; "))
+            })
+        })
+        .unwrap_or(raw);
+
+    let rate_limited = headers
+        .get("x-ratelimit-remaining")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim() == "0");
+    if (status.as_u16() == 403 || status.as_u16() == 429) && rate_limited {
+        let reset = headers
+            .get("x-ratelimit-reset")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .and_then(|reset| {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()?
+                    .as_secs();
+                Some(reset.saturating_sub(now).div_ceil(60).max(1))
+            });
+        return Err(TwigError::GitHub(match reset {
+            Some(mins) => format!("GitHub API rate limit exceeded. Try again in ~{mins} min."),
+            None => "GitHub API rate limit exceeded. Try again later.".into(),
+        }));
+    }
+
     match status.as_u16() {
         401 => Err(TwigError::GitHub(
             "Invalid or expired GitHub token. Please update it in Settings.".into(),
         )),
         403 => Err(TwigError::GitHub(format!("GitHub access denied: {body}"))),
         404 => Err(TwigError::GitHub(format!(
-            "GitHub resource not found: {body}"
+            "GitHub resource not found (or token lacks access): {body}"
         ))),
         422 => Err(TwigError::GitHub(format!("Validation failed: {body}"))),
+        429 => Err(TwigError::GitHub(format!(
+            "GitHub rate limit hit, try again later: {body}"
+        ))),
         _ => Err(TwigError::GitHub(format!(
             "GitHub API error ({status}): {body}"
         ))),
@@ -191,49 +245,124 @@ struct BranchEntry {
     name: String,
 }
 
+/// Upper bound on pages fetched for branch listings (100 per page).
+const MAX_BRANCH_PAGES: u32 = 20;
+
 pub async fn list_branches(
     client: &Client,
     token: &str,
     owner: &str,
     repo: &str,
 ) -> Result<Vec<String>, TwigError> {
-    let resp = auth_headers(
-        client.get(format!(
-            "{API_BASE}/repos/{owner}/{repo}/branches?per_page=100"
-        )),
-        token,
-    )
-    .send()
-    .await?;
-    let resp = check_response(resp).await?;
-    let branches: Vec<BranchEntry> = resp.json().await?;
-    Ok(branches.into_iter().map(|b| b.name).collect())
+    let mut names = Vec::new();
+    for page in 1..=MAX_BRANCH_PAGES {
+        let resp = auth_headers(
+            client.get(format!(
+                "{API_BASE}/repos/{owner}/{repo}/branches?per_page=100&page={page}"
+            )),
+            token,
+        )
+        .send()
+        .await?;
+        let resp = check_response(resp).await?;
+        let has_next = has_next_link(resp.headers());
+        let branches: Vec<BranchEntry> = resp.json().await?;
+        names.extend(branches.into_iter().map(|b| b.name));
+        if !has_next {
+            break;
+        }
+    }
+    Ok(names)
 }
 
 // ── Remote URL parsing ───────────────────────────────────────────────
 
 /// Parse a GitHub owner/repo from a remote URL.
-/// Supports HTTPS (`https://github.com/owner/repo.git`) and
-/// SSH (`git@github.com:owner/repo.git`).
+/// Supports HTTPS (`https://github.com/owner/repo.git`, optionally with
+/// `user@` credentials), SSH scp-style (`git@github.com:owner/repo.git`) and
+/// URL-style SSH/git (`ssh://git@github.com[:port]/owner/repo.git`).
+/// Only github.com is recognised since the API client targets api.github.com.
 pub fn parse_github_remote(url: &str) -> Option<(String, String)> {
-    // HTTPS
-    if let Some(rest) = url
-        .strip_prefix("https://github.com/")
-        .or_else(|| url.strip_prefix("http://github.com/"))
-    {
-        let rest = rest.trim_end_matches(".git").trim_end_matches('/');
-        let parts: Vec<&str> = rest.splitn(2, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-            return Some((parts[0].to_string(), parts[1].to_string()));
+    let url = url.trim();
+
+    let path = if let Some((scheme, rest)) = url.split_once("://") {
+        if !matches!(
+            scheme.to_ascii_lowercase().as_str(),
+            "https" | "http" | "ssh" | "git" | "git+ssh" | "ssh+git"
+        ) {
+            return None;
         }
-    }
-    // SSH
-    if let Some(rest) = url.strip_prefix("git@github.com:") {
-        let rest = rest.trim_end_matches(".git").trim_end_matches('/');
-        let parts: Vec<&str> = rest.splitn(2, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-            return Some((parts[0].to_string(), parts[1].to_string()));
+        let (authority, path) = rest.split_once('/')?;
+        // Strip userinfo (`user@` / `user:token@`) and port.
+        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+        let host = host.split_once(':').map_or(host, |(h, _)| h);
+        if !is_github_host(host) {
+            return None;
         }
+        path
+    } else {
+        // scp-like syntax: [user@]host:path
+        let (authority, path) = url.split_once(':')?;
+        if authority.contains('/') {
+            return None; // local path, not a remote
+        }
+        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+        if !is_github_host(host) {
+            return None;
+        }
+        path
+    };
+
+    let path = path.trim_matches('/');
+    let mut parts = path.splitn(3, '/');
+    let owner = parts.next()?.trim();
+    let repo = parts.next()?.trim().trim_end_matches('/');
+    let repo = repo.strip_suffix(".git").unwrap_or(repo);
+    if owner.is_empty() || repo.is_empty() {
+        return None;
     }
-    None
+    Some((owner.to_string(), repo.to_string()))
+}
+
+fn is_github_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    host == "github.com" || host == "www.github.com"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_github_remote;
+
+    fn p(url: &str) -> Option<(String, String)> {
+        parse_github_remote(url)
+    }
+
+    fn ok(owner: &str, repo: &str) -> Option<(String, String)> {
+        Some((owner.to_string(), repo.to_string()))
+    }
+
+    #[test]
+    fn parses_common_remote_forms() {
+        assert_eq!(p("https://github.com/o/r.git"), ok("o", "r"));
+        assert_eq!(p("https://github.com/o/r"), ok("o", "r"));
+        assert_eq!(p("https://github.com/o/r/"), ok("o", "r"));
+        assert_eq!(p("https://github.com/o/r.git/"), ok("o", "r"));
+        assert_eq!(p("http://GitHub.com/o/r.git"), ok("o", "r"));
+        assert_eq!(p("https://user:tok@github.com/o/r.git"), ok("o", "r"));
+        assert_eq!(p("git@github.com:o/r.git"), ok("o", "r"));
+        assert_eq!(p("git@github.com:o/r"), ok("o", "r"));
+        assert_eq!(p("ssh://git@github.com/o/r.git"), ok("o", "r"));
+        assert_eq!(p("ssh://git@github.com:22/o/r.git"), ok("o", "r"));
+        assert_eq!(p("git://github.com/o/my.repo.git"), ok("o", "my.repo"));
+    }
+
+    #[test]
+    fn rejects_non_github() {
+        assert_eq!(p("https://gitlab.com/o/r.git"), None);
+        assert_eq!(p("git@gitlab.com:o/r.git"), None);
+        assert_eq!(p("https://github.com.evil.io/o/r"), None);
+        assert_eq!(p("/home/me/github.com:o/r"), None);
+        assert_eq!(p("https://github.com/o"), None);
+        assert_eq!(p("file:///github.com/o/r"), None);
+    }
 }

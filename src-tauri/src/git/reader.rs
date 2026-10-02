@@ -2,10 +2,40 @@
 
 use std::collections::HashMap;
 
-use git2::{BranchType, Delta, Diff, DiffOptions, Oid, Repository, Sort};
+use std::path::{Component, Path};
+
+use git2::{
+    BranchType, Commit, Delta, Diff, DiffFindOptions, DiffOptions, ObjectType, Oid, Repository,
+    Sort,
+};
 use serde::Serialize;
 
 use crate::error::TwigError;
+
+/// First 7 hex chars of an OID (OID strings are ASCII, so slicing is safe).
+fn short_oid(oid: Oid) -> String {
+    let mut s = oid.to_string();
+    s.truncate(7);
+    s
+}
+
+/// Resolve a commit from a full or abbreviated hex OID.
+///
+/// `Oid::from_str` zero-pads short input instead of expanding it, so an
+/// abbreviated hash would look up a non-existent object.
+fn resolve_commit<'r>(repo: &'r Repository, oid_str: &str) -> Result<Commit<'r>, TwigError> {
+    if !oid_str.is_empty() && oid_str.len() <= 64 && oid_str.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        if oid_str.len() >= 40 {
+            return Ok(repo.find_commit(Oid::from_str(oid_str)?)?);
+        }
+        let obj = repo.find_object_by_prefix(oid_str, None)?;
+        return Ok(obj.peel_to_commit()?);
+    }
+    Err(TwigError::InvalidArgument(format!(
+        "'{oid_str}' is not a commit hash"
+    )))
+}
 
 // ── Commit graph ──────────────────────────────────────────────────────
 
@@ -88,7 +118,7 @@ pub fn read_commit_graph(repo: &Repository, max_commits: usize) -> Result<Commit
 
         commits.push(CommitInfo {
             oid: oid.to_string(),
-            short_oid: oid.to_string()[..7.min(oid.to_string().len())].to_string(),
+            short_oid: short_oid(oid),
             summary: commit.summary().unwrap_or("").to_string(),
             body: commit.body().unwrap_or("").to_string(),
             author_name: author.name().unwrap_or("Unknown").to_string(),
@@ -121,7 +151,7 @@ fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
     let mut entries: Vec<GraphEntry> = Vec::with_capacity(commits.len());
     let mut max_lanes: usize = 0;
 
-    for commit in &commits {
+    for commit in commits {
         // ── 1. Find or allocate lane for this commit ──────────────────
         let reserved = lanes
             .iter()
@@ -188,7 +218,7 @@ fn compute_lanes(commits: Vec<CommitInfo>) -> CommitGraph {
         }
 
         entries.push(GraphEntry {
-            commit: commit.clone(),
+            commit,
             lane: my_lane,
             has_incoming,
             rails,
@@ -255,15 +285,11 @@ fn compute_unpushed_oids(repo: &Repository) -> Vec<String> {
         None => return vec![],
     };
 
-    let branch_name = match head.shorthand() {
-        Some(name) => name.to_string(),
-        None => return vec![],
-    };
-
-    let branch = match repo.find_branch(&branch_name, BranchType::Local) {
-        Ok(b) => b,
-        Err(_) => return vec![],
-    };
+    // Detached HEAD has no upstream.
+    if !head.is_branch() {
+        return vec![];
+    }
+    let branch = git2::Branch::wrap(head);
 
     let upstream = match branch.upstream() {
         Ok(u) => u,
@@ -311,37 +337,39 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
     for branch_type in &[BranchType::Local, BranchType::Remote] {
         for branch_result in repo.branches(Some(*branch_type))? {
             let (branch, btype) = branch_result?;
-            let name = branch.name()?.unwrap_or("").to_string();
+            // Skip (rather than fail the whole list on) non-UTF-8 names.
+            let Ok(Some(name)) = branch.name().map(|n| n.map(String::from)) else {
+                continue;
+            };
             let is_remote = btype == BranchType::Remote;
-
             let is_head = branch.is_head();
-            let reference = branch.into_reference();
-            let oid = match reference.target() {
-                Some(o) => o,
-                None => continue,
+
+            // Symbolic refs (e.g. `origin/HEAD`) have no direct target.
+            let Some(oid) = branch.get().target() else {
+                continue;
+            };
+            // A ref pointing at a non-commit (or a missing object) should not
+            // break the whole branch list.
+            let Ok(commit) = repo.find_commit(oid) else {
+                continue;
             };
 
-            let commit = repo.find_commit(oid)?;
-
-            let (upstream, ahead, behind) = if !is_remote {
-                match repo.find_branch(&name, BranchType::Local) {
-                    Ok(local_branch) => match local_branch.upstream() {
-                        Ok(upstream_branch) => {
-                            let upstream_name =
-                                upstream_branch.name().ok().flatten().map(String::from);
-                            let (a, b) = upstream_branch
-                                .get()
-                                .target()
-                                .and_then(|uoid| repo.graph_ahead_behind(oid, uoid).ok())
-                                .unwrap_or((0, 0));
-                            (upstream_name, a, b)
-                        }
-                        Err(_) => (None, 0, 0),
-                    },
+            let (upstream, ahead, behind) = if is_remote {
+                (None, 0, 0)
+            } else {
+                match branch.upstream() {
+                    Ok(upstream_branch) => {
+                        let upstream_name =
+                            upstream_branch.name().ok().flatten().map(String::from);
+                        let (a, b) = upstream_branch
+                            .get()
+                            .target()
+                            .and_then(|uoid| repo.graph_ahead_behind(oid, uoid).ok())
+                            .unwrap_or((0, 0));
+                        (upstream_name, a, b)
+                    }
                     Err(_) => (None, 0, 0),
                 }
-            } else {
-                (None, 0, 0)
             };
 
             branches.push(BranchInfo {
@@ -352,7 +380,7 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
                 ahead,
                 behind,
                 oid: oid.to_string(),
-                short_oid: oid.to_string()[..7.min(oid.to_string().len())].to_string(),
+                short_oid: short_oid(oid),
                 last_commit_summary: commit.summary().unwrap_or("").to_string(),
                 last_commit_timestamp: commit.time().seconds(),
             });
@@ -390,15 +418,25 @@ pub fn read_working_status(repo: &Repository) -> Result<WorkingStatus, TwigError
     let mut staged = Vec::new();
     let mut unstaged = Vec::new();
 
+    // Only staged renames are detected (like `git status`). Workdir rename
+    // detection would pair an untracked file with a deleted tracked one into a
+    // single entry, which the stage/discard actions cannot handle: the new
+    // path is untracked (so `git restore` fails) and the deletion is hidden.
     let statuses = repo.statuses(Some(
         git2::StatusOptions::new()
             .include_untracked(true)
-            .renames_head_to_index(true)
-            .renames_index_to_workdir(true),
+            .renames_head_to_index(true),
     ))?;
 
     for entry in statuses.iter() {
-        let path = entry.path().unwrap_or("").to_string();
+        // For renames `entry.path()` is the *old* path; report the new one,
+        // which is what exists in the index/workdir and what stage/unstage/
+        // diff operations need to act on.
+        let path = entry
+            .head_to_index()
+            .and_then(|d| d.new_file().path().map(|p| p.to_string_lossy().into_owned()))
+            .or_else(|| entry.path().map(String::from))
+            .unwrap_or_default();
         let s = entry.status();
 
         // Staged (index) changes
@@ -473,10 +511,13 @@ pub fn read_staged_diff(
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
     if let Some(p) = file_path {
-        opts.pathspec(p);
+        literal_pathspec(&mut opts, p);
     }
 
-    let diff = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
+    let mut diff = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
+    if file_path.is_none() {
+        detect_renames(&mut diff)?;
+    }
     parse_diff(&diff)
 }
 
@@ -491,11 +532,28 @@ pub fn read_unstaged_diff(
     opts.recurse_untracked_dirs(true);
     opts.show_untracked_content(true);
     if let Some(p) = file_path {
-        opts.pathspec(p);
+        literal_pathspec(&mut opts, p);
     }
 
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
     parse_diff(&diff)
+}
+
+/// Restrict a diff to exactly one path. Pathspecs are globs by default, so a
+/// file literally named e.g. `[ab].txt` or `*.rs` would otherwise match other
+/// files. Directory paths (untracked dirs are reported as `dir/`) still match
+/// everything beneath them.
+fn literal_pathspec(opts: &mut DiffOptions, path: &str) {
+    opts.pathspec(path.trim_end_matches('/'));
+    opts.disable_pathspec_match(true);
+}
+
+/// Pair up deleted/added files into renames (like `git diff -M`).
+fn detect_renames(diff: &mut Diff) -> Result<(), TwigError> {
+    let mut find = DiffFindOptions::new();
+    find.renames(true);
+    diff.find_similar(Some(&mut find))?;
+    Ok(())
 }
 
 // ── Diffs ─────────────────────────────────────────────────────────────
@@ -550,10 +608,12 @@ fn delta_status_str(delta: Delta) -> &'static str {
 ///
 /// We require all three markers AND a small total size to avoid false
 /// positives on files that merely mention the LFS spec URL.
+const LFS_POINTER_MAX: usize = 512;
+
 fn check_lfs_pointer(content: &str) -> Option<String> {
     // Real LFS pointers are under 256 bytes; anything larger is just a
     // file that happens to reference the spec URL.
-    if content.len() > 512 {
+    if content.is_empty() || content.len() > LFS_POINTER_MAX {
         return None;
     }
 
@@ -594,8 +654,7 @@ fn format_bytes(bytes: u64) -> String {
 
 /// Get the diff for a specific commit (compared to its first parent, or to empty tree for root commits).
 pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile>, TwigError> {
-    let oid = Oid::from_str(oid_str)?;
-    let commit = repo.find_commit(oid)?;
+    let commit = resolve_commit(repo, oid_str)?;
     let tree = commit.tree()?;
 
     let parent_tree = if commit.parent_count() > 0 {
@@ -607,7 +666,8 @@ pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
 
-    let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
+    let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
+    detect_renames(&mut diff)?;
 
     parse_diff(&diff)
 }
@@ -618,9 +678,9 @@ pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> 
 
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
-    opts.include_untracked(true);
 
-    let staged = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
+    let mut staged = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
+    detect_renames(&mut staged)?;
     let mut unstaged_opts = DiffOptions::new();
     unstaged_opts.context_lines(3);
     unstaged_opts.include_untracked(true);
@@ -648,12 +708,26 @@ pub fn read_file_blob(
     file_path: &str,
     source: &str,
 ) -> Result<Option<Vec<u8>>, TwigError> {
+    let rel_path = Path::new(file_path);
+    // Only plain repo-relative paths are valid. `workdir.join` would happily
+    // follow `..` or replace the base entirely with an absolute path, letting
+    // the IPC caller read arbitrary files.
+    if file_path.is_empty()
+        || !rel_path
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(TwigError::InvalidArgument(format!(
+            "'{file_path}' is not a repository-relative path"
+        )));
+    }
+
     match source {
         "workdir" => {
             let workdir = repo
                 .workdir()
                 .ok_or_else(|| TwigError::Git(git2::Error::from_str("bare repository")))?;
-            let full_path = workdir.join(file_path);
+            let full_path = workdir.join(rel_path);
             match std::fs::read(&full_path) {
                 Ok(data) => Ok(Some(data)),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -661,13 +735,12 @@ pub fn read_file_blob(
             }
         }
         "index" => {
-            let index = repo.index()?;
-            let entry = index
-                .iter()
-                // Compare raw bytes so non-UTF-8 index paths still match instead
-                // of silently collapsing to "" and reporting the file as missing.
-                .find(|e| e.path == file_path.as_bytes());
-            match entry {
+            let mut index = repo.index()?;
+            // Pick up changes made by CLI writes since the index was loaded.
+            index.read(false)?;
+            // Stage 0 is the normal (non-conflict) entry; conflicted paths
+            // only have stages 1-3 and have no single "index" version.
+            match index.get_path(rel_path, 0) {
                 Some(e) => {
                     let blob = repo.find_blob(e.id)?;
                     Ok(Some(blob.content().to_vec()))
@@ -680,27 +753,28 @@ pub fn read_file_blob(
                 Ok(h) => h,
                 Err(_) => return Ok(None), // no HEAD (empty repo)
             };
-            let tree = head.peel_to_tree()?;
-            match tree.get_path(std::path::Path::new(file_path)) {
-                Ok(entry) => {
-                    let blob = repo.find_blob(entry.id())?;
-                    Ok(Some(blob.content().to_vec()))
-                }
-                Err(_) => Ok(None),
-            }
+            tree_blob(repo, &head.peel_to_tree()?, rel_path)
         }
         oid_str => {
-            let oid = Oid::from_str(oid_str)?;
-            let commit = repo.find_commit(oid)?;
-            let tree = commit.tree()?;
-            match tree.get_path(std::path::Path::new(file_path)) {
-                Ok(entry) => {
-                    let blob = repo.find_blob(entry.id())?;
-                    Ok(Some(blob.content().to_vec()))
-                }
-                Err(_) => Ok(None),
-            }
+            let commit = resolve_commit(repo, oid_str)?;
+            tree_blob(repo, &commit.tree()?, rel_path)
         }
+    }
+}
+
+/// Read a blob at `path` inside `tree`. Returns `None` if the path is missing
+/// or is not a regular file (a directory or submodule entry).
+fn tree_blob(
+    repo: &Repository,
+    tree: &git2::Tree,
+    path: &Path,
+) -> Result<Option<Vec<u8>>, TwigError> {
+    match tree.get_path(path) {
+        Ok(entry) if entry.kind() == Some(ObjectType::Blob) => {
+            let blob = repo.find_blob(entry.id())?;
+            Ok(Some(blob.content().to_vec()))
+        }
+        _ => Ok(None),
     }
 }
 
@@ -715,34 +789,42 @@ fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
         };
         let old_path = delta.old_file().path().map(|p| p.to_string_lossy().to_string());
         let new_path = delta.new_file().path().map(|p| p.to_string_lossy().to_string());
-        let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
         let status = delta_status_str(delta.status()).to_string();
 
         let mut hunks: Vec<DiffHunk> = Vec::new();
         let mut is_lfs = false;
         let mut lfs_size: Option<String> = None;
-        let mut full_content = String::new();
+        // Old/new side text, capped — only needed to sniff small LFS pointers.
+        let mut old_side = String::new();
+        let mut new_side = String::new();
 
-        // Use print to iterate hunks/lines for this specific delta
+        // Generating the patch loads file contents, which is when libgit2
+        // decides whether a file is binary — so the binary flags must be read
+        // *after* this, not from the delta beforehand.
         let patch = git2::Patch::from_diff(diff, delta_idx)?;
+        let is_binary = match &patch {
+            Some(p) => p.delta().old_file().is_binary() || p.delta().new_file().is_binary(),
+            None => delta.old_file().is_binary() || delta.new_file().is_binary(),
+        };
         if let Some(patch) = patch {
             let num_hunks = patch.num_hunks();
             for hunk_idx in 0..num_hunks {
                 let (hunk, num_lines) = patch.hunk(hunk_idx)?;
-                let header = std::str::from_utf8(hunk.header()).unwrap_or("").to_string();
+                let header = String::from_utf8_lossy(hunk.header()).into_owned();
                 let mut lines: Vec<DiffLine> = Vec::new();
 
                 for line_idx in 0..num_lines {
                     let line = patch.line_in_hunk(hunk_idx, line_idx)?;
-                    let content = std::str::from_utf8(line.content()).unwrap_or("").to_string();
-                    full_content.push_str(&content);
-
-                    let origin = match line.origin() {
-                        '+' => "+".to_string(),
-                        '-' => "-".to_string(),
-                        ' ' => " ".to_string(),
-                        c => c.to_string(),
-                    };
+                    // Lossy rather than dropping non-UTF-8 (e.g. Latin-1) lines.
+                    let content = String::from_utf8_lossy(line.content()).into_owned();
+                    let origin_char = line.origin();
+                    if origin_char != '+' && old_side.len() <= LFS_POINTER_MAX {
+                        old_side.push_str(&content);
+                    }
+                    if origin_char != '-' && new_side.len() <= LFS_POINTER_MAX {
+                        new_side.push_str(&content);
+                    }
+                    let origin = origin_char.to_string();
 
                     lines.push(DiffLine {
                         origin,
@@ -763,8 +845,9 @@ fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
             }
         }
 
-        // Check for LFS
-        if let Some(size) = check_lfs_pointer(&full_content) {
+        // Check for LFS; prefer the new side so a modified pointer reports the
+        // new object's size, falling back to the old side for deletions.
+        if let Some(size) = check_lfs_pointer(&new_side).or_else(|| check_lfs_pointer(&old_side)) {
             is_lfs = true;
             lfs_size = Some(size);
         }
@@ -781,4 +864,118 @@ fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
     }
 
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok, "git {args:?} failed");
+    }
+
+    fn temp_repo(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("twig-reader-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        dir
+    }
+
+    #[test]
+    fn literal_pathspec_and_untracked_dir() {
+        let dir = temp_repo("pathspec");
+        std::fs::write(dir.join("[ab].txt"), "x\n").unwrap();
+        std::fs::write(dir.join("a.txt"), "y\n").unwrap();
+        std::fs::create_dir(dir.join("newdir")).unwrap();
+        std::fs::write(dir.join("newdir/f.txt"), "z\n").unwrap();
+        let repo = Repository::open(&dir).unwrap();
+
+        let files = read_unstaged_diff(&repo, Some("[ab].txt")).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].new_path.as_deref(), Some("[ab].txt"));
+
+        let files = read_unstaged_diff(&repo, Some("newdir/")).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].new_path.as_deref(), Some("newdir/f.txt"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn staged_rename_reports_new_path_and_binary_flag() {
+        let dir = temp_repo("rename");
+        let body = "line\n".repeat(50);
+        std::fs::write(dir.join("old.txt"), &body).unwrap();
+        std::fs::write(dir.join("bin.dat"), [0u8, 1, 2, 0, 3]).unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "init"]);
+        git(&dir, &["mv", "old.txt", "new.txt"]);
+        std::fs::write(dir.join("bin.dat"), [0u8, 9, 9, 0, 3]).unwrap();
+        let repo = Repository::open(&dir).unwrap();
+
+        let status = read_working_status(&repo).unwrap();
+        assert_eq!(status.staged.len(), 1);
+        assert_eq!(status.staged[0].path, "new.txt");
+        assert_eq!(status.staged[0].status, "renamed");
+
+        let unstaged = read_unstaged_diff(&repo, Some("bin.dat")).unwrap();
+        assert_eq!(unstaged.len(), 1);
+        assert!(unstaged[0].is_binary);
+
+        let staged = read_staged_diff(&repo, None).unwrap();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].status, "renamed");
+
+        // Index blob must reflect CLI writes made after the handle was opened.
+        let _ = repo.index().unwrap();
+        std::fs::write(dir.join("later.txt"), "later\n").unwrap();
+        git(&dir, &["add", "later.txt"]);
+        let blob = read_file_blob(&repo, "later.txt", "index").unwrap();
+        assert_eq!(blob.as_deref(), Some(&b"later\n"[..]));
+
+        assert!(read_file_blob(&repo, "../etc/passwd", "workdir").is_err());
+        assert!(read_file_blob(&repo, "/etc/passwd", "workdir").is_err());
+
+        let head = repo.head().unwrap().target().unwrap().to_string();
+        assert!(read_commit_diff(&repo, &head[..10]).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lanes_for_merge() {
+        let mk = |oid: &str, parents: &[&str]| CommitInfo {
+            oid: oid.into(),
+            short_oid: oid.into(),
+            summary: String::new(),
+            body: String::new(),
+            author_name: String::new(),
+            author_email: String::new(),
+            author_gravatar: String::new(),
+            timestamp: 0,
+            parent_oids: parents.iter().map(|p| p.to_string()).collect(),
+        };
+        // m merges b into a; both fork from r.
+        let g = compute_lanes(vec![
+            mk("m", &["a", "b"]),
+            mk("b", &["r"]),
+            mk("a", &["r"]),
+            mk("r", &[]),
+        ]);
+        let lanes: Vec<usize> = g.entries.iter().map(|e| e.lane).collect();
+        // `r` was first reserved by `b` (lane 1), so `a` joins that lane.
+        assert_eq!(lanes, vec![0, 1, 0, 1]);
+        assert!(g.entries.iter().skip(1).all(|e| e.has_incoming));
+        assert_eq!(g.entries[1].parent_lanes, vec![1]);
+        assert_eq!(g.entries[2].parent_lanes, vec![1]);
+        assert_eq!(g.total_lanes, 2);
+    }
 }

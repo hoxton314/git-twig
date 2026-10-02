@@ -1,6 +1,6 @@
 <script lang="ts">
   import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2 } from "lucide-svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, message } from "@tauri-apps/plugin-dialog";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
   import { settings } from "../../lib/stores/settings";
@@ -25,13 +25,22 @@
     }),
   );
 
+  // Derived so unrelated settings changes (theme, accent...) don't rescan the dir.
+  const repoDir = $derived($settings.default_repo_dir);
+
   $effect(() => {
-    const dir = $settings.default_repo_dir;
-    if (dir) {
-      tauri.listReposInDir(dir).then((r) => (discoveredRepos = r)).catch(() => (discoveredRepos = []));
-    } else {
+    const dir = repoDir;
+    if (!dir) {
       discoveredRepos = [];
+      return;
     }
+    // Ignore a slow scan of a previous directory that resolves after a newer one.
+    let cancelled = false;
+    tauri
+      .listReposInDir(dir)
+      .then((r) => { if (!cancelled) discoveredRepos = r; })
+      .catch(() => { if (!cancelled) discoveredRepos = []; });
+    return () => { cancelled = true; };
   });
 
   async function handleOpenRepo() {
@@ -41,7 +50,7 @@
       const info = await tauri.openRepo(selected as string);
       addRepo(info);
     } catch (err) {
-      console.error("Failed to open repo:", err);
+      await message(String(err), { title: "Open Repository Failed", kind: "error" });
     }
   }
 
@@ -50,7 +59,7 @@
       const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
-      console.error("Failed to open repo:", err);
+      await message(String(err), { title: "Open Repository Failed", kind: "error" });
     }
   }
 

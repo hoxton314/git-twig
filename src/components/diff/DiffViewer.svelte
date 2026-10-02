@@ -9,6 +9,7 @@
   } from "../../lib/stores/graph";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { diffViewMode } from "../../lib/stores/ui";
+  import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
   import DiffHunk from "./DiffHunk.svelte";
   import ImageDiff from "./ImageDiff.svelte";
@@ -31,6 +32,12 @@
   const workingDiff = $derived($workingFileDiff);
   const loading = $derived($diffLoading);
   const viewMode = $derived($diffViewMode);
+  const tabSize = $derived($settings.tab_size || 4);
+  const wordWrap = $derived($settings.word_wrap_in_diffs);
+
+  // Files with more diff lines than this are collapsed behind a "show anyway"
+  // button so a huge generated/minified file can't freeze the UI.
+  const LARGE_DIFF_LINES = 2000;
 
   // Show working file diff when a working file is selected or WIP row clicked, otherwise commit diff
   const isWipMode = $derived(commitOid === "__wip__");
@@ -39,20 +46,42 @@
 
   let expandedFiles = $state<Set<string>>(new Set());
 
+  // Large files the user explicitly asked to render.
+  let forceShown = $state<Set<string>>(new Set());
+
   // Image blob cache: fileKey -> { old, new, loading }
   let imageBlobs = $state<Record<string, { old: string | null; new: string | null; loading: boolean }>>({});
+  // Bumped whenever the displayed diff changes so in-flight blob loads for the
+  // previous diff (other area / commit / file contents) are discarded.
+  let blobGen = 0;
 
   // Load diff when selected commit (or repo) changes. The guard keys on both
   // path and oid so switching repos reloads even if the same oid is selected.
   let lastLoaded: string | null = null;
+  let diffRequest = 0;
   $effect(() => {
     const oid = commitOid;
     const path = repoPath;
     const key = path && oid ? `${path} ${oid}` : null;
-    if (path && oid && oid !== "__wip__" && key !== lastLoaded) {
+    if (!oid || oid === "__wip__") {
+      // Forget the last commit so re-selecting it later reloads and
+      // re-expands instead of showing stale expansion state.
+      lastLoaded = null;
+      return;
+    }
+    if (path && key !== lastLoaded) {
       lastLoaded = key;
       loadDiff(path, oid);
     }
+  });
+
+  // Any new diff (different file/area/commit, or refreshed contents)
+  // invalidates cached image/audio blobs.
+  $effect(() => {
+    void diff;
+    blobGen++;
+    imageBlobs = {};
+    forceShown = new Set();
   });
 
   // Auto-expand when working file diff loads
@@ -63,23 +92,44 @@
   });
 
   async function loadDiff(path: string, oid: string) {
+    const req = ++diffRequest;
     $diffLoading = true;
     expandedFiles = new Set();
-    imageBlobs = {};
     try {
       const result = await tauri.getCommitDiff(path, oid);
-      // Drop the result if the active repo changed while loading.
-      if (repoPath !== path) return;
+      // Drop the result if another commit/repo was selected while loading,
+      // so a slow earlier request can't overwrite the current diff.
+      if (req !== diffRequest || repoPath !== path) return;
       $selectedDiff = result;
       if (result.length > 0) {
         expandedFiles = new Set([fileKey(result[0])]);
       }
     } catch (err) {
+      if (req !== diffRequest) return;
       console.error("Failed to load diff:", err);
       $selectedDiff = [];
     } finally {
-      $diffLoading = false;
+      if (req === diffRequest) $diffLoading = false;
     }
+  }
+
+  function lineCount(f: DiffFile): number {
+    let n = 0;
+    for (const h of f.hunks) n += h.lines.length;
+    return n;
+  }
+
+  function showLarge(f: DiffFile) {
+    const next = new Set(forceShown);
+    next.add(fileKey(f));
+    forceShown = next;
+  }
+
+  function displayPath(f: DiffFile): string {
+    if (f.old_path && f.new_path && f.old_path !== f.new_path) {
+      return `${f.old_path} → ${f.new_path}`;
+    }
+    return f.new_path ?? f.old_path ?? "unknown";
   }
 
   function fileKey(f: DiffFile): string {
@@ -122,6 +172,7 @@
     if (!path) return;
 
     const key = fileKey(f);
+    const gen = blobGen;
     imageBlobs[key] = { old: null, new: null, loading: true };
 
     try {
@@ -131,7 +182,12 @@
       let oldSource: string | null = null;
       let newSource: string | null = null;
 
-      if (isWorkingMode && workingFile) {
+      if (isWipMode) {
+        // WIP row clicked — combined working changes: old=HEAD, new=workdir.
+        // Checked first: WIP mode also sets a placeholder selectedWorkingFile.
+        oldSource = f.status !== "added" ? "head" : null;
+        newSource = f.status !== "deleted" ? "workdir" : null;
+      } else if (isWorkingMode && workingFile) {
         // Single file selected in staging area
         if (workingFile.area === "staged") {
           // staged: old=HEAD, new=index
@@ -142,10 +198,6 @@
           oldSource = f.status !== "added" ? "index" : null;
           newSource = f.status !== "deleted" ? "workdir" : null;
         }
-      } else if (isWipMode) {
-        // WIP row clicked — combined working changes: old=HEAD, new=workdir
-        oldSource = f.status !== "added" ? "head" : null;
-        newSource = f.status !== "deleted" ? "workdir" : null;
       } else if (commitOid && commitOid !== "__wip__") {
         // Commit diff: old=parent, new=commit
         let parentOid: string | null = null;
@@ -165,10 +217,11 @@
         newSource ? tauri.getFileBlob(path, filePath, newSource) : Promise.resolve(null),
       ]);
 
-      // Drop stale results if the active repo changed mid-load.
-      if (repoPath !== path) return;
+      // Drop stale results if the repo or displayed diff changed mid-load.
+      if (repoPath !== path || gen !== blobGen) return;
       imageBlobs[key] = { old: oldData, new: newData, loading: false };
     } catch (err) {
+      if (gen !== blobGen) return;
       console.error("Failed to load image blobs:", err);
       imageBlobs[key] = { old: null, new: null, loading: false };
     }
@@ -194,6 +247,7 @@
       case "modified":
         return "badge-modified";
       case "renamed":
+      case "copied":
         return "badge-renamed";
       default:
         return "";
@@ -246,10 +300,18 @@
         <span>Loading diff...</span>
       </div>
     {:else}
-      {#each diff as file (fileKey(file))}
+      <!-- Keyed by index too: the WIP diff concatenates staged + unstaged, so the
+           same path can legitimately appear twice. -->
+      {#each diff as file, fi (`${fi}:${fileKey(file)}`)}
         {@const expanded = expandedFiles.has(fileKey(file))}
+        {@const lines = lineCount(file)}
         <div class="file-section">
-          <button class="file-header" onclick={() => toggleFile(file)}>
+          <button
+            class="file-header"
+            onclick={() => toggleFile(file)}
+            aria-expanded={expanded}
+            title={displayPath(file)}
+          >
             <span class="status-badge {statusBadgeClass(file.status)}">{statusLabel(file.status)}</span>
             {#if isImageFile(file)}
               <Image size={14} />
@@ -262,7 +324,7 @@
             {:else}
               <FileText size={14} />
             {/if}
-            <span class="file-path">{file.new_path ?? file.old_path ?? "unknown"}</span>
+            <span class="file-path">{displayPath(file)}</span>
           </button>
 
           {#if expanded}
@@ -294,10 +356,23 @@
                   Binary file
                 </div>
               {:else if file.hunks.length === 0}
-                <div class="binary-notice">New file (empty diff)</div>
+                <div class="binary-notice">
+                  {file.status === "renamed" || file.status === "copied"
+                    ? "File renamed without content changes"
+                    : file.status === "added"
+                      ? "New empty file"
+                      : file.status === "deleted"
+                        ? "Deleted empty file"
+                        : "No content changes"}
+                </div>
+              {:else if lines > LARGE_DIFF_LINES && !forceShown.has(fileKey(file))}
+                <div class="binary-notice">
+                  Large diff ({lines.toLocaleString()} lines) hidden
+                  <button class="show-large-btn" onclick={() => showLarge(file)}>Show anyway</button>
+                </div>
               {:else}
                 {#each file.hunks as hunk, hi (hi)}
-                  <DiffHunk {hunk} mode={viewMode} />
+                  <DiffHunk {hunk} mode={viewMode} {tabSize} wrap={wordWrap} />
                 {/each}
               {/if}
             </div>
@@ -432,23 +507,37 @@
   }
 
   .badge-added {
-    background: rgba(158, 206, 106, 0.2);
-    color: #9ece6a;
+    background: var(--color-diff-add-bg);
+    color: var(--color-diff-add-text);
   }
 
   .badge-deleted {
-    background: rgba(247, 118, 142, 0.2);
-    color: #f7768e;
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
   }
 
   .badge-modified {
-    background: rgba(224, 175, 104, 0.2);
-    color: #e0af68;
+    background: color-mix(in srgb, var(--color-lane-2) 20%, transparent);
+    color: var(--color-lane-2);
   }
 
   .badge-renamed {
-    background: rgba(122, 162, 247, 0.2);
-    color: #7aa2f7;
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    color: var(--color-accent);
+  }
+
+  .show-large-btn {
+    padding: 2px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .show-large-btn:hover {
+    background: var(--color-surface-elevated);
   }
 
   .file-path {

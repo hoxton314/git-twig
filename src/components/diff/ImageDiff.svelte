@@ -77,6 +77,18 @@
   function handleSwipeStart(e: PointerEvent) {
     dragging = true;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    // Jump to the click position immediately rather than waiting for a move.
+    handleSwipeMove(e);
+  }
+
+  function handleSwipeKey(e: KeyboardEvent) {
+    const step = e.shiftKey ? 10 : 2;
+    if (e.key === "ArrowLeft") swipePosition = Math.max(0, swipePosition - step);
+    else if (e.key === "ArrowRight") swipePosition = Math.min(100, swipePosition + step);
+    else if (e.key === "Home") swipePosition = 0;
+    else if (e.key === "End") swipePosition = 100;
+    else return;
+    e.preventDefault();
   }
 
   function handleSwipeEnd() {
@@ -89,6 +101,11 @@
     <div class="image-loading">
       <Loader2 size={18} class="spinner" />
       <span>Loading preview...</span>
+    </div>
+  {:else if !hasOld && !hasNew}
+    <div class="image-loading">
+      <Image size={16} />
+      <span>No preview available</span>
     </div>
   {:else if isModified}
     <div class="compare-controls">
@@ -143,9 +160,15 @@
         </div>
       </div>
     {:else if mode === "swipe"}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="swipe-container"
+        role="slider"
+        tabindex="0"
+        aria-label="Swipe between before and after"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(swipePosition)}
+        onkeydown={handleSwipeKey}
         onpointermove={handleSwipeMove}
         onpointerdown={handleSwipeStart}
         onpointerup={handleSwipeEnd}
@@ -297,11 +320,11 @@
   }
 
   .panel-label.deleted {
-    color: #f7768e;
+    color: var(--color-diff-del-text);
   }
 
   .panel-label.added {
-    color: #9ece6a;
+    color: var(--color-diff-add-text);
   }
 
   .image-container {
@@ -342,6 +365,11 @@
   }
 
   /* Swipe mode */
+  .swipe-container:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
   .swipe-container {
     position: relative;
     border: 1px solid var(--color-border);
@@ -424,16 +452,16 @@
     font-weight: 600;
     text-transform: uppercase;
     padding: 2px 6px;
-    background: rgba(0, 0, 0, 0.5);
+    background: color-mix(in srgb, var(--color-bg) 80%, transparent);
     border-radius: 3px;
   }
 
   .swipe-label.deleted {
-    color: #f7768e;
+    color: var(--color-diff-del-text);
   }
 
   .swipe-label.added {
-    color: #9ece6a;
+    color: var(--color-diff-add-text);
   }
 
   /* Fade / onion skin mode */
@@ -457,11 +485,11 @@
   }
 
   .fade-label.deleted {
-    color: #f7768e;
+    color: var(--color-diff-del-text);
   }
 
   .fade-label.added {
-    color: #9ece6a;
+    color: var(--color-diff-add-text);
   }
 
   .fade-slider {

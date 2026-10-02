@@ -11,8 +11,9 @@
     ChevronRight,
     ArrowUp,
     ArrowDown,
+    Search,
   } from "lucide-svelte";
-  import { activeRepoPath, updateRepo } from "../../lib/stores/repos";
+  import { activeRepoPath, activeRepo } from "../../lib/stores/repos";
   import { branches, refreshAll } from "../../lib/stores/graph";
   import * as tauri from "../../lib/tauri";
   import type { BranchInfo } from "../../lib/types/git";
@@ -22,15 +23,37 @@
   const repoPath = $derived($activeRepoPath);
   const allBranches = $derived($branches);
 
-  const localBranches = $derived(allBranches.filter((b) => !b.is_remote));
-  const remoteBranches = $derived(allBranches.filter((b) => b.is_remote));
+  let filter = $state("");
+  const filterLc = $derived(filter.trim().toLowerCase());
+  const matches = (b: BranchInfo) => !filterLc || b.name.toLowerCase().includes(filterLc);
 
-  const currentBranch = $derived(localBranches.find((b) => b.is_head) ?? null);
+  const allLocal = $derived(allBranches.filter((b) => !b.is_remote));
+  const localBranches = $derived(allLocal.filter(matches));
+  const remoteBranches = $derived(allBranches.filter((b) => b.is_remote && matches(b)));
+
+  const currentBranch = $derived(allLocal.find((b) => b.is_head) ?? null);
   const defaultBranch = $derived(
-    localBranches.find((b) => b.name === "main")?.name ??
-    localBranches.find((b) => b.name === "master")?.name ??
+    allLocal.find((b) => b.name === "main")?.name ??
+    allLocal.find((b) => b.name === "master")?.name ??
     null
   );
+  /** Detached HEAD: repo has commits but no local branch is checked out. */
+  const detachedAt = $derived(
+    allBranches.length > 0 && !currentBranch && $activeRepo && !$activeRepo.is_empty
+      ? $activeRepo.head_name
+      : null
+  );
+
+  /** Tooltip with tracking info for a branch row. */
+  function branchTitle(b: BranchInfo): string {
+    const tracking = b.upstream ? `\nTracking ${b.upstream}` : b.is_remote ? "" : "\nNo upstream";
+    return `${b.name} — ${b.last_commit_summary}${tracking}`;
+  }
+
+  let createInputEl: HTMLInputElement | undefined = $state(undefined);
+  $effect(() => {
+    if (showCreateInput) createInputEl?.focus();
+  });
 
   let localExpanded = $state(true);
   let remoteExpanded = $state(true);
@@ -59,6 +82,8 @@
   async function loadBranches(path: string) {
     try {
       const result = await tauri.getBranches(path);
+      // Drop stale results if the user switched repos meanwhile.
+      if ($activeRepoPath !== path) return;
       $branches = result;
     } catch (err) {
       console.error("Failed to load branches:", err);
@@ -66,7 +91,7 @@
   }
 
   async function handleCheckout(branch: BranchInfo) {
-    if (!repoPath || branch.is_head) return;
+    if (!repoPath || branch.is_head || loading) return;
     loading = true;
     try {
       // Remote branches get a local tracking branch instead of a detached HEAD.
@@ -94,9 +119,8 @@
       if (result.success) {
         newBranchName = "";
         showCreateInput = false;
-        const info = await tauri.getRepoInfo(repoPath);
-        updateRepo(info);
-        await loadBranches(repoPath);
+        // New ref must show up in the graph too, not only the branch list.
+        await refreshAll(repoPath);
       } else {
         await message(result.message, { title: "Create Branch Failed", kind: "error" });
       }
@@ -109,12 +133,12 @@
 
   async function handleDeleteBranch(e: MouseEvent, branch: BranchInfo) {
     e.stopPropagation();
-    if (!repoPath || branch.is_head) return;
+    if (!repoPath || branch.is_head || loading) return;
     loading = true;
     try {
       const result = await tauri.deleteBranch(repoPath, branch.name, false);
       if (result.success) {
-        await loadBranches(repoPath);
+        await refreshAll(repoPath);
         return;
       }
 
@@ -131,7 +155,7 @@
         if (!force) return;
         const forced = await tauri.deleteBranch(repoPath, branch.name, true);
         if (forced.success) {
-          await loadBranches(repoPath);
+          await refreshAll(repoPath);
         } else {
           await message(forced.message, { title: "Delete Failed", kind: "error" });
         }
@@ -147,7 +171,7 @@
 
   async function handleDeleteRemoteBranch(e: MouseEvent, branch: BranchInfo) {
     e.stopPropagation();
-    if (!repoPath) return;
+    if (!repoPath || loading) return;
 
     const sep = branch.name.indexOf("/");
     if (sep <= 0) return;
@@ -181,14 +205,24 @@
     loading = true;
     try {
       const result = await tauri.fetchAll(repoPath);
+      // Remote refs and ahead/behind changed: refresh graph labels as well.
+      await refreshAll(repoPath);
       if (!result.success) {
         await message(result.message, { title: "Fetch Failed", kind: "error" });
       }
-      await loadBranches(repoPath);
     } catch (err) {
       await message(String(err), { title: "Fetch Failed", kind: "error" });
     } finally {
       loading = false;
+    }
+  }
+
+  /** Enter/Space on the row itself (not on its inner delete/merge buttons). */
+  function handleRowKeydown(e: KeyboardEvent, branch: BranchInfo) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleCheckout(branch);
     }
   }
 
@@ -291,10 +325,10 @@
   <div class="section-header">
     <span class="section-title">Branches</span>
     <div class="header-actions">
-      <button class="icon-btn" onclick={() => (showCreateInput = !showCreateInput)} title="New branch">
+      <button class="icon-btn" onclick={() => (showCreateInput = !showCreateInput)} title="New branch" aria-label="New branch">
         <Plus size={14} />
       </button>
-      <button class="icon-btn" onclick={handleFetch} title="Fetch all" disabled={loading}>
+      <button class="icon-btn" onclick={handleFetch} title="Fetch all" aria-label="Fetch all" disabled={loading}>
         <RefreshCw size={14} />
       </button>
     </div>
@@ -305,14 +339,34 @@
       <input
         type="text"
         placeholder="New branch name..."
+        aria-label="New branch name"
+        bind:this={createInputEl}
         bind:value={newBranchName}
         onkeydown={handleKeydown}
       />
     </div>
   {/if}
 
+  <div class="filter-input">
+    <Search size={12} />
+    <input
+      type="text"
+      placeholder="Filter branches..."
+      aria-label="Filter branches"
+      bind:value={filter}
+      onkeydown={(e) => e.key === "Escape" && (filter = "")}
+    />
+  </div>
+
+  {#if detachedAt}
+    <div class="detached" title="HEAD is not on a branch. Create a branch to keep new commits.">
+      <span class="dot"></span>
+      <span class="branch-name">HEAD detached at {detachedAt}</span>
+    </div>
+  {/if}
+
   <!-- Local branches -->
-  <button class="group-header" onclick={() => (localExpanded = !localExpanded)}>
+  <button class="group-header" onclick={() => (localExpanded = !localExpanded)} aria-expanded={localExpanded}>
     {#if localExpanded}
       <ChevronDown size={14} />
     {:else}
@@ -337,10 +391,10 @@
         ondrop={(e) => handleDrop(e, branch)}
         ondragend={() => handleDragEnd()}
         onclick={() => handleCheckout(branch)}
-        onkeydown={(e) => e.key === "Enter" && handleCheckout(branch)}
+        onkeydown={(e) => handleRowKeydown(e, branch)}
         role="button"
         tabindex="0"
-        title="{branch.name} — {branch.last_commit_summary}"
+        title={branchTitle(branch)}
       >
         {#if branch.is_head}
           <Check size={12} class="head-icon" />
@@ -367,6 +421,7 @@
             class="merge-btn"
             onclick={(e) => handleMergeDefault(e)}
             title="Merge {defaultBranch} into {branch.name}"
+            aria-label="Merge {defaultBranch} into {branch.name}"
           >
             <GitMerge size={12} />
           </button>
@@ -376,6 +431,7 @@
             class="delete-btn"
             onclick={(e) => handleDeleteBranch(e, branch)}
             title="Delete branch"
+            aria-label="Delete branch {branch.name}"
           >
             <Trash2 size={12} />
           </button>
@@ -385,7 +441,7 @@
   {/if}
 
   <!-- Remote branches -->
-  <button class="group-header" onclick={() => (remoteExpanded = !remoteExpanded)}>
+  <button class="group-header" onclick={() => (remoteExpanded = !remoteExpanded)} aria-expanded={remoteExpanded}>
     {#if remoteExpanded}
       <ChevronDown size={14} />
     {:else}
@@ -404,10 +460,10 @@
         ondragstart={(e) => handleDragStart(e, branch)}
         ondragend={() => handleDragEnd()}
         onclick={() => handleCheckout(branch)}
-        onkeydown={(e) => e.key === "Enter" && handleCheckout(branch)}
+        onkeydown={(e) => handleRowKeydown(e, branch)}
         role="button"
         tabindex="0"
-        title="{branch.name} — {branch.last_commit_summary}"
+        title={branchTitle(branch)}
       >
         <span class="dot"></span>
         <span class="branch-name">{branch.name}</span>
@@ -415,6 +471,7 @@
           class="delete-btn"
           onclick={(e) => handleDeleteRemoteBranch(e, branch)}
           title="Delete branch on remote"
+          aria-label="Delete remote branch {branch.name}"
         >
           <Trash2 size={12} />
         </button>
@@ -510,6 +567,42 @@
 
   .create-input input:focus {
     border-color: var(--color-accent);
+  }
+
+  .filter-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 12px 6px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+  }
+
+  .filter-input:focus-within {
+    border-color: var(--color-accent);
+  }
+
+  .filter-input input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 12px;
+    outline: none;
+  }
+
+  .detached {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 4px 32px;
+    color: var(--color-lane-2);
+    font-style: italic;
   }
 
   .group-header {
@@ -641,7 +734,9 @@
   }
 
   .branch-item:hover .delete-btn,
-  .branch-item:hover .merge-btn {
+  .branch-item:hover .merge-btn,
+  .branch-item:focus-within .delete-btn,
+  .branch-item:focus-within .merge-btn {
     display: flex;
   }
 
