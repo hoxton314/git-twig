@@ -120,24 +120,74 @@ fn is_hex_oid(s: &str) -> bool {
     (s.len() == 40 || s.len() == 64) && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Writes the helper files that `exec` lines in the todo refer to.
+struct TodoFiles<'a> {
+    dir: &'a Path,
+    count: usize,
+}
+
+impl TodoFiles<'_> {
+    fn path(&mut self, prefix: &str) -> std::path::PathBuf {
+        self.count += 1;
+        self.dir.join(format!("{prefix}-{}.txt", self.count))
+    }
+
+    /// `exec` line recording HEAD (empty when unborn) into a new mark file.
+    fn record_head(&mut self) -> (String, String) {
+        let mark = shell_quote(&shell_path(&self.path("head")));
+        (format!("exec git rev-parse -q --verify HEAD > {mark} || :"), mark)
+    }
+
+    /// `exec` line that replaces HEAD's message with `msg`, but only if
+    /// `current` (a shell expression for a commit id) differs from the HEAD
+    /// recorded in `mark`. A pick that ends up empty is dropped (or skipped
+    /// by the user), and amending then would rewrite the previous, unrelated
+    /// commit.
+    fn guarded_amend(&mut self, msg: &str, current: &str, mark: &str) -> Result<String, TwigError> {
+        let file = self.path("msg");
+        std::fs::write(&file, format!("{}\n", msg.trim()))?;
+        Ok(format!(
+            "exec test \"{current}\" = \"$(cat {mark})\" || \
+             git commit --amend --allow-empty --no-verify --cleanup=whitespace -F {}",
+            shell_quote(&shell_path(&file))
+        ))
+    }
+}
+
+const HEAD_NOW: &str = "$(git rev-parse -q --verify HEAD)";
+
+/// Close a squash group that has a replacement message. `group` holds the
+/// `lines` indices where the group's first commit starts and ends. HEAD is
+/// recorded on both sides of that commit, and the message is applied after
+/// the group only if the first commit landed: if it was dropped as empty,
+/// git melds the squashes into the previous commit, whose message must stay.
+fn end_group(
+    lines: &mut Vec<String>,
+    files: &mut TodoFiles,
+    msg: &str,
+    group: Option<(usize, usize)>,
+) -> Result<(), TwigError> {
+    let (start, end) = group.ok_or_else(|| {
+        TwigError::InvalidArgument("squash without a commit to squash into".to_string())
+    })?;
+    let (before, before_mark) = files.record_head();
+    let (after, after_mark) = files.record_head();
+    lines.insert(end, after);
+    lines.insert(start, before);
+    lines.push(files.guarded_amend(msg, &format!("$(cat {after_mark})"), &before_mark)?);
+    Ok(())
+}
+
 /// Build the todo list text, writing reword/squash messages to files in
 /// `msg_dir`. Validates actions and ordering.
 pub(crate) fn build_todo(items: &[RebaseTodoItem], msg_dir: &Path) -> Result<String, TwigError> {
     let mut lines: Vec<String> = Vec::new();
+    let mut files = TodoFiles { dir: msg_dir, count: 0 };
     let mut saw_commit = false;
     // Message to apply after the current squash/fixup group ends.
     let mut pending_group_msg: Option<String> = None;
-    let mut msg_count = 0usize;
-
-    let mut write_msg = |msg: &str| -> Result<String, TwigError> {
-        msg_count += 1;
-        let file = msg_dir.join(format!("msg-{msg_count}.txt"));
-        std::fs::write(&file, format!("{}\n", msg.trim()))?;
-        Ok(format!(
-            "exec git commit --amend --allow-empty --no-verify --cleanup=whitespace -F {}",
-            shell_quote(&shell_path(&file))
-        ))
-    };
+    // Index range in `lines` of the current group's first commit.
+    let mut group: Option<(usize, usize)> = None;
 
     for (i, item) in items.iter().enumerate() {
         if !is_hex_oid(&item.oid) {
@@ -157,9 +207,10 @@ pub(crate) fn build_todo(items: &[RebaseTodoItem], msg_dir: &Path) -> Result<Str
         // transparent: they don't break the group).
         if !matches!(action, "squash" | "fixup" | "drop") {
             if let Some(m) = pending_group_msg.take() {
-                lines.push(write_msg(&m)?);
+                end_group(&mut lines, &mut files, &m, group)?;
             }
         }
+        let start = lines.len();
 
         match action {
             "pick" | "edit" | "drop" => {
@@ -168,16 +219,16 @@ pub(crate) fn build_todo(items: &[RebaseTodoItem], msg_dir: &Path) -> Result<Str
             "reword" => {
                 // `pick` + amend instead of `reword`: git would otherwise
                 // open an editor for the message.
+                let Some(m) = msg else {
+                    return Err(TwigError::InvalidArgument(format!(
+                        "reword of {} needs a message",
+                        &item.oid[..7]
+                    )));
+                };
+                let (record, mark) = files.record_head();
+                lines.push(record);
                 lines.push(format!("pick {}", item.oid));
-                match msg {
-                    Some(m) => lines.push(write_msg(m)?),
-                    None => {
-                        return Err(TwigError::InvalidArgument(format!(
-                            "reword of {} needs a message",
-                            &item.oid[..7]
-                        )))
-                    }
-                }
+                lines.push(files.guarded_amend(m, HEAD_NOW, &mark)?);
             }
             "squash" | "fixup" => {
                 if !saw_commit {
@@ -200,12 +251,15 @@ pub(crate) fn build_todo(items: &[RebaseTodoItem], msg_dir: &Path) -> Result<Str
                 )))
             }
         }
+        if !matches!(action, "squash" | "fixup" | "drop") {
+            group = Some((start, lines.len()));
+        }
         if action != "drop" {
             saw_commit = true;
         }
     }
     if let Some(m) = pending_group_msg.take() {
-        lines.push(write_msg(&m)?);
+        end_group(&mut lines, &mut files, &m, group)?;
     }
     if !saw_commit {
         // An all-drop todo would make git abort with "nothing to do";
@@ -412,20 +466,183 @@ mod tests {
         assert_eq!(st.kind, "rebase");
         assert!(!st.conflicts.is_empty());
 
-        // Resolve every stop until done (s1, then s0 conflicts again).
-        for _ in 0..4 {
+        // Resolve every stop until done (s1, then s0 conflicts again). Each
+        // resolution differs from HEAD so no pick ends up empty.
+        for round in 0..4 {
             let st = read_operation_state(&repo).unwrap();
             if st.kind == "none" {
                 break;
             }
-            std::fs::write(dir.join("same.txt"), "resolved\n").unwrap();
+            std::fs::write(dir.join("same.txt"), format!("resolved {round}\n")).unwrap();
             mark_resolved(&dir, &["same.txt"]).await.unwrap();
             let _ = continue_operation(&dir, repo.path(), "rebase", None).await.unwrap();
         }
         let repo = Repository::open(&dir).unwrap();
         assert_eq!(read_operation_state(&repo).unwrap().kind, "none");
         let subs = subjects(&dir);
-        assert_eq!(subs.last().map(String::as_str), Some("renamed s0"));
+        assert_eq!(subs, vec!["c0", "s1", "renamed s0"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Rebasing onto an upstream that already contains a commit's change makes
+    /// that pick empty; git stops, and continuing drops it. The reword must
+    /// not then land on the upstream commit before it.
+    #[tokio::test]
+    async fn empty_pick_does_not_amend_previous_commit() {
+        use crate::git::conflicts::{continue_operation, read_operation_state};
+        let dir = repo_with_commits("iempty", 1).await;
+        git_ok(&dir, &["checkout", "-q", "-b", "feature"]).await;
+        let commit = |name: &'static str, file: &'static str, body: &'static str| {
+            let dir = dir.clone();
+            async move {
+                std::fs::write(dir.join(file), body).unwrap();
+                git_ok(&dir, &["add", "."]).await;
+                git_ok(&dir, &["commit", "-q", "-m", name]).await;
+            }
+        };
+        commit("dup", "dup.txt", "same\n").await;
+        commit("head", "h.txt", "h\n").await;
+        commit("dup2", "dup2.txt", "same\n").await;
+        git_ok(&dir, &["checkout", "-q", "main"]).await;
+        // Same changes as `dup`/`dup2`, different commits (so not filtered
+        // as cherry-picks by the todo, which Twig writes itself).
+        commit("upstream dup", "dup.txt", "same\n").await;
+        commit("upstream dup2", "dup2.txt", "same\n").await;
+        git_ok(&dir, &["checkout", "-q", "feature"]).await;
+
+        let repo = Repository::open(&dir).unwrap();
+        let list = list_rebase_commits(&repo, Some("main")).unwrap();
+        let c: Vec<String> = list.commits.iter().map(|c| c.oid.clone()).collect();
+        assert_eq!(c.len(), 3);
+        let items = vec![
+            RebaseTodoItem { oid: c[0].clone(), action: "reword".into(), message: Some("reworded dup".into()) },
+            RebaseTodoItem { oid: c[1].clone(), action: "pick".into(), message: None },
+            RebaseTodoItem { oid: c[2].clone(), action: "reword".into(), message: Some("reworded dup2".into()) },
+        ];
+        let out = interactive_rebase(&dir, repo.path(), Some("main"), &items, false)
+            .await
+            .unwrap();
+        assert!(!out.success, "the empty pick should stop the rebase");
+        for _ in 0..4 {
+            if read_operation_state(&repo).unwrap().kind == "none" {
+                break;
+            }
+            let _ = continue_operation(&dir, repo.path(), "rebase", None).await.unwrap();
+        }
+        assert_eq!(read_operation_state(&repo).unwrap().kind, "none");
+        // Both dups were dropped; the upstream commits and `head` keep
+        // their messages.
+        assert_eq!(subjects(&dir), vec!["c0", "upstream dup", "upstream dup2", "head"]);
+        assert!(dir.join("h.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The squash group's first commit is dropped as empty, so git melds the
+    /// squash into the previous commit. That commit's message must not be
+    /// replaced by the group's message.
+    #[tokio::test]
+    async fn empty_group_head_keeps_previous_message() {
+        use crate::git::conflicts::{continue_operation, read_operation_state};
+        let dir = repo_with_commits("igroup", 1).await;
+        git_ok(&dir, &["checkout", "-q", "-b", "feature"]).await;
+        for (name, file) in [("dup", "dup.txt"), ("b", "b.txt")] {
+            std::fs::write(dir.join(file), "same\n").unwrap();
+            git_ok(&dir, &["add", "."]).await;
+            git_ok(&dir, &["commit", "-q", "-m", name]).await;
+        }
+        git_ok(&dir, &["checkout", "-q", "main"]).await;
+        std::fs::write(dir.join("dup.txt"), "same\n").unwrap();
+        git_ok(&dir, &["add", "."]).await;
+        git_ok(&dir, &["commit", "-q", "-m", "upstream dup"]).await;
+        git_ok(&dir, &["checkout", "-q", "feature"]).await;
+
+        let repo = Repository::open(&dir).unwrap();
+        let c: Vec<String> = list_rebase_commits(&repo, Some("main"))
+            .unwrap()
+            .commits
+            .into_iter()
+            .map(|c| c.oid)
+            .collect();
+        let items = vec![
+            RebaseTodoItem { oid: c[0].clone(), action: "pick".into(), message: None },
+            RebaseTodoItem { oid: c[1].clone(), action: "squash".into(), message: Some("all".into()) },
+        ];
+        let out = interactive_rebase(&dir, repo.path(), Some("main"), &items, false)
+            .await
+            .unwrap();
+        assert!(!out.success, "the empty pick should stop the rebase");
+        for _ in 0..4 {
+            if read_operation_state(&repo).unwrap().kind == "none" {
+                break;
+            }
+            let _ = continue_operation(&dir, repo.path(), "rebase", None).await.unwrap();
+        }
+        assert_eq!(read_operation_state(&repo).unwrap().kind, "none");
+        let subs = subjects(&dir);
+        assert_eq!(subs.len(), 2, "{subs:?}");
+        assert!(subs[1].starts_with("upstream dup"), "{subs:?}");
+        assert!(dir.join("b.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn edit_stops_and_autostash_restores_changes() {
+        use crate::git::conflicts::{continue_operation, read_operation_state};
+        let dir = repo_with_commits("iedit", 3).await;
+        std::fs::write(dir.join("f0.txt"), "dirty\n").unwrap();
+        let repo = Repository::open(&dir).unwrap();
+        let list = list_rebase_commits(&repo, Some("HEAD~2")).unwrap();
+        let c: Vec<String> = list.commits.iter().map(|c| c.oid.clone()).collect();
+        let items = vec![
+            RebaseTodoItem { oid: c[0].clone(), action: "edit".into(), message: None },
+            RebaseTodoItem { oid: c[1].clone(), action: "pick".into(), message: None },
+        ];
+        // Without autostash git refuses to start on a dirty tree.
+        let out = interactive_rebase(&dir, repo.path(), Some("HEAD~2"), &items, false)
+            .await
+            .unwrap();
+        assert!(!out.success);
+        assert_eq!(read_operation_state(&repo).unwrap().kind, "none");
+
+        let out = interactive_rebase(&dir, repo.path(), Some("HEAD~2"), &items, true)
+            .await
+            .unwrap();
+        assert!(out.success, "{}", out.stderr);
+        assert_eq!(read_operation_state(&repo).unwrap().kind, "rebase", "edit should pause");
+        let _ = continue_operation(&dir, repo.path(), "rebase", None).await.unwrap();
+        assert_eq!(read_operation_state(&repo).unwrap().kind, "none");
+        assert_eq!(subjects(&dir), vec!["c0", "c1", "c2"]);
+        assert_eq!(std::fs::read_to_string(dir.join("f0.txt")).unwrap(), "dirty\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn todo_guards_message_amends() {
+        let dir = std::env::temp_dir().join(format!("twig-todo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let oid = |n: u8| format!("{:040x}", n);
+        let items = vec![
+            RebaseTodoItem { oid: oid(1), action: "pick".into(), message: None },
+            RebaseTodoItem { oid: oid(2), action: "drop".into(), message: None },
+            RebaseTodoItem { oid: oid(3), action: "squash".into(), message: Some("all".into()) },
+            RebaseTodoItem { oid: oid(4), action: "reword".into(), message: Some("four".into()) },
+        ];
+        let todo = build_todo(&items, &dir).unwrap();
+        let lines: Vec<&str> = todo.lines().collect();
+        let mark = |l: &str| l.rsplit("> ").next().unwrap().trim_end_matches(" || :").to_string();
+        // before, pick, after, drop, squash, guarded amend, record, pick, guarded amend
+        assert_eq!(lines.len(), 9, "{todo}");
+        for i in [0, 2, 6] {
+            assert!(lines[i].starts_with("exec git rev-parse"), "{todo}");
+        }
+        assert_eq!(lines[1], format!("pick {}", oid(1)));
+        assert_eq!(lines[3], format!("drop {}", oid(2)));
+        assert_eq!(lines[4], format!("squash {}", oid(3)));
+        assert_eq!(lines[7], format!("pick {}", oid(4)));
+        // The group message applies only if its first commit landed (HEAD
+        // after it differs from HEAD before it); the reword only if HEAD moved.
+        assert!(lines[5].starts_with(&format!("exec test \"$(cat {})\" = \"$(cat {})\"", mark(lines[2]), mark(lines[0]))), "{todo}");
+        assert!(lines[8].starts_with(&format!("exec test \"{HEAD_NOW}\" = \"$(cat {})\"", mark(lines[6]))), "{todo}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
