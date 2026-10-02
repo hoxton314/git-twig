@@ -1,5 +1,6 @@
 //! Commit helpers for the staging panel (amend, sign-off, co-authors,
 //! commit template).
+use serde::Serialize;
 use tauri::State;
 
 use crate::commands::staging::CommandResult;
@@ -7,7 +8,19 @@ use crate::error::TwigError;
 use crate::git::commit_tools::{self, AuthorInfo, CommitOptions, HeadCommitInfo};
 use crate::state::AppState;
 
-/// Create a commit, optionally amending HEAD and/or adding `Signed-off-by`.
+/// Result of a commit from the staging panel, with what its hooks printed.
+#[derive(Debug, Serialize)]
+pub struct CommitResult {
+    #[serde(flatten)]
+    pub result: CommandResult,
+    /// Hooks that ran (pre-commit, commit-msg, …).
+    pub hooks: Vec<String>,
+    /// Their combined output (git sends hook stdout to stderr), when any.
+    pub hook_output: Option<String>,
+}
+
+/// Create a commit, optionally amending HEAD, adding `Signed-off-by` and/or
+/// skipping the verifying hooks.
 #[tauri::command]
 pub async fn create_commit_with_options(
     state: State<'_, AppState>,
@@ -15,15 +28,23 @@ pub async fn create_commit_with_options(
     message: String,
     amend: bool,
     signoff: bool,
-) -> Result<CommandResult, TwigError> {
+    no_verify: Option<bool>,
+) -> Result<CommitResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
+    let no_verify = no_verify.unwrap_or(false);
+    let hooks = commit_tools::active_commit_hooks(&repo_path, no_verify).await.unwrap_or_default();
     let output = commit_tools::commit_with_options(
         &repo_path,
         &message,
-        CommitOptions { amend, signoff },
+        CommitOptions { amend, signoff, no_verify },
     )
     .await?;
-    Ok(crate::commands::signing::commit_result(output))
+    // Without hooks, stderr only holds git's own warnings; on failure it is
+    // already the message.
+    let hook_output = (!hooks.is_empty())
+        .then(|| commit_tools::clean_hook_output(&output.stderr))
+        .filter(|s| !s.is_empty());
+    Ok(CommitResult { result: crate::commands::signing::commit_result(output), hooks, hook_output })
 }
 
 /// HEAD's message and whether it has already been pushed.
