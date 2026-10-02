@@ -215,6 +215,39 @@ mod tests {
         dir
     }
 
+    /// A pop that cannot apply cleanly must keep the stash entry.
+    #[tokio::test]
+    async fn failed_pop_keeps_the_stash() {
+        let dir = temp_repo("popfail").await;
+        // Conflicting tracked change.
+        std::fs::write(dir.join("a.txt"), "stashed\n").unwrap();
+        let out = stash_push_ext(&dir, Some("s1"), &[], false, true).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        std::fs::write(dir.join("a.txt"), "committed\n").unwrap();
+        git_ok(&dir, &["commit", "-q", "-am", "diverge"]).await;
+        let sha = stash_list_detailed(&dir).await.unwrap()[0].oid.clone();
+        let out = stash_act(&dir, &sha, "pop").await.unwrap();
+        assert!(!out.success);
+        assert_eq!(stash_list_detailed(&dir).await.unwrap()[0].oid, sha);
+        assert!(std::fs::read_to_string(dir.join("a.txt")).unwrap().contains("<<<<<<<"));
+        git_ok(&dir, &["checkout", "-q", "HEAD", "--", "a.txt"]).await;
+        git_ok(&dir, &["reset", "-q"]).await;
+        git_ok(&dir, &["checkout", "-q", "--", "."]).await;
+
+        // Untracked file that now exists again in the working tree.
+        std::fs::write(dir.join("u.txt"), "stashed untracked\n").unwrap();
+        let out = stash_push_ext(&dir, Some("s2"), &[], false, true).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        std::fs::write(dir.join("u.txt"), "new local\n").unwrap();
+        let sha2 = stash_list_detailed(&dir).await.unwrap()[0].oid.clone();
+        let out = stash_act(&dir, &sha2, "pop").await.unwrap();
+        assert!(!out.success);
+        assert_eq!(std::fs::read_to_string(dir.join("u.txt")).unwrap(), "new local\n");
+        let list = stash_list_detailed(&dir).await.unwrap();
+        assert!(list.iter().any(|e| e.oid == sha2), "stash with untracked file was lost");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn partial_push_show_rename_and_branch() {
         let dir = temp_repo("ops").await;
