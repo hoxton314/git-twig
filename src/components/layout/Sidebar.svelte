@@ -1,6 +1,8 @@
 <script lang="ts">
   import { sidebarOpen, sidebarWidth } from "../../lib/stores/ui";
   import BranchList from "../branches/BranchList.svelte";
+  import WorktreeList from "../worktrees/WorktreeList.svelte";
+  import SubmoduleList from "../submodules/SubmoduleList.svelte";
 
   const isOpen = $derived($sidebarOpen);
   const width = $derived($sidebarWidth);
@@ -9,6 +11,8 @@
 {#if isOpen}
   <aside class="sidebar" style="width: {width}px; min-width: 160px;">
     <BranchList />
+    <WorktreeList />
+    <SubmoduleList />
   </aside>
 {/if}
 

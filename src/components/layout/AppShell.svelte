@@ -8,6 +8,8 @@
   import HomeScreen from "./HomeScreen.svelte";
   import Toaster from "../shared/Toaster.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
+  import FileViewHost from "../history/FileViewHost.svelte";
+  import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
@@ -273,6 +275,9 @@
   {/if}
 
   <Toaster />
+  <!-- File history & blame overlay; worktree/submodule actions -->
+  <FileViewHost />
+  <RepoToolsHost />
 </div>
 
 <style>
