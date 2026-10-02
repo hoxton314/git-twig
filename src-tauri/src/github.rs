@@ -61,9 +61,7 @@ pub struct GitHubRemoteInfo {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-const API_BASE: &str = "https://api.github.com";
-
-fn auth_headers(
+pub(crate) fn auth_headers(
     builder: reqwest::RequestBuilder,
     token: &str,
 ) -> reqwest::RequestBuilder {
@@ -73,7 +71,7 @@ fn auth_headers(
         .header("X-GitHub-Api-Version", "2022-11-28")
 }
 
-async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, TwigError> {
+pub(crate) async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, TwigError> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
@@ -149,7 +147,7 @@ async fn check_response(response: reqwest::Response) -> Result<reqwest::Response
 }
 
 /// Check whether the `Link` header contains a `rel="next"` entry.
-fn has_next_link(headers: &reqwest::header::HeaderMap) -> bool {
+pub(crate) fn has_next_link(headers: &reqwest::header::HeaderMap) -> bool {
     headers
         .get("link")
         .and_then(|v| v.to_str().ok())
@@ -159,8 +157,8 @@ fn has_next_link(headers: &reqwest::header::HeaderMap) -> bool {
 
 // ── API functions ────────────────────────────────────────────────────
 
-pub async fn validate_token(client: &Client, token: &str) -> Result<GitHubUser, TwigError> {
-    let resp = auth_headers(client.get(format!("{API_BASE}/user")), token)
+pub async fn validate_token(client: &Client, api: &str, token: &str) -> Result<GitHubUser, TwigError> {
+    let resp = auth_headers(client.get(format!("{api}/user")), token)
         .send()
         .await?;
     let resp = check_response(resp).await?;
@@ -169,6 +167,7 @@ pub async fn validate_token(client: &Client, token: &str) -> Result<GitHubUser, 
 
 pub async fn list_repos(
     client: &Client,
+    api: &str,
     token: &str,
     page: u32,
     per_page: u32,
@@ -176,7 +175,7 @@ pub async fn list_repos(
 ) -> Result<RepoListPage, TwigError> {
     let resp = auth_headers(
         client.get(format!(
-            "{API_BASE}/user/repos?page={page}&per_page={per_page}&sort={sort}&affiliation=owner,collaborator,organization_member"
+            "{api}/user/repos?page={page}&per_page={per_page}&sort={sort}&affiliation=owner,collaborator,organization_member"
         )),
         token,
     )
@@ -193,6 +192,7 @@ pub async fn list_repos(
 
 pub async fn create_repo(
     client: &Client,
+    api: &str,
     token: &str,
     name: &str,
     description: Option<&str>,
@@ -205,7 +205,7 @@ pub async fn create_repo(
         "private": private,
         "auto_init": auto_init,
     });
-    let resp = auth_headers(client.post(format!("{API_BASE}/user/repos")), token)
+    let resp = auth_headers(client.post(format!("{api}/user/repos")), token)
         .json(&body)
         .send()
         .await?;
@@ -213,8 +213,10 @@ pub async fn create_repo(
     Ok(resp.json().await?)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn create_pull_request(
     client: &Client,
+    api: &str,
     token: &str,
     owner: &str,
     repo: &str,
@@ -230,7 +232,7 @@ pub async fn create_pull_request(
         "base": base,
     });
     let resp = auth_headers(
-        client.post(format!("{API_BASE}/repos/{owner}/{repo}/pulls")),
+        client.post(format!("{api}/repos/{owner}/{repo}/pulls")),
         token,
     )
     .json(&payload)
@@ -250,6 +252,7 @@ const MAX_BRANCH_PAGES: u32 = 20;
 
 pub async fn list_branches(
     client: &Client,
+    api: &str,
     token: &str,
     owner: &str,
     repo: &str,
@@ -258,7 +261,7 @@ pub async fn list_branches(
     for page in 1..=MAX_BRANCH_PAGES {
         let resp = auth_headers(
             client.get(format!(
-                "{API_BASE}/repos/{owner}/{repo}/branches?per_page=100&page={page}"
+                "{api}/repos/{owner}/{repo}/branches?per_page=100&page={page}"
             )),
             token,
         )
@@ -275,94 +278,5 @@ pub async fn list_branches(
     Ok(names)
 }
 
-// ── Remote URL parsing ───────────────────────────────────────────────
-
-/// Parse a GitHub owner/repo from a remote URL.
-/// Supports HTTPS (`https://github.com/owner/repo.git`, optionally with
-/// `user@` credentials), SSH scp-style (`git@github.com:owner/repo.git`) and
-/// URL-style SSH/git (`ssh://git@github.com[:port]/owner/repo.git`).
-/// Only github.com is recognised since the API client targets api.github.com.
-pub fn parse_github_remote(url: &str) -> Option<(String, String)> {
-    let url = url.trim();
-
-    let path = if let Some((scheme, rest)) = url.split_once("://") {
-        if !matches!(
-            scheme.to_ascii_lowercase().as_str(),
-            "https" | "http" | "ssh" | "git" | "git+ssh" | "ssh+git"
-        ) {
-            return None;
-        }
-        let (authority, path) = rest.split_once('/')?;
-        // Strip userinfo (`user@` / `user:token@`) and port.
-        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-        let host = host.split_once(':').map_or(host, |(h, _)| h);
-        if !is_github_host(host) {
-            return None;
-        }
-        path
-    } else {
-        // scp-like syntax: [user@]host:path
-        let (authority, path) = url.split_once(':')?;
-        if authority.contains('/') {
-            return None; // local path, not a remote
-        }
-        let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
-        if !is_github_host(host) {
-            return None;
-        }
-        path
-    };
-
-    let path = path.trim_matches('/');
-    let mut parts = path.splitn(3, '/');
-    let owner = parts.next()?.trim();
-    let repo = parts.next()?.trim().trim_end_matches('/');
-    let repo = repo.strip_suffix(".git").unwrap_or(repo);
-    if owner.is_empty() || repo.is_empty() {
-        return None;
-    }
-    Some((owner.to_string(), repo.to_string()))
-}
-
-fn is_github_host(host: &str) -> bool {
-    let host = host.to_ascii_lowercase();
-    host == "github.com" || host == "www.github.com"
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_github_remote;
-
-    fn p(url: &str) -> Option<(String, String)> {
-        parse_github_remote(url)
-    }
-
-    fn ok(owner: &str, repo: &str) -> Option<(String, String)> {
-        Some((owner.to_string(), repo.to_string()))
-    }
-
-    #[test]
-    fn parses_common_remote_forms() {
-        assert_eq!(p("https://github.com/o/r.git"), ok("o", "r"));
-        assert_eq!(p("https://github.com/o/r"), ok("o", "r"));
-        assert_eq!(p("https://github.com/o/r/"), ok("o", "r"));
-        assert_eq!(p("https://github.com/o/r.git/"), ok("o", "r"));
-        assert_eq!(p("http://GitHub.com/o/r.git"), ok("o", "r"));
-        assert_eq!(p("https://user:tok@github.com/o/r.git"), ok("o", "r"));
-        assert_eq!(p("git@github.com:o/r.git"), ok("o", "r"));
-        assert_eq!(p("git@github.com:o/r"), ok("o", "r"));
-        assert_eq!(p("ssh://git@github.com/o/r.git"), ok("o", "r"));
-        assert_eq!(p("ssh://git@github.com:22/o/r.git"), ok("o", "r"));
-        assert_eq!(p("git://github.com/o/my.repo.git"), ok("o", "my.repo"));
-    }
-
-    #[test]
-    fn rejects_non_github() {
-        assert_eq!(p("https://gitlab.com/o/r.git"), None);
-        assert_eq!(p("git@gitlab.com:o/r.git"), None);
-        assert_eq!(p("https://github.com.evil.io/o/r"), None);
-        assert_eq!(p("/home/me/github.com:o/r"), None);
-        assert_eq!(p("https://github.com/o"), None);
-        assert_eq!(p("file:///github.com/o/r"), None);
-    }
-}
+// Remote URL parsing lives in `hosting::remote` (it also handles GitHub
+// Enterprise hosts, GitLab and Gitea).

@@ -14,7 +14,10 @@ pub struct GitOutput {
 }
 
 pub(crate) async fn run_git(repo_path: &Path, args: &[&str]) -> Result<GitOutput, TwigError> {
-    let output = Command::new("git")
+    let mut cmd = Command::new("git");
+    // HTTPS auth env, when running inside `hosting::net_auth::with_network_auth`.
+    crate::hosting::net_auth::apply_env(&mut cmd);
+    let output = cmd
         .args(args)
         .current_dir(repo_path)
         // There is no terminal to answer prompts from a GUI. Without these,

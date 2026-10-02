@@ -10,3 +10,5 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Hosting integrations (PRs, CI, OAuth, GitLab/Gitea)
+pub mod hosting;

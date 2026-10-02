@@ -40,6 +40,10 @@ pub enum TwigError {
 
     #[error("Background task failed: {0}")]
     Task(String),
+
+    // ── Hosting integrations (GitLab / Gitea) ───────────────────────
+    #[error("{0}")]
+    Hosting(String),
 }
 
 impl From<reqwest::Error> for TwigError {

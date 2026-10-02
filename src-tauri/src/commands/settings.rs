@@ -60,6 +60,24 @@ pub struct AppSettings {
     /// is neither sent to the webview nor written back to disk.
     #[serde(default, rename = "github_token", skip_serializing)]
     pub legacy_github_token: Option<String>,
+
+    // ── Hosting integrations ────────────────────────────────────────
+    /// Authenticate HTTPS fetch/pull/push to the GitHub host with the
+    /// keyring token (passed via environment-only git config).
+    #[serde(default = "default_true")]
+    pub github_https_auth: bool,
+    /// GitHub host: `github.com` or a GitHub Enterprise Server hostname.
+    #[serde(default = "default_github_host")]
+    pub github_host: String,
+    /// Optional REST API base override (default: derived from the host).
+    #[serde(default)]
+    pub github_api_url: String,
+    /// GitLab instance URL (gitlab.com or self-hosted).
+    #[serde(default = "default_gitlab_url")]
+    pub gitlab_base_url: String,
+    /// Gitea / Forgejo instance URL (empty = not configured).
+    #[serde(default)]
+    pub gitea_base_url: String,
 }
 
 fn default_true() -> bool {
@@ -89,6 +107,12 @@ fn default_tab_size() -> u32 {
 fn default_context_lines() -> u32 {
     3
 }
+fn default_github_host() -> String {
+    "github.com".to_string()
+}
+fn default_gitlab_url() -> String {
+    "https://gitlab.com".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -111,11 +135,17 @@ impl Default for AppSettings {
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
+            // Hosting integrations
+            github_https_auth: true,
+            github_host: default_github_host(),
+            github_api_url: String::new(),
+            gitlab_base_url: default_gitlab_url(),
+            gitea_base_url: String::new(),
         }
     }
 }
 
-fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
+pub(crate) fn settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
     let dir = app
         .path()
         .app_data_dir()

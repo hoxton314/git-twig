@@ -30,13 +30,14 @@ where
     run_as(GITHUB_ACCOUNT, f).await
 }
 
-async fn run_as<T, F>(account: &'static str, f: F) -> Result<T, TwigError>
+async fn run_as<T, F>(account: impl Into<String>, f: F) -> Result<T, TwigError>
 where
     T: Send + 'static,
     F: FnOnce(&Entry) -> Result<T, keyring::Error> + Send + 'static,
 {
+    let account = account.into();
     tauri::async_runtime::spawn_blocking(move || {
-        let entry = Entry::new(SERVICE, account).map_err(keyring_error)?;
+        let entry = Entry::new(SERVICE, &account).map_err(keyring_error)?;
         f(&entry).map_err(keyring_error)
     })
     .await
@@ -56,6 +57,36 @@ pub async fn get_github_token() -> Result<Option<String>, TwigError> {
 /// Store the GitHub token, or delete it when `token` is `None` or empty.
 pub async fn set_github_token(token: Option<String>) -> Result<(), TwigError> {
     run(move |entry| match token.filter(|t| !t.is_empty()) {
+        Some(t) => entry.set_password(&t),
+        None => match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e),
+        },
+    })
+    .await
+}
+
+// ── Hosting integrations: GitLab / Gitea tokens ─────────────────────
+
+/// Keyring account for a provider token, scoped to the instance host so a
+/// token is never sent to a different server after the URL is changed.
+pub fn provider_account(provider: &str, host: &str) -> String {
+    format!("{provider}-token:{}", host.to_ascii_lowercase())
+}
+
+/// Read a provider token stored under `account` (see `provider_account`).
+pub async fn get_token_for(account: String) -> Result<Option<String>, TwigError> {
+    run_as(account, |entry| match entry.get_password() {
+        Ok(token) if !token.is_empty() => Ok(Some(token)),
+        Ok(_) | Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e),
+    })
+    .await
+}
+
+/// Store (or with `None`/empty, delete) a provider token.
+pub async fn set_token_for(account: String, token: Option<String>) -> Result<(), TwigError> {
+    run_as(account, move |entry| match token.filter(|t| !t.is_empty()) {
         Some(t) => entry.set_password(&t),
         None => match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),

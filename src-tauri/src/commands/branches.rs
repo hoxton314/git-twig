@@ -3,6 +3,8 @@ use tauri::State;
 use crate::error::TwigError;
 use crate::git::{reader, writer};
 use crate::state::AppState;
+// Hosting integrations: HTTPS token auth for network commands
+use crate::hosting::net_auth::with_network_auth;
 
 pub use super::staging::CommandResult;
 
@@ -87,6 +89,7 @@ pub async fn delete_branch(
 /// Delete a branch on a remote. `branch_name` excludes the remote prefix.
 #[tauri::command]
 pub async fn delete_remote_branch(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     remote: String,
@@ -94,13 +97,14 @@ pub async fn delete_remote_branch(
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
 
-    let output = writer::delete_remote_branch(&repo_path, &remote, &branch_name).await?;
+    let output = with_network_auth(&app, &repo_path, writer::delete_remote_branch(&repo_path, &remote, &branch_name)).await?;
     Ok(output.into())
 }
 
 /// Push a branch to a remote.
 #[tauri::command]
 pub async fn push_branch(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     remote: Option<String>,
@@ -126,7 +130,7 @@ pub async fn push_branch(
     let repo_path = state.repo_path(&path)?;
 
     let remote_name = remote.as_deref().unwrap_or("origin");
-    let output = writer::push_branch(&repo_path, remote_name, &branch_name, set_upstream).await?;
+    let output = with_network_auth(&app, &repo_path, writer::push_branch(&repo_path, remote_name, &branch_name, set_upstream)).await?;
     Ok(output.into())
 }
 
@@ -146,12 +150,13 @@ pub async fn merge_branch(
 /// Fetch from all remotes.
 #[tauri::command]
 pub async fn fetch_all(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
 
-    let output = writer::fetch_all(&repo_path).await?;
+    let output = with_network_auth(&app, &repo_path, writer::fetch_all(&repo_path)).await?;
     Ok(CommandResult {
         success: output.success,
         message: if output.success {
