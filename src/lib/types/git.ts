@@ -372,12 +372,16 @@ export interface RebaseCommit {
   message: string;
   author_name: string;
   timestamp: number;
+  /** The new base already has this change (same patch id). */
+  already_upstream: boolean;
 }
 
 export interface RebaseCommitList {
   commits: RebaseCommit[];
   merges_skipped: number;
   base_oid: string | null;
+  /** Base is not an ancestor of HEAD: an unchanged todo still moves the branch. */
+  onto_new_base: boolean;
 }
 
 export type RebaseAction = "pick" | "reword" | "edit" | "squash" | "fixup" | "drop";
