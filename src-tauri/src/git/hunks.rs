@@ -104,6 +104,14 @@ pub(crate) fn read_patch_source(
     if file_path.is_empty() {
         return Err(TwigError::InvalidArgument("empty file path".to_string()));
     }
+    // A conflicted path has no single index version to patch against; git2
+    // reports no hunks for it, which would surface as "No changes selected".
+    if is_conflicted(repo, file_path)? {
+        return Err(TwigError::InvalidArgument(
+            "This file has merge conflicts. Resolve them before staging or discarding lines."
+                .to_string(),
+        ));
+    }
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
     opts.pathspec(file_path);
@@ -188,6 +196,11 @@ pub(crate) fn read_patch_source(
         });
     }
     Err(TwigError::InvalidArgument(STALE_DIFF.to_string()))
+}
+
+fn is_conflicted(repo: &Repository, file_path: &str) -> Result<bool, TwigError> {
+    let index = repo.index()?;
+    Ok((1..=3).any(|stage| index.get_path(Path::new(file_path), stage).is_some()))
 }
 
 /// Resolve the user's selection to a predicate over the source diff's
@@ -679,6 +692,74 @@ mod tests {
         std::fs::write(dir.join("h.txt"), b"1\n3").unwrap();
         run_sel(&dir, DiffArea::Unstaged, HunkAction::Discard, "h.txt", &[('-', 2)]).await;
         assert_eq!(std::fs::read(dir.join("h.txt")).unwrap(), b"1\n2\n3");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// With `core.autocrlf=true` the index holds LF and the working tree
+    /// CRLF; git2 diffs the filtered (LF) content.
+    #[tokio::test]
+    async fn autocrlf_stage_unstage_discard() {
+        let dir = temp_repo("autocrlf").await;
+        git_ok(&dir, &["config", "core.autocrlf", "true"]).await;
+        commit_file(&dir, "w.txt", b"a\r\nb\r\nc\r\nd\r\n").await;
+        assert_eq!(index_content(&dir, "w.txt").await.unwrap(), b"a\nb\nc\nd\n");
+        std::fs::write(dir.join("w.txt"), b"a\r\nB\r\nc\r\nD\r\n").unwrap();
+
+        run_sel(&dir, DiffArea::Unstaged, HunkAction::Stage, "w.txt", &[('-', 2), ('+', 2)]).await;
+        assert_eq!(index_content(&dir, "w.txt").await.unwrap(), b"a\nB\nc\nd\n");
+        run_sel(&dir, DiffArea::Staged, HunkAction::Unstage, "w.txt", &[('-', 2), ('+', 2)]).await;
+        assert_eq!(index_content(&dir, "w.txt").await.unwrap(), b"a\nb\nc\nd\n");
+
+        run_sel(&dir, DiffArea::Unstaged, HunkAction::Discard, "w.txt", &[('-', 4), ('+', 4)]).await;
+        assert_eq!(std::fs::read(dir.join("w.txt")).unwrap(), b"a\r\nB\r\nc\r\nd\r\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `git add -N` leaves an empty index entry for a new file.
+    #[tokio::test]
+    async fn intent_to_add_partial_stage() {
+        let dir = temp_repo("ita").await;
+        commit_file(&dir, "keep", b"k\n").await;
+        std::fs::write(dir.join("n.txt"), b"one\ntwo\n").unwrap();
+        git_ok(&dir, &["add", "-N", "--", "n.txt"]).await;
+        run_sel(&dir, DiffArea::Unstaged, HunkAction::Stage, "n.txt", &[('+', 2)]).await;
+        assert_eq!(index_content(&dir, "n.txt").await.unwrap(), b"two\n");
+        run_sel(&dir, DiffArea::Unstaged, HunkAction::Discard, "n.txt", &[('+', 1)]).await;
+        assert_eq!(std::fs::read(dir.join("n.txt")).unwrap(), b"two\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn awkward_paths() {
+        let dir = temp_repo("paths").await;
+        for name in ["with space.txt", "ünïcødé.txt", "trailing space ", "q\"uote.txt", "tab\there.txt", "-dash.txt"] {
+            commit_file(&dir, name, b"a\nb\n").await;
+            std::fs::write(dir.join(name), b"a\nB\nc\n").unwrap();
+            run_sel(&dir, DiffArea::Unstaged, HunkAction::Stage, name, &[('+', 3)]).await;
+            assert_eq!(index_content(&dir, name).await.unwrap(), b"a\nb\nc\n", "{name:?}");
+            run_sel(&dir, DiffArea::Unstaged, HunkAction::Discard, name, &[('-', 2), ('+', 2)]).await;
+            assert_eq!(std::fs::read(dir.join(name)).unwrap(), b"a\nb\nc\n", "{name:?}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn conflicted_file_is_rejected_clearly() {
+        let dir = temp_repo("conflict").await;
+        commit_file(&dir, "c.txt", b"base\n").await;
+        git_ok(&dir, &["checkout", "-q", "-b", "side"]).await;
+        commit_file(&dir, "c.txt", b"side\n").await;
+        git_ok(&dir, &["checkout", "-q", "main"]).await;
+        commit_file(&dir, "c.txt", b"main\n").await;
+        let out = run_git(&dir, &["-c", "user.name=t", "-c", "user.email=t@t", "merge", "side"]).await.unwrap();
+        assert!(!out.success);
+        let repo = Repository::open(&dir).unwrap();
+        for area in [DiffArea::Unstaged, DiffArea::Staged] {
+            match read_patch_source(&repo, area, "c.txt") {
+                Err(TwigError::InvalidArgument(m)) => assert!(m.contains("conflict"), "{area:?}: {m}"),
+                other => panic!("{area:?}: expected a conflict error, got {:?}", other.map(|s| s.hunks.len())),
+            }
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
