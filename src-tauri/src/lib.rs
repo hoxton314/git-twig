@@ -168,6 +168,8 @@ pub fn run() {
             commands::app_shell::repo_paths_exist,
             commands::app_shell::open_in_file_manager,
             commands::launch::open_in_terminal,
+            commands::signing::list_signing_keys,
+            commands::signing::test_signing,
             commands::launch::open_in_editor,
             commands::app_shell::open_settings_folder,
             commands::app_shell::export_settings,

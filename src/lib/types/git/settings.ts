@@ -67,5 +67,13 @@ export interface GitConfig {
   fetch_prune: boolean;
   gpg_sign: boolean;
   signing_key: string;
+  /** `gpg.format`: "openpgp" (gpg), "ssh", or "x509" (gpgsm; kept as-is). */
+  gpg_format: string;
   lfs_installed: boolean;
+}
+
+/** A key usable for commit signing (`value` goes into `user.signingkey`). */
+export interface SigningKey {
+  value: string;
+  label: string;
 }
