@@ -17,6 +17,7 @@ pub mod remotes;
 // Conflict resolution & history rewriting (rebase, force push)
 pub mod conflicts;
 pub mod history;
+pub mod squash;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

@@ -5,6 +5,7 @@ use crate::error::TwigError;
 use crate::hosting::net_auth::with_network_auth;
 use crate::git::conflicts::read_operation_state;
 use crate::git::history::{self, RebaseCommitList, RebaseTodoItem};
+use crate::git::squash::{self, SquashPlan};
 use crate::state::AppState;
 
 use super::conflicts::merge_output;
@@ -93,6 +94,44 @@ pub async fn interactive_rebase(
 
     let out =
         history::interactive_rebase(&repo_path, &gitdir, base.as_deref(), &items, autostash).await?;
+    Ok(merge_output(out))
+}
+
+/// Check whether `oids` can be squashed and return the plan (count, default
+/// message, where they are already pushed).
+#[tauri::command]
+pub async fn plan_squash(
+    state: State<'_, AppState>,
+    path: String,
+    oids: Vec<String>,
+) -> Result<SquashPlan, TwigError> {
+    state.read_repo(&path, move |repo| squash::plan_squash(repo, &oids)).await
+}
+
+/// Squash the contiguous run `oids` on the current branch into one commit
+/// with `message`. The plan is recomputed here, so a moved HEAD is caught.
+#[tauri::command]
+pub async fn squash_commits(
+    state: State<'_, AppState>,
+    path: String,
+    oids: Vec<String>,
+    message: String,
+    autostash: bool,
+) -> Result<CommandResult, TwigError> {
+    let repo_path = state.repo_path(&path)?;
+    let (kind, plan, gitdir) = state
+        .read_repo(&path, move |repo| {
+            Ok((
+                read_operation_state(repo)?.kind,
+                squash::plan_squash(repo, &oids)?,
+                repo.path().to_path_buf(),
+            ))
+        })
+        .await?;
+    if kind != "none" {
+        return Ok(busy(&kind));
+    }
+    let out = squash::squash(&repo_path, &gitdir, plan, &message, autostash).await?;
     Ok(merge_output(out))
 }
 
