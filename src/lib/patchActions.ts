@@ -4,7 +4,7 @@
  */
 import { open, save, ask } from "@tauri-apps/plugin-dialog";
 import * as tauri from "./tauri";
-import type { PatchInfo } from "./types/git";
+import type { ApplyPatchResult, PatchInfo } from "./types/git";
 import { refreshAll } from "./stores/graph";
 import { refreshOperation } from "./stores/operation";
 import { toast, toastError } from "./stores/toasts";
@@ -72,7 +72,7 @@ export function applySummary(file: string, info: PatchInfo): string {
   const name = file.split(/[\\/]/).pop() ?? file;
   const lines: string[] = [];
   if (info.kind === "mbox") {
-    const n = info.commits.length;
+    const n = info.count;
     lines.push(`Apply ${n} commit${n === 1 ? "" : "s"} from ${name} onto the current branch (git am)?`, "");
     const shown = info.commits.slice(0, 10);
     lines.push(...shown.map((s) => `• ${s}`));
@@ -88,6 +88,18 @@ export function applySummary(file: string, info: PatchInfo): string {
   }
   if (info.stat) lines.push("", info.stat);
   return lines.join("\n");
+}
+
+/** What to tell the user when applying didn't finish (exported for tests). */
+export function failureText(r: ApplyPatchResult): string {
+  const why = r.message.trim().split("\n").filter(Boolean).slice(-3).join("\n");
+  const detail = why ? `\n\n${why}` : "";
+  if (r.stopped) {
+    const what = r.conflicted ? "stopped with conflicts. Resolve them, then continue" : "stopped. Fix the problem, then continue";
+    return `Applying the patch series ${what}, skip or abort from the banner above the graph.${detail}`;
+  }
+  if (r.conflicted) return `The patch was applied with conflicts. Resolve the conflicted files in the changes list.${detail}`;
+  return `git could not apply the patch.${detail}`;
 }
 
 export async function applyPatchAction(path: string) {
@@ -112,17 +124,12 @@ export async function applyPatchAction(path: string) {
     await refreshAll(path);
     if (r.mode === "am") await refreshOperation(path);
     if (r.success) {
-      toast("success", r.mode === "am" ? `Applied ${info.commits.length} commit(s) from the patch` : "Applied the patch to the working tree");
-    } else if (r.conflicted) {
-      toast(
-        "warning",
-        r.mode === "am"
-          ? "Applying the patch stopped with conflicts. Resolve them, then continue, skip or abort from the banner above the graph."
-          : "The patch was applied with conflicts. Resolve the conflicted files in the changes list.",
-        { title: "Conflicts", duration: 0 },
-      );
+      toast("success", r.mode === "am" ? `Applied ${info.count} commit${info.count === 1 ? "" : "s"} from the patch` : "Applied the patch to the working tree");
     } else {
-      toast("error", r.message.trim() || "git could not apply the patch.", { title: "Apply Patch Failed", duration: 0 });
+      toast("warning", failureText(r), {
+        title: r.conflicted ? "Conflicts" : "Apply Patch Stopped",
+        duration: 0,
+      });
     }
   } catch (err) {
     await refreshAll(path);

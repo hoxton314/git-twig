@@ -112,6 +112,7 @@
         action: () => savePatchesAction(path, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) }),
       },
       { separator: true },
+      { label: "Apply patch file…", action: () => applyPatchAction(path) },
       { label: "Undo history…", shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
     ];
   }

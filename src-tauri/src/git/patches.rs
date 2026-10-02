@@ -51,7 +51,24 @@ fn scratch_dir() -> Result<PathBuf, TwigError> {
 async fn format_one(repo_path: &Path, oid: &str, number: usize, dir: &Path) -> Result<PathBuf, TwigError> {
     let start = format!("--start-number={number}");
     let dir_s = dir.to_string_lossy();
-    let out = run_git(repo_path, &["format-patch", "-1", &start, "-o", &dir_s, oid]).await?;
+    let out = run_git(
+        repo_path,
+        &[
+            "-c",
+            "diff.noprefix=false",
+            "-c",
+            "diff.mnemonicPrefix=false",
+            "format-patch",
+            "-1",
+            &start,
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "-o",
+            &dir_s,
+            oid,
+        ],
+    )
+    .await?;
     if !out.success {
         return Err(TwigError::GitCli(out.stderr));
     }
@@ -129,7 +146,30 @@ pub async fn save_working_patch(repo_path: &Path, target: &str) -> Result<(), Tw
         return Err(invalid("there are no changes to tracked files to save"));
     }
     let output = format!("--output={}", target.to_string_lossy());
-    let out = run_git(repo_path, &["diff", "HEAD", "--binary", "--no-color", "--no-ext-diff", &output]).await?;
+    // Pin the format `git apply` expects, whatever the user's diff config
+    // (`diff.noprefix`, textconv drivers, `diff.submodule=log`, …) says.
+    let out = run_git(
+        repo_path,
+        &[
+            // `diff.noprefix` beats `--src-prefix` on some git versions.
+            "-c",
+            "diff.noprefix=false",
+            "-c",
+            "diff.mnemonicPrefix=false",
+            "diff",
+            "HEAD",
+            "--binary",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "--submodule=short",
+            "--no-relative",
+            &output,
+        ],
+    )
+    .await?;
     if !out.success {
         return Err(TwigError::GitCli(out.stderr));
     }
@@ -138,9 +178,12 @@ pub async fn save_working_patch(repo_path: &Path, target: &str) -> Result<(), Tw
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PatchInfo {
-    /// "mbox" (format-patch / mail, applied with `git am`) or "diff".
+    /// "mbox" (format-patch output or a saved mail, applied with `git am`)
+    /// or "diff".
     pub kind: String,
-    /// Commit subjects in an mbox, in order.
+    /// Number of commits (mails) in an mbox.
+    pub count: usize,
+    /// Their subjects, in order (the first [`MAX_LISTED`]).
     pub commits: Vec<String>,
     /// `git apply --stat` summary.
     pub stat: String,
@@ -151,22 +194,80 @@ pub struct PatchInfo {
     pub check_error: Option<String>,
 }
 
+/// Subjects read for the preview.
+const MAX_LISTED: usize = 50;
+
+/// An mbox (`From ` separator line, as `format-patch` writes) or a single
+/// saved mail: a leading block of RFC 2822 headers with From and Subject.
 fn is_mbox(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"From ") && bytes.windows(10).any(|w| w == b"\nSubject: ")
+    if bytes.starts_with(b"From ") {
+        return true;
+    }
+    let text = String::from_utf8_lossy(&bytes[..bytes.len().min(16 * 1024)]);
+    let mut from = false;
+    let mut subject = false;
+    for line in text.lines() {
+        let line = line.trim_end_matches('\r');
+        if line.is_empty() {
+            break;
+        }
+        if line.starts_with([' ', '\t']) {
+            continue; // folded header
+        }
+        let Some((name, _)) = line.split_once(':') else {
+            return false;
+        };
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+            return false;
+        }
+        from |= name.eq_ignore_ascii_case("from");
+        subject |= name.eq_ignore_ascii_case("subject");
+    }
+    from && subject
 }
 
-/// Subjects of an mbox's messages, without the `[PATCH n/m]` prefix.
-fn mbox_subjects(text: &str) -> Vec<String> {
-    text.lines()
-        .filter_map(|l| l.strip_prefix("Subject: "))
-        .map(|s| {
-            let s = s.trim();
-            match s.strip_prefix('[').and_then(|r| r.split_once("] ")) {
-                Some((tag, rest)) if tag.to_ascii_uppercase().contains("PATCH") => rest.to_string(),
-                _ => s.to_string(),
-            }
-        })
-        .collect()
+/// Count the mails in `file` and read their (decoded, unwrapped) subjects
+/// with `git mailsplit` / `git mailinfo`, the way `git am` will.
+async fn mbox_subjects(repo_path: &Path, file: &Path) -> Result<(usize, Vec<String>), TwigError> {
+    let scratch = scratch_dir()?;
+    let result = async {
+        let out_dir = format!("-o{}", scratch.to_string_lossy());
+        let split = run_git(repo_path, &["mailsplit", "-b", &out_dir, &file.to_string_lossy()]).await?;
+        if !split.success {
+            return Err(invalid(format!("not a mailbox git can read: {}", split.stderr.trim())));
+        }
+        let count: usize = split.stdout.trim().parse().unwrap_or(0);
+        let mut subjects = Vec::new();
+        for i in 1..=count.min(MAX_LISTED) {
+            let mail = scratch.join(format!("{i:04}"));
+            let info = mailinfo(repo_path, &mail, &scratch).await?;
+            let subject = info
+                .lines()
+                .find_map(|l| l.strip_prefix("Subject: "))
+                .unwrap_or("(no subject)")
+                .trim()
+                .to_string();
+            subjects.push(subject);
+        }
+        Ok((count, subjects))
+    }
+    .await;
+    let _ = std::fs::remove_dir_all(&scratch);
+    result
+}
+
+/// `git mailinfo <msg> <patch> < mail`: the header summary on stdout.
+async fn mailinfo(repo_path: &Path, mail: &Path, scratch: &Path) -> Result<String, TwigError> {
+    let input = std::fs::File::open(mail)?;
+    let out = tokio::process::Command::new("git")
+        .arg("mailinfo")
+        .arg(scratch.join("msg"))
+        .arg(scratch.join("patch"))
+        .current_dir(repo_path)
+        .stdin(std::process::Stdio::from(input))
+        .output()
+        .await?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Look at a patch file before applying it.
@@ -182,9 +283,11 @@ pub async fn inspect_patch(repo_path: &Path, file: &str) -> Result<PatchInfo, Tw
         return Err(invalid(format!("not a patch git can read: {}", stat.stderr.trim())));
     }
     if is_mbox(&bytes) {
+        let (count, commits) = mbox_subjects(repo_path, path).await?;
         return Ok(PatchInfo {
             kind: "mbox".into(),
-            commits: mbox_subjects(&String::from_utf8_lossy(&bytes)),
+            count,
+            commits,
             stat: stat.stdout.trim_end().to_string(),
             applies_cleanly: None,
             check_error: None,
@@ -193,6 +296,7 @@ pub async fn inspect_patch(repo_path: &Path, file: &str) -> Result<PatchInfo, Tw
     let check = run_git(repo_path, &["apply", "--check", &file_s]).await?;
     Ok(PatchInfo {
         kind: "diff".into(),
+        count: 0,
         commits: Vec::new(),
         stat: stat.stdout.trim_end().to_string(),
         applies_cleanly: Some(check.success),
@@ -206,9 +310,18 @@ pub struct ApplyPatchResult {
     pub message: String,
     /// "am", "apply" or "apply-3way".
     pub mode: String,
-    /// Stopped with conflicts: `git am` is in progress (banner), or a
-    /// three-way apply left conflicted files.
+    /// Left conflicted files to resolve.
     pub conflicted: bool,
+    /// `git am` stopped part-way and is in progress (banner: continue /
+    /// skip / abort), with or without conflicts.
+    pub stopped: bool,
+}
+
+async fn unmerged_paths(repo_path: &Path) -> Result<Vec<String>, TwigError> {
+    let out = run_git(repo_path, &["diff", "--name-only", "--diff-filter=U"]).await?;
+    let mut v: Vec<String> = out.stdout.lines().map(String::from).collect();
+    v.sort();
+    Ok(v)
 }
 
 /// Apply a patch file: `git am --3way` for an mbox, otherwise `git apply`
@@ -219,14 +332,24 @@ pub async fn apply_patch(repo_path: &Path, file: &str) -> Result<ApplyPatchResul
     let bytes = std::fs::read(path)?;
     let file_s = path.to_string_lossy();
     if is_mbox(&bytes) {
+        if am_in_progress(repo_path).await? {
+            return Err(invalid("a patch series is already being applied; continue or abort it first"));
+        }
+        let staged = run_git(repo_path, &["diff", "--cached", "--quiet"]).await?;
+        if !staged.success {
+            return Err(invalid(
+                "applying a patch series needs a clean index: commit or unstage the staged changes first",
+            ));
+        }
         let out = crate::git::conflicts::run_git_noedit(repo_path, &["am", "--3way", &file_s], &[]).await?;
-        // A stopped `git am` stays in progress for the banner to resolve.
-        let conflicted = !out.success && am_in_progress(repo_path).await?;
+        let stopped = !out.success && am_in_progress(repo_path).await?;
+        let conflicted = stopped && !unmerged_paths(repo_path).await?.is_empty();
         return Ok(ApplyPatchResult {
             success: out.success,
             message: if out.success { out.stdout } else { format!("{}{}", out.stdout, out.stderr) },
             mode: "am".into(),
             conflicted,
+            stopped,
         });
     }
     let check = run_git(repo_path, &["apply", "--check", &file_s]).await?;
@@ -237,16 +360,20 @@ pub async fn apply_patch(repo_path: &Path, file: &str) -> Result<ApplyPatchResul
             message: if out.success { out.stdout } else { out.stderr },
             mode: "apply".into(),
             conflicted: false,
+            stopped: false,
         });
     }
+    // Only conflicts this apply created count (others may predate it).
+    let before = unmerged_paths(repo_path).await?;
     let out = run_git(repo_path, &["apply", "--3way", &file_s]).await?;
-    let unmerged = run_git(repo_path, &["ls-files", "--unmerged"]).await?;
-    let conflicted = unmerged.success && !unmerged.stdout.trim().is_empty();
+    let after = unmerged_paths(repo_path).await?;
+    let conflicted = after.iter().any(|p| !before.contains(p));
     Ok(ApplyPatchResult {
         success: out.success,
         message: if out.success { out.stdout } else { out.stderr },
         mode: "apply-3way".into(),
         conflicted,
+        stopped: false,
     })
 }
 
@@ -314,6 +441,7 @@ mod tests {
         let info = inspect_patch(&dst, &files[0]).await.unwrap();
         assert_eq!(info.kind, "mbox");
         assert_eq!(info.commits, ["first"]);
+        assert_eq!(info.count, 1);
         let r = apply_patch(&dst, &files[0]).await.unwrap();
         assert!(r.success && r.mode == "am", "{r:?}");
 
@@ -373,7 +501,7 @@ DOS
         let mbox = root.join("side.mbox").to_string_lossy().into_owned();
         format_patches(&dir, &[side], &mbox, true).await.unwrap();
         let r = apply_patch(&dir, &mbox).await.unwrap();
-        assert!(!r.success && r.conflicted && r.mode == "am", "{r:?}");
+        assert!(!r.success && r.conflicted && r.stopped && r.mode == "am", "{r:?}");
         assert!(am_in_progress(&dir).await.unwrap());
         git(&dir, &["am", "--abort"]).await;
 
@@ -403,11 +531,69 @@ DOS
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn reads_mbox_subjects() {
-        let text = "From abc Mon Sep 17 00:00:00 2001\nSubject: [PATCH 1/2] fix: thing\n\nFrom def\nSubject: plain\n";
-        assert!(is_mbox(text.as_bytes()));
+    #[tokio::test]
+    async fn reads_mail_files_like_git_am() {
+        let root = base("mail");
+        let dir = root.join("repo");
+        repo(&dir).await;
+        // A saved mail (no mbox separator), folded and encoded subject, and a
+        // body line that only looks like a header.
+        let mail = root.join("fix.eml");
+        std::fs::write(
+            &mail,
+            "From: Ada <ada@x>\nSubject: [PATCH] =?UTF-8?q?caf=C3=A9?= is\n spelled right\nDate: Mon, 1 Jan 2024 00:00:00 +0000\n\n\
+             Body text first.\nSubject: not a header\n---\n a.txt | 1 +\n\ndiff --git a/a.txt b/a.txt\nnew file mode 100644\n\
+             --- /dev/null\n+++ b/a.txt\n@@ -0,0 +1 @@\n+a\n",
+        )
+        .unwrap();
+        assert!(is_mbox(&std::fs::read(&mail).unwrap()));
         assert!(!is_mbox(b"diff --git a/x b/x\n"));
-        assert_eq!(mbox_subjects(text), ["fix: thing", "plain"]);
+        assert!(!is_mbox(b"Note: something\nSubject: x\n\n"), "needs From too");
+        let info = inspect_patch(&dir, &mail.to_string_lossy()).await.unwrap();
+        assert_eq!(info.kind, "mbox");
+        assert_eq!(info.count, 1);
+        assert_eq!(info.commits, ["café is spelled right"]);
+
+        // git am needs a clean index: refuse up front instead of leaving a
+        // half-started session.
+        commit(&dir, "base.txt", b"x\n", "base").await;
+        std::fs::write(dir.join("base.txt"), b"y\n").unwrap();
+        git(&dir, &["add", "base.txt"]).await;
+        let err = apply_patch(&dir, &mail.to_string_lossy()).await.unwrap_err().to_string();
+        assert!(err.contains("clean index"), "{err}");
+        assert!(!am_in_progress(&dir).await.unwrap());
+        git(&dir, &["reset", "-q", "--hard"]).await;
+        let r = apply_patch(&dir, &mail.to_string_lossy()).await.unwrap();
+        assert!(r.success, "{r:?}");
+        assert_eq!(git(&dir, &["log", "-1", "--format=%an %s"]).await, "Ada café is spelled right");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn working_patch_ignores_diff_config() {
+        let root = base("diffcfg");
+        let dir = root.join("repo");
+        repo(&dir).await;
+        commit(&dir, "a.txt", b"1\n", "base").await;
+        git(&dir, &["config", "diff.noprefix", "true"]).await;
+        git(&dir, &["config", "diff.mnemonicPrefix", "true"]).await;
+        git(&dir, &["config", "format.noprefix", "true"]).await;
+        std::fs::write(dir.join(".gitattributes"), "*.txt diff=upper\n").unwrap();
+        git(&dir, &["config", "diff.upper.textconv", "tr a-z A-Z <"]).await;
+        std::fs::write(dir.join("a.txt"), b"1\nadded\n").unwrap();
+        let patch = root.join("w.patch");
+        save_working_patch(&dir, &patch.to_string_lossy()).await.unwrap();
+        let text = std::fs::read_to_string(&patch).unwrap();
+        assert!(text.contains("--- a/a.txt") && text.contains("+added"), "{text}");
+        git(&dir, &["checkout", "--", "a.txt"]).await;
+        let info = inspect_patch(&dir, &patch.to_string_lossy()).await.unwrap();
+        assert_eq!(info.applies_cleanly, Some(true), "{info:?}");
+
+        let oid = commit(&dir, "a.txt", b"1\nmore\n", "more").await;
+        let mbox = root.join("c.mbox");
+        format_patches(&dir, &[oid], &mbox.to_string_lossy(), true).await.unwrap();
+        let text = std::fs::read_to_string(&mbox).unwrap();
+        assert!(text.contains("--- a/a.txt") && text.contains("+more"), "{text}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

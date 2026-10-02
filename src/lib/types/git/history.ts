@@ -121,7 +121,9 @@ export interface RebaseCommit {
 export interface PatchInfo {
   /** "mbox" (format-patch, applied with git am) or "diff". */
   kind: "mbox" | "diff";
-  /** Commit subjects in an mbox, in order. */
+  /** Number of commits (mails) in an mbox. */
+  count: number;
+  /** Their subjects, in order (the first 50). */
   commits: string[];
   /** `git apply --stat` summary. */
   stat: string;
@@ -134,8 +136,10 @@ export interface ApplyPatchResult {
   success: boolean;
   message: string;
   mode: "am" | "apply" | "apply-3way";
-  /** git am stopped (banner), or a three-way apply left conflicts. */
+  /** Left conflicted files to resolve. */
   conflicted: boolean;
+  /** git am stopped part-way and is in progress (banner). */
+  stopped: boolean;
 }
 
 /** A validated "squash these commits" plan. */
