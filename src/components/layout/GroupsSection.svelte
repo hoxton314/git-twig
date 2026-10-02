@@ -15,6 +15,7 @@
     repoDisplayName,
   } from "../../lib/stores/repoHistory";
   import { openRepoGroup } from "../../lib/groupActions";
+  import { MAX_GROUP_NAME } from "../../lib/repoGroups";
   import { settings } from "../../lib/stores/settings";
 
   interface Props {
@@ -75,6 +76,7 @@
             bind:this={input}
             bind:value={draft}
             class="rename"
+            maxlength={MAX_GROUP_NAME - 4}
             aria-label="Group name"
             onkeydown={(e) => {
               if (e.key === "Enter") commitRename();

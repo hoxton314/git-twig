@@ -89,8 +89,9 @@ export function filterEntries(entries: RepoMenuEntry[], query: string): RepoMenu
     // matching on long paths and branch names matches almost anything).
     const onName = fuzzyMatch(q, e.name);
     const lower = q.toLowerCase();
-    const onBranch = e.branch?.toLowerCase().includes(lower) ? fuzzyMatch(q, e.branch) : null;
-    const onPath = e.path.toLowerCase().includes(lower) ? fuzzyMatch(q, e.path) : null;
+    // Groups have no branch (it holds their repo count) and their path is an id.
+    const onBranch = e.kind !== "group" && e.branch?.toLowerCase().includes(lower) ? fuzzyMatch(q, e.branch) : null;
+    const onPath = e.kind !== "group" && e.path.toLowerCase().includes(lower) ? fuzzyMatch(q, e.path) : null;
     let best: RepoMenuRow | null = null;
     if (onName) best = { ...e, nameHits: onName.indices, score: onName.score };
     if (onBranch && (!best || onBranch.score - 15 > best.score)) best = { ...e, nameHits: [], score: onBranch.score - 15 };

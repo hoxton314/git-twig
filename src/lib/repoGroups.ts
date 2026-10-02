@@ -6,15 +6,18 @@ import type { RepoGroup } from "./types/git";
 
 export function newGroupId(existing: RepoGroup[]): string {
   const ids = new Set(existing.map((g) => g.id));
-  for (let n = existing.length + 1; ; n++) {
-    const id = `g${Date.now().toString(36)}${n}`;
+  for (;;) {
+    const id = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
     if (!ids.has(id)) return id;
   }
 }
 
-/** A name that isn't taken yet ("Group", "Group 2", …). */
+/** Longest group name (the backend keeps the same limit). */
+export const MAX_GROUP_NAME = 100;
+
+/** A name that isn't taken yet ("Group", "Group 2", …), at most MAX_GROUP_NAME characters. */
 export function uniqueGroupName(groups: RepoGroup[], wanted: string): string {
-  const base = wanted.trim() || "Group";
+  const base = [...(wanted.trim() || "Group")].slice(0, MAX_GROUP_NAME - 4).join("").trim();
   const taken = new Set(groups.map((g) => g.name.toLowerCase()));
   if (!taken.has(base.toLowerCase())) return base;
   for (let n = 2; ; n++) {

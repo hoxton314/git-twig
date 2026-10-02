@@ -9,6 +9,13 @@ describe("repository groups", () => {
     expect(gs[1].name).toBe("work 2");
     expect(uniqueGroupName(gs, "  ")).toBe("Group");
     expect(gs.map((g) => g.id)).not.toContain(newGroupId(gs));
+    // Never longer than the backend keeps, so names survive a restart unchanged.
+    const long = "x".repeat(150);
+    gs = createGroup(gs, "c", long);
+    gs = createGroup(gs, "d", long);
+    expect(gs[2].name.length).toBeLessThanOrEqual(100);
+    expect(gs[3].name.length).toBeLessThanOrEqual(100);
+    expect(gs[3].name).not.toBe(gs[2].name);
   });
 
   it("renames, adds, removes and deletes", () => {

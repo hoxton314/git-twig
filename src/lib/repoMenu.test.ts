@@ -84,5 +84,8 @@ describe("repo menu", () => {
       ["group:2", "0 repos", false, true],
     ]);
     expect(flatRows(filterEntries(withGroups, "work")).map((r) => r.path)).toEqual(["group:1"]);
+    // The internal id isn't searchable.
+    expect(filterEntries(withGroups, "group").some((s) => s.title === "Groups")).toBe(false);
+    expect(filterEntries(withGroups, "repos").some((s) => s.title === "Groups")).toBe(false);
   });
 });
