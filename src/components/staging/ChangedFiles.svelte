@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { showFileHistory, showBlame } from "../../lib/stores/fileviews";
+  import { openConflictResolver } from "../../lib/stores/operation";
   import {
     Plus,
     Minus,
@@ -243,6 +245,14 @@
     } else {
       items.push({ label: "Unstage", action: () => unstage([file]) });
     }
+    if (file.status === "conflicted") {
+      items.push({ label: "Resolve conflict…", action: () => openConflictResolver(file.path) });
+    }
+    items.push({ separator: true });
+    // New files have no history yet.
+    const tracked = !file.is_new && file.status !== "untracked";
+    items.push({ label: "File history", disabled: !tracked, action: () => showFileHistory(file.path) });
+    items.push({ label: "Blame", disabled: !tracked || deleted, action: () => showBlame(file.path) });
     items.push({ separator: true });
     items.push({ label: "Open in default app", disabled: deleted, action: () => openFile(file.path) });
     items.push({ label: "Reveal in file manager", action: () => revealFile(file.path) });

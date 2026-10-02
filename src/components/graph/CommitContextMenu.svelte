@@ -24,6 +24,7 @@
     revertAction,
   } from "../../lib/commitActions";
   import { pushTagAction } from "../../lib/tagActions";
+  import { openRebaseDialog, openInteractiveRebase } from "../../lib/stores/operation";
   import type { CommitInfo } from "../../lib/types/git";
 
   const menu = $derived($commitMenu);
@@ -59,6 +60,17 @@
       { label: "Revert commit", action: () => revertAction(path, c.oid) },
       { separator: true },
       {
+        label: `Rebase ${branch ?? "HEAD"} onto this commit…`,
+        disabled: isHead,
+        action: () => openRebaseDialog(c.oid),
+      },
+      {
+        label: "Interactive rebase from here…",
+        // Base is exclusive: start at the parent so this commit is included.
+        action: () => openInteractiveRebase(c.parent_oids.length > 0 ? `${c.oid}^` : null),
+      },
+      { separator: true },
+      {
         label: `Reset ${resetTarget} here — soft`,
         disabled: isHead,
         action: () => resetAction(path, c.oid, "soft", branch),
@@ -84,6 +96,10 @@
 
   /** Open the menu for the selected commit, anchored to its row. */
   function openForSelected() {
+    // Shift+F10 is global; other lists (files, branches) handle it for their
+    // own focused rows, so only act when focus is in the graph or nowhere.
+    const active = document.activeElement;
+    if (active && active !== document.body && !active.closest(".commit-graph")) return;
     const oid = $selectedCommitOid;
     if (!findCommit(oid)) return;
     const row = document.querySelector<HTMLElement>(".commit-graph .commit-row.selected");

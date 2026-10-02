@@ -87,16 +87,6 @@ pub async fn rebase_branch(
     Ok(result(out, format!("Rebased {what} onto '{onto}'")))
 }
 
-#[tauri::command]
-pub async fn rebase_branch_abort(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<CommandResult, TwigError> {
-    let repo_path = state.repo_path(&path)?;
-    let out = branch_ops::rebase_abort(&repo_path).await?;
-    Ok(result(out, "Rebase aborted".to_string()))
-}
-
 /// Create a branch at a start point without checking it out.
 #[tauri::command]
 pub async fn create_branch_at(

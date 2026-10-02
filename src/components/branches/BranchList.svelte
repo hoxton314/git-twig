@@ -328,17 +328,6 @@
     });
   }
 
-  async function abortRebase(path: string) {
-    try {
-      const result = await tauri.rebaseBranchAbort(path);
-      if ($activeRepoPath === path) await refreshAll(path);
-      if (result.success) toast("info", "Rebase aborted");
-      else toast("error", result.message, { title: "Abort Failed" });
-    } catch (err) {
-      toastError("Abort Failed", err);
-    }
-  }
-
   /** Rebase `branch` (current branch when omitted) onto `onto`. */
   async function rebase(onto: string, branch?: string) {
     const path = repoPath;
@@ -357,10 +346,9 @@
       if (result.success) {
         toast("success", `Rebased "${subject}" onto "${onto}"`);
       } else if (/conflict|could not apply|resolve all conflicts/i.test(result.message)) {
-        toast("error", result.message, {
+        // The operation banner (conflicts/) offers resolve, continue and abort.
+        toast("warning", "Resolve the conflicts, then continue or abort from the banner.", {
           title: "Rebase stopped on conflicts",
-          duration: 0,
-          action: { label: "Abort rebase", run: () => abortRebase(path) },
         });
       } else {
         toast("error", result.message, { title: "Rebase Failed" });

@@ -106,7 +106,7 @@ pub async fn push_local_branch(
 }
 
 /// Rebase `branch` (or the current branch when `None`) onto `onto`.
-/// On conflicts git stops mid-rebase; the caller can offer `rebase_abort`.
+/// On conflicts git stops mid-rebase; the conflict banner offers continue/abort.
 pub async fn rebase_branch(
     repo_path: &Path,
     onto: &str,
@@ -120,10 +120,6 @@ pub async fn rebase_branch(
         }
         None => run_git(repo_path, &["rebase", onto]).await,
     }
-}
-
-pub async fn rebase_abort(repo_path: &Path) -> Result<GitOutput, TwigError> {
-    run_git(repo_path, &["rebase", "--abort"]).await
 }
 
 /// Create a branch at `start_point` without switching to it (used for

@@ -105,7 +105,6 @@ pub fn run() {
             commands::branch_ops::fast_forward_branch,
             commands::branch_ops::push_local_branch,
             commands::branch_ops::rebase_branch,
-            commands::branch_ops::rebase_branch_abort,
             commands::branch_ops::create_branch_at,
             commands::branch_ops::checkout_remote_tracking,
             commands::branch_ops::compare_branches,

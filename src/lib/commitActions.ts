@@ -127,7 +127,7 @@ async function applyCommit(path: string, oid: string, kind: "cherry-pick" | "rev
   if (r?.conflicted) {
     toast(
       "warning",
-      `${verb} of ${short(oid)} stopped with conflicts. Resolve them and commit, or abort the ${kind} (git ${kind} --abort).`,
+      `${verb} of ${short(oid)} stopped with conflicts. Resolve them, then continue or abort from the banner above the graph.`,
       { title: "Conflicts", duration: 0 },
     );
   }

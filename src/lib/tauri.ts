@@ -572,9 +572,6 @@ export function rebaseBranch(
   });
 }
 
-export function rebaseBranchAbort(path: string): Promise<CommandResult> {
-  return invoke<CommandResult>("rebase_branch_abort", { path });
-}
 
 /** Create a branch at `startPoint` without checking it out. */
 export function createBranchAt(
