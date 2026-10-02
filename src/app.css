@@ -175,3 +175,37 @@ input[type="number"]::-webkit-outer-spin-button {
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: #9898a8;
 }
+
+/* ── Diff viewer: syntax, word-diff and search colors ─────────────── */
+:root {
+  --color-syntax-keyword: #bb9af7;
+  --color-syntax-string: #9ece6a;
+  --color-syntax-number: #ff9e64;
+  --color-syntax-comment: #6b7394;
+  --color-syntax-function: #7aa2f7;
+  --color-syntax-type: #2ac3de;
+  --color-syntax-variable: #e0af68;
+  --color-syntax-meta: #89ddff;
+  --color-diff-add-word-bg: rgba(158, 206, 106, 0.35);
+  --color-diff-del-word-bg: rgba(247, 118, 142, 0.35);
+  --color-search-hit-bg: rgba(224, 175, 104, 0.35);
+  --color-search-hit-text: inherit;
+  --color-search-active-bg: rgba(224, 175, 104, 0.75);
+  --color-search-active-outline: #e0af68;
+}
+
+[data-theme="light"] {
+  --color-syntax-keyword: #7c3aad;
+  --color-syntax-string: #2d7d1e;
+  --color-syntax-number: #b4560f;
+  --color-syntax-comment: #7a7f94;
+  --color-syntax-function: #2e5cb8;
+  --color-syntax-type: #0f7c8c;
+  --color-syntax-variable: #8f5f0a;
+  --color-syntax-meta: #2a6f97;
+  --color-diff-add-word-bg: rgba(45, 140, 20, 0.28);
+  --color-diff-del-word-bg: rgba(200, 45, 55, 0.26);
+  --color-search-hit-bg: rgba(230, 170, 30, 0.35);
+  --color-search-active-bg: rgba(230, 150, 0, 0.6);
+  --color-search-active-outline: #b47a00;
+}

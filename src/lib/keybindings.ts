@@ -33,6 +33,13 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // Diff viewer
+  { id: "diff_next_hunk", label: "Next change in diff",  category: "Diff",       defaultShortcut: "Alt+ArrowDown" },
+  { id: "diff_prev_hunk", label: "Previous change in diff", category: "Diff",    defaultShortcut: "Alt+ArrowUp" },
+  // Ctrl+F is handled by the diff panel itself while it has focus.
+  { id: "diff_find",      label: "Find in diff",         category: "Diff",       defaultShortcut: "" },
+  { id: "diff_toggle_whitespace", label: "Toggle whitespace changes in diffs", category: "Diff", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
