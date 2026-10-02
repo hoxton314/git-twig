@@ -87,6 +87,9 @@ pub async fn grep(repo_path: &Path, opts: &GrepOptions) -> Result<GrepResult, Tw
         "grep.lineNumber=false",
         "-c",
         "grep.fullName=false",
+        // A column field would shift the parsed text (`path\0line\0col\0text`).
+        "-c",
+        "grep.column=false",
         "grep",
         "-n",
         "-I",
@@ -237,6 +240,12 @@ mod tests {
         let r = grep(&dir, &GrepOptions { rev: Some(head.clone()), ..opts("idea") }).await.unwrap();
         assert_eq!(r.files[0].path, "notes.txt");
         assert_eq!(grep(&dir, &opts("idea")).await.unwrap().total, 0);
+
+        // User config that changes the output format is overridden.
+        git(&dir, &["config", "grep.column", "true"]).await;
+        git(&dir, &["config", "grep.patternType", "perl"]).await;
+        let r = grep(&dir, &opts("let main")).await.unwrap();
+        assert_eq!(r.files[0].matches, [GrepMatch { line: 2, text: "let main = 1;".into() }]);
 
         // No match is not an error; a bad regex or revision is.
         assert_eq!(grep(&dir, &opts("zzz-nothing")).await.unwrap().total, 0);

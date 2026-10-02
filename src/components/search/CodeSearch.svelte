@@ -8,7 +8,8 @@
   import Modal from "../shared/Modal.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { onAction } from "../../lib/keybindings";
-  import { codeSearch, matchRanges, openCodeSearch, parsePaths, splitRuns } from "../../lib/codeSearch";
+  import { codeSearch, matchRanges, openCodeSearch, parsePaths, splitRuns, workingArea } from "../../lib/codeSearch";
+  import { selectedCommitOid, selectedWorkingFile, workingFileDiff, workingStatus } from "../../lib/stores/graph";
   import { showBlame } from "../../lib/stores/fileviews";
   import { toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
@@ -41,18 +42,23 @@
     if (target) tick().then(() => input?.select());
   });
 
-  // A different repo: old results don't apply.
+  let req = 0;
+
+  // A different repo: old results (and a commit to search) don't apply,
+  // and a search still running for the old one is dropped.
   let lastRepo: string | null = null;
   $effect(() => {
     const p = $activeRepoPath;
     if (p !== lastRepo) {
       lastRepo = p;
+      req++;
       result = null;
       error = null;
+      loading = false;
+      $codeSearch = null;
     }
   });
 
-  let req = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   // Search as you type (debounced) once the query is long enough.
   $effect(() => {
@@ -60,7 +66,13 @@
     const query = { pattern, regex, matchCase, wholeWord, pathFilter };
     if (!t) return;
     if (timer) clearTimeout(timer);
-    if (query.pattern.length < 2) return;
+    if (query.pattern.length < 2) {
+      // Too short: drop any running search and its stale results.
+      req++;
+      result = null;
+      loading = false;
+      return;
+    }
     timer = setTimeout(() => run(), 350);
     return () => {
       if (timer) clearTimeout(timer);
@@ -107,10 +119,24 @@
     $codeSearch = null;
   }
 
-  function openMatch(file: string, line: number) {
+  async function openMatch(file: string, line: number) {
     const rev = target?.rev ?? undefined;
+    const path = $activeRepoPath;
+    const area = rev ? null : workingArea(file, $workingStatus);
     close();
-    showBlame(file, rev, line);
+    if (!area || !path) {
+      showBlame(file, rev, line);
+      return;
+    }
+    // Uncommitted changes: HEAD's lines differ, so show the file's diff.
+    $selectedCommitOid = null;
+    $selectedWorkingFile = { path: file, area };
+    try {
+      const diff = area === "staged" ? await tauri.getStagedDiff(path, file) : await tauri.getUnstagedDiff(path, file);
+      if ($activeRepoPath === path && $selectedWorkingFile?.path === file) $workingFileDiff = diff;
+    } catch (err) {
+      toastError("Could not show the diff", err);
+    }
   }
 
   async function openInEditor(file: string) {
@@ -212,7 +238,7 @@
               </div>
               {#if !collapsed.has(file.path)}
                 {#each file.matches as m (m.line)}
-                  <button class="match" onclick={() => openMatch(file.path, m.line)} title="Show blame at line {m.line}">
+                  <button class="match" onclick={() => openMatch(file.path, m.line)} title={!target.rev && workingArea(file.path, $workingStatus) ? "Has uncommitted changes: show its diff" : `Show blame at line ${m.line}`}>
                     <span class="ln">{m.line}</span>
                     <span class="text">{#each splitRuns(m.text, matchRanges(m.text, pattern, opts)) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</span>
                   </button>

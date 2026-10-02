@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { matchRanges, parsePaths, splitRuns } from "./codeSearch";
+import { matchRanges, parsePaths, splitRuns, workingArea } from "./codeSearch";
 
 const plain = { regex: false, ignoreCase: false, wholeWord: false };
 
 describe("code search helpers", () => {
+  it("opens changed files as diffs, unchanged ones in blame", () => {
+    const status = { staged: [{ path: "new.rs" }, { path: "both.rs" }], unstaged: [{ path: "both.rs" }, { path: "edit.rs" }] };
+    expect(workingArea("edit.rs", status)).toBe("unstaged");
+    expect(workingArea("both.rs", status)).toBe("unstaged");
+    expect(workingArea("new.rs", status)).toBe("staged");
+    expect(workingArea("clean.rs", status)).toBeNull();
+  });
+
   it("splits the path filter", () => {
     expect(parsePaths(" src/, *.rs  docs ")).toEqual(["src/", "*.rs", "docs"]);
     expect(parsePaths("")).toEqual([]);

@@ -58,6 +58,25 @@
     untrack(() => load(r, f));
   });
 
+  /** Center the target line (only the frame opened from outside has one). */
+  async function scrollToTarget() {
+    if (!line || stack.length !== 1) return;
+    await tick();
+    const el = scrollEl?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+    if (el && scrollEl) {
+      const top = el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+      scrollEl.scrollTop = top - scrollEl.clientHeight / 2;
+    }
+  }
+
+  // Another line in the same file and revision: no reload, just scroll.
+  $effect(() => {
+    void line;
+    untrack(() => {
+      if (result && !loading) scrollToTarget();
+    });
+  });
+
   async function load(r: string, f: Frame) {
     const id = ++req;
     loading = true;
@@ -68,15 +87,7 @@
       result = res;
       selectedOid = null;
       if (scrollEl) scrollEl.scrollTop = 0;
-      // Only the frame opened from outside targets a line.
-      if (line && stack.length === 1) {
-        await tick();
-        const el = scrollEl?.querySelector<HTMLElement>(`[data-line="${line}"]`);
-        if (el && scrollEl) {
-          const top = el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
-          scrollEl.scrollTop = top - scrollEl.clientHeight / 2;
-        }
-      }
+      await scrollToTarget();
     } catch (err) {
       if (id !== req) return;
       result = null;

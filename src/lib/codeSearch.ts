@@ -13,6 +13,20 @@ export function openCodeSearch(rev: string | null = null, label: string | null =
   codeSearch.set({ rev, label });
 }
 
+/**
+ * Where a working-tree match should open. A file with uncommitted changes
+ * (or not committed at all) has different lines than HEAD, so blame would
+ * point at the wrong line: show its diff instead, unstaged changes first.
+ */
+export function workingArea(
+  path: string,
+  status: { staged: { path: string }[]; unstaged: { path: string }[] },
+): "unstaged" | "staged" | null {
+  if (status.unstaged.some((f) => f.path === path)) return "unstaged";
+  if (status.staged.some((f) => f.path === path)) return "staged";
+  return null;
+}
+
 /** Path filter text → pathspecs: split on commas and whitespace. */
 export function parsePaths(text: string): string[] {
   return text
