@@ -31,6 +31,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
 | `src-tauri/src/git/reader.rs` | git2-based reads: branches, diffs, status (graph IPC structs) |
 | `src-tauri/src/commands/cli.rs` | `twig [path…]`: startup paths (`take_startup_paths`) and forwarding from later launches via `tauri-plugin-single-instance` → `open-paths` event (frontend: `openPathsAsTabs` in `appActions.ts`) |
+| `src-tauri/src/commands/signing.rs` | Commit signing setup: `list_signing_keys` (GPG secret keys / SSH pub files + agent keys), `test_signing`, and `commit_result` (adds an actionable hint when a commit fails to sign) |
 | `src-tauri/src/commands/launch.rs` | "Open in terminal / editor": `terminal_command` / `editor_command` settings (or platform defaults), split by `split_command` and spawned without a shell; `find_program` does PATH lookup |
 | `src-tauri/src/git/create.rs` | `git init` (folder created if missing) and `git clone` from any URL with streamed progress; commands `init_repository` / `clone_repository` in `commands/repo.rs` (`register_repo` opens the result as a tab) |
 | `src/components/layout/NewRepoDialog.svelte` | Clone-from-URL / initialize dialogs, opened via the `newRepoDialog` store (`src/lib/newRepo.ts`) |
@@ -222,7 +223,7 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 
 - Authentication / credential manager (GitHub token is in the OS keyring and used for HTTPS fetch/pull/push to the GitHub host via `hosting::net_auth::with_network_auth`; other hosts still rely on the system git credential helper)
 - ~~GitHub API integration~~ ✓ (clone from GitHub, create repo, create PR via PAT in Settings > GitHub)
-- SSH key management
+- SSH key management (partly: Settings > Git Configuration lists `~/.ssh/*.pub` and agent keys for SSH commit signing via `commands/signing.rs`; no key generation)
 - ~~Conflict resolution UI~~ ✓ (operation banner + conflict list + 3-way resolver in `src/components/conflicts/`, backend `git/conflicts.rs`)
 - Blame view
 - ~~Git identity profiles~~ (use local git config directly, no extra abstraction needed)

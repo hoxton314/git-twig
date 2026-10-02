@@ -111,7 +111,7 @@ pub async fn create_commit(
     let repo_path = state.repo_path(&path)?;
 
     let output = writer::commit(&repo_path, &message).await?;
-    Ok(output.into())
+    Ok(crate::commands::signing::commit_result(output))
 }
 
 /// Undo the last commit, keeping changes staged.

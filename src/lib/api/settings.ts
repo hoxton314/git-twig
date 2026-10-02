@@ -2,7 +2,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  CommandResult,
   GitConfig,
+  SigningKey,
 } from "../types/git";
 
 // ── Settings ─────────────────────────────────────────────────────────
@@ -23,4 +25,14 @@ export function getGitConfig(): Promise<GitConfig> {
 
 export function setGitConfig(config: GitConfig): Promise<void> {
   return invoke<void>("set_git_config", { config });
+}
+
+/** GPG secret keys or SSH public keys usable for signing. */
+export function listSigningKeys(format: "openpgp" | "ssh"): Promise<SigningKey[]> {
+  return invoke<SigningKey[]>("list_signing_keys", { format });
+}
+
+/** Sign a throwaway commit with the saved signing settings. */
+export function testSigning(): Promise<CommandResult> {
+  return invoke<CommandResult>("test_signing");
 }

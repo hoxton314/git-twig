@@ -23,7 +23,7 @@ pub async fn create_commit_with_options(
         CommitOptions { amend, signoff },
     )
     .await?;
-    Ok(output.into())
+    Ok(crate::commands::signing::commit_result(output))
 }
 
 /// HEAD's message and whether it has already been pushed.

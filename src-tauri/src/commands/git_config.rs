@@ -12,6 +12,8 @@ pub struct GitConfig {
     pub fetch_prune: bool,
     pub gpg_sign: bool,
     pub signing_key: String,
+    /// `gpg.format`: "openpgp" (default) or "ssh".
+    pub gpg_format: String,
     pub lfs_installed: bool,
 }
 
@@ -92,7 +94,7 @@ async fn detect_lfs() -> bool {
 
 #[tauri::command]
 pub async fn get_git_config() -> Result<GitConfig, TwigError> {
-    let (user_name, user_email, pull_rebase, fetch_prune, gpg_sign, signing_key, lfs_installed) =
+    let (user_name, user_email, pull_rebase, fetch_prune, gpg_sign, signing_key, gpg_format, lfs_installed) =
         tokio::join!(
             git_config_get("user.name"),
             git_config_get("user.email"),
@@ -100,6 +102,7 @@ pub async fn get_git_config() -> Result<GitConfig, TwigError> {
             git_config_get_bool("fetch.prune"),
             git_config_get_bool("commit.gpgsign"),
             git_config_get("user.signingkey"),
+            git_config_get("gpg.format"),
             detect_lfs(),
         );
 
@@ -110,6 +113,7 @@ pub async fn get_git_config() -> Result<GitConfig, TwigError> {
         fetch_prune,
         gpg_sign,
         signing_key,
+        gpg_format: if gpg_format.is_empty() { "openpgp".to_string() } else { gpg_format },
         lfs_installed,
     })
 }
@@ -149,6 +153,15 @@ pub async fn set_git_config(config: GitConfig) -> Result<(), TwigError> {
     git_config_set_bool("fetch.prune", config.fetch_prune).await?;
     git_config_set_bool("commit.gpgsign", config.gpg_sign).await?;
 
+    // Only touch gpg.format when it changed (an unset value means openpgp).
+    let format = config.gpg_format.trim();
+    if matches!(format, "openpgp" | "ssh") {
+        let current = git_config_get("gpg.format").await;
+        let current = if current.is_empty() { "openpgp" } else { current.as_str() };
+        if current != format {
+            git_config_set("gpg.format", format).await?;
+        }
+    }
     if !config.signing_key.is_empty() {
         git_config_set("user.signingkey", &config.signing_key).await?;
     }
