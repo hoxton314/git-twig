@@ -76,6 +76,13 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 2. Register a handler with `onAction(actionId, handler)` in the component where the action logic lives
 3. Handlers registered in `AppShell.svelte` for global actions; component-specific actions register in their own `onMount`
 
+### Shared UI primitives
+
+- **Context menus**: `src/components/shared/ContextMenu.svelte` -- pass `x`, `y` (from the `contextmenu` event), `items: MenuItem[]` (`label`, `action`, `shortcut`, `danger`, `disabled`, `separator`), `onclose`. Handles viewport clamping, Esc, arrow keys, click-outside. The browser's default menu is disabled globally in `main.ts`.
+- **Notifications**: `toast(kind, message, opts)` / `toastError(title, err)` from `src/lib/stores/toasts.ts` (rendered by `Toaster.svelte` in `AppShell`). Prefer toasts over blocking `message()` dialogs for operation results; keep `ask()`/`Modal` for confirmations.
+- **Confirmations** for destructive actions use `ask()` from `@tauri-apps/plugin-dialog` and respect `$settings.confirm_destructive_ops`.
+- **Git CLI helpers** in `git/writer.rs` are `pub(crate)`: `run_git`, `run_git_paths` (literal pathspecs after `--`), `safe_ref` (reject leading `-`), `rev_exists`. Always pass `--` before paths and validate refs with `safe_ref`.
+
 ### Adding a new component
 
 Components go in `src/components/<feature>/`. Use existing patterns:

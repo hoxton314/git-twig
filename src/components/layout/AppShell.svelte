@@ -6,6 +6,7 @@
   import DiffViewer from "../diff/DiffViewer.svelte";
   import StagingArea from "../staging/StagingArea.svelte";
   import HomeScreen from "./HomeScreen.svelte";
+  import Toaster from "../shared/Toaster.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
@@ -270,6 +271,8 @@
   {#if !showTitleBar && appVersion}
     <span class="version-badge">v{appVersion}</span>
   {/if}
+
+  <Toaster />
 </div>
 
 <style>

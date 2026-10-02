@@ -13,7 +13,7 @@ pub struct GitOutput {
     pub stderr: String,
 }
 
-async fn run_git(repo_path: &Path, args: &[&str]) -> Result<GitOutput, TwigError> {
+pub(crate) async fn run_git(repo_path: &Path, args: &[&str]) -> Result<GitOutput, TwigError> {
     let output = Command::new("git")
         .args(args)
         .current_dir(repo_path)
@@ -38,7 +38,7 @@ async fn run_git(repo_path: &Path, args: &[&str]) -> Result<GitOutput, TwigError
 /// Reject arguments that git would otherwise interpret as command-line flags.
 /// Branch names, refs and remote names never legitimately begin with `-`
 /// (git itself forbids it), so a leading dash means a crafted/invalid value.
-fn safe_ref(value: &str) -> Result<(), TwigError> {
+pub(crate) fn safe_ref(value: &str) -> Result<(), TwigError> {
     if value.is_empty() {
         return Err(TwigError::GitCli("empty git ref/name argument".to_string()));
     }
@@ -54,7 +54,7 @@ fn safe_ref(value: &str) -> Result<(), TwigError> {
 /// `--literal-pathspecs` makes git treat each path verbatim, so file names
 /// containing glob characters (`*`, `?`, `[`) or pathspec magic (`:(...)`)
 /// cannot expand to other files — critical for destructive `restore`/`clean`.
-async fn run_git_paths(
+pub(crate) async fn run_git_paths(
     repo_path: &Path,
     args: &[&str],
     paths: &[&str],
@@ -203,7 +203,7 @@ pub async fn merge_branch(repo_path: &Path, branch_name: &str) -> Result<GitOutp
 // ── Undo operations ──────────────────────────────────────────────────
 
 /// Whether `rev` resolves to a commit (e.g. `HEAD` is born, `HEAD~1` exists).
-async fn rev_exists(repo_path: &Path, rev: &str) -> Result<bool, TwigError> {
+pub(crate) async fn rev_exists(repo_path: &Path, rev: &str) -> Result<bool, TwigError> {
     let spec = format!("{rev}^{{commit}}");
     let out = run_git(repo_path, &["rev-parse", "--verify", "--quiet", &spec]).await?;
     Ok(out.success)
