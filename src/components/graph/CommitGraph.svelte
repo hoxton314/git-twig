@@ -67,7 +67,8 @@
     const b = $bisectState;
     if (!b) return null;
     if (b.first_bad === oid) return "first-bad";
-    return bisectMarkMap.get(oid) ?? (b.current === oid ? "testing" : null);
+    const testing = !b.first_bad && b.bad && b.good.length > 0 && b.current === oid;
+    return bisectMarkMap.get(oid) ?? (testing ? "testing" : null);
   }
   const status = $derived($workingStatus);
   const s = $derived($settings);

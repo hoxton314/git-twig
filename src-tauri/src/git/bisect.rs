@@ -68,6 +68,61 @@ fn parse_vars(out: &str) -> (Option<u32>, Option<u32>) {
     (all, steps)
 }
 
+/// Split git's shell-quoted argument list (`'a' 'b c' 'it'\''s'`).
+fn parse_sq_quoted(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quote = false;
+    let mut any = false;
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (in_quote, c) {
+            (true, '\'') => in_quote = false,
+            (true, c) => cur.push(c),
+            (false, '\'') => {
+                in_quote = true;
+                any = true;
+            }
+            (false, '\\') => {
+                if let Some(n) = chars.next() {
+                    cur.push(n);
+                    any = true;
+                }
+            }
+            (false, c) if c.is_whitespace() => {
+                if any {
+                    out.push(std::mem::take(&mut cur));
+                    any = false;
+                }
+            }
+            (false, c) => {
+                cur.push(c);
+                any = true;
+            }
+        }
+    }
+    if any {
+        out.push(cur);
+    }
+    out
+}
+
+/// The first bad commit git recorded in `BISECT_LOG` once it finished
+/// (`# first bad commit: [<oid>] …`), unless marks were made after it.
+fn first_bad_from_log(log: &str) -> Option<String> {
+    let mut found = None;
+    for line in log.lines() {
+        if let Some(rest) = line.strip_prefix("# first ") {
+            if let Some((_, after)) = rest.split_once(" commit: [") {
+                found = after.split_once(']').map(|(oid, _)| oid.to_string());
+            }
+        } else if line.starts_with("git bisect ") {
+            found = None;
+        }
+    }
+    found
+}
+
 /// The bisect in progress, or `None` when there is none.
 pub async fn bisect_info(repo_path: &Path) -> Result<Option<BisectInfo>, TwigError> {
     if !git_path(repo_path, "BISECT_START").await?.exists() {
@@ -100,21 +155,31 @@ pub async fn bisect_info(repo_path: &Path) -> Result<Option<BisectInfo>, TwigErr
         None => None,
     };
 
-    let (mut remaining, mut steps, mut first_bad, mut first_bad_subject) = (None, None, None, None);
+    // Paths the bisect is limited to (`git bisect start … -- <paths>`).
+    let names = std::fs::read_to_string(git_path(repo_path, "BISECT_NAMES").await?).unwrap_or_default();
+    let paths: Vec<String> = parse_sq_quoted(&names).into_iter().filter(|p| p != "--").collect();
+    let log = std::fs::read_to_string(git_path(repo_path, "BISECT_LOG").await?).unwrap_or_default();
+
+    let (mut remaining, mut steps, mut first_bad) = (None, None, first_bad_from_log(&log));
     if let (Some(b), false) = (&bad, good.is_empty()) {
         let mut args = vec!["rev-list", "--bisect-vars", b.as_str(), "--not"];
         args.extend(good.iter().map(String::as_str));
+        args.push("--");
+        args.extend(paths.iter().map(String::as_str));
         let out = run_git(repo_path, &args).await?;
         if out.success {
             let (all, s) = parse_vars(&out.stdout);
             remaining = all;
             steps = s;
-            if all == Some(1) {
+            if all == Some(1) && first_bad.is_none() {
                 first_bad = Some(b.clone());
-                first_bad_subject = subject(repo_path, b).await;
             }
         }
     }
+    let first_bad_subject = match &first_bad {
+        Some(f) => subject(repo_path, f).await,
+        None => None,
+    };
 
     Ok(Some(BisectInfo {
         term_bad,
@@ -298,6 +363,52 @@ mod tests {
         reset(&dir).await.unwrap();
         assert!(mark(&dir, "good", None).await.is_err(), "nothing to mark");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn path_limited_bisect_finishes() {
+        let dir = std::env::temp_dir().join(format!("twig-bisect-paths-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]).await;
+        git(&dir, &["config", "user.name", "t"]).await;
+        git(&dir, &["config", "user.email", "t@t"]).await;
+        git(&dir, &["config", "commit.gpgsign", "false"]).await;
+        // A commit that doesn't touch f.txt sits right before the first bad
+        // one, so it still counts as a candidate without the path limit.
+        let steps: [(&str, &str); 6] =
+            [("f.txt", "0\n"), ("f.txt", "1\n"), ("f.txt", "2\n"), ("other.txt", "x\n"), ("f.txt", "bug\n"), ("f.txt", "bug 2\n")];
+        let mut oids = Vec::new();
+        for (i, (file, body)) in steps.iter().enumerate() {
+            std::fs::write(dir.join(file), body).unwrap();
+            git(&dir, &["add", "."]).await;
+            git(&dir, &["commit", "-q", "-m", &format!("s{i}")]).await;
+            oids.push(git(&dir, &["rev-parse", "HEAD"]).await);
+        }
+        git(&dir, &["bisect", "start", &oids[5], &oids[0], "--", "f.txt"]).await;
+        for _ in 0..6 {
+            let info = bisect_info(&dir).await.unwrap().unwrap();
+            if let Some(first) = info.first_bad {
+                assert_eq!(first, oids[4]);
+                reset(&dir).await.unwrap();
+                let _ = std::fs::remove_dir_all(&dir);
+                return;
+            }
+            let verdict = if has_bug(&dir) { "bad" } else { "good" };
+            assert!(mark(&dir, verdict, None).await.unwrap().success);
+        }
+        panic!("path-limited bisect never reported the first bad commit");
+    }
+
+    #[test]
+    fn parses_names_and_log() {
+        assert_eq!(parse_sq_quoted(" '--' 'a' 'd x/b'\\''q'"), ["--", "a", "d x/b'q"]);
+        assert!(parse_sq_quoted("").is_empty());
+        let log = "git bisect start 'x'\n# bad: [aaa] c\ngit bisect bad aaa\n# first 'bad' commit: [abc123] c1\n";
+        assert_eq!(first_bad_from_log(log).as_deref(), Some("abc123"));
+        assert_eq!(first_bad_from_log("# first bad commit: [def] x\n").as_deref(), Some("def"));
+        // Marked again afterwards: no longer the result.
+        assert_eq!(first_bad_from_log(&format!("{log}git bisect good abc123\n")), None);
     }
 
     #[test]

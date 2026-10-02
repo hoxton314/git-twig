@@ -38,6 +38,8 @@
   const active = $derived(st !== null && (st.kind !== "none" || conflicts.length > 0));
   const inOperation = $derived(st !== null && st.kind !== "none");
   const bisect = $derived(st?.kind === "bisect" ? $bisectState : null);
+  /** Both ends are known, so HEAD is a commit git checked out for testing. */
+  const bisectTesting = $derived(!!bisect && !bisect.first_bad && !!bisect.bad && bisect.good.length > 0);
 
   let expanded = $state(true);
   let fileBusy = $state<string | null>(null);
@@ -61,6 +63,7 @@
     if (!st) return "";
     if (bisect) {
       if (bisect.first_bad) return `${bisect.first_bad.slice(0, 7)} ${bisect.first_bad_subject ?? ""} is the first ${bisect.term_bad} commit`;
+      if (!bisectTesting) return "Right-click a commit in the graph to mark it.";
       if (bisect.current) return `Testing ${bisect.current.slice(0, 7)} ${bisect.current_subject ?? ""}`;
     }
     if (st.kind === "rebase" && st.stopped_for_edit) {
@@ -174,7 +177,7 @@
             <button class="op-btn primary" onclick={() => bisect.first_bad && revealCommit(bisect.first_bad)} title="Select it in the graph">
               Show commit
             </button>
-          {:else}
+          {:else if bisectTesting}
             <button class="op-btn" onclick={() => markBisect("good")} disabled={!!busy} title="The commit being tested is {bisect.term_good} (git bisect {bisect.term_good})">
               <CheckCircle2 size={12} /> {bisect.term_good === "good" ? "Good" : bisect.term_good}
             </button>
