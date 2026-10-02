@@ -5,22 +5,44 @@ import type {
   DiffFile,
   WorkingStatus,
   StashEntry,
+  GraphOptions,
 } from "../types/git";
 import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
 import { settings } from "./settings";
+import { toastError } from "./toasts";
 
-/** Commit limit for graph loads, from user settings. */
-function maxCommits(): number {
+/** Graph page size ("commits per page" setting). */
+export function graphPageSize(): number {
   const n = get(settings).max_commits;
   return n > 0 ? n : 5000;
 }
 
-/** Commit graph for the active repo. */
+/** Which refs the graph walks, from the graph view settings. */
+export function graphOptions(): GraphOptions {
+  const s = get(settings);
+  return {
+    hide_remotes: s.graph_hide_remotes,
+    current_branch_only: s.graph_current_branch_only,
+  };
+}
+
+/**
+ * How many rows a reload should fetch: at least one page, and everything
+ * the user has already paged in so a refresh doesn't drop their position.
+ */
+function reloadCount(minCount = 0): number {
+  return Math.max(graphPageSize(), get(commitGraph)?.entries.length ?? 0, minCount);
+}
+
+/** Commit graph for the active repo (all pages loaded so far). */
 export const commitGraph = writable<CommitGraph | null>(null);
 
 /** Whether the graph is currently loading. */
 export const graphLoading = writable(false);
+
+/** Whether a further page of history is being fetched. */
+export const graphLoadingMore = writable(false);
 
 /** Branches for the active repo. */
 export const branches = writable<BranchInfo[]>([]);
@@ -168,12 +190,15 @@ export async function refreshStatus(path?: string) {
   }
 }
 
-/** Load only the commit graph for `path` (used when switching repos). */
-export async function loadGraph(path: string) {
+/**
+ * Load only the commit graph for `path` (used when switching repos or view
+ * options). Fetches at least `minCount` rows and keeps rows already paged in.
+ */
+export async function loadGraph(path: string, minCount = 0) {
   const gen = ++refreshGen;
   graphLoading.set(true);
   try {
-    const graph = await tauri.getCommitGraph(path, maxCommits());
+    const graph = await tauri.getCommitGraph(path, reloadCount(minCount), 0, graphOptions());
     if (gen === refreshGen && stillActive(path)) commitGraph.set(graph);
   } catch (err) {
     console.error("Failed to load commit graph:", err);
@@ -194,7 +219,7 @@ export async function refreshAll(path?: string) {
   graphLoading.set(true);
   try {
     const [graph, branchList, info, status, stash] = await Promise.all([
-      tauri.getCommitGraph(p, maxCommits()),
+      tauri.getCommitGraph(p, reloadCount(), 0, graphOptions()),
       tauri.getBranches(p),
       tauri.getRepoInfo(p),
       tauri.getWorkingStatus(p),
@@ -214,4 +239,69 @@ export async function refreshAll(path?: string) {
   } finally {
     if (gen === refreshGen) graphLoading.set(false);
   }
+}
+
+// ── Pagination ───────────────────────────────────────────────────────
+
+let moreInFlight: Promise<void> | null = null;
+
+/**
+ * Append the next `count` rows of history (default: one page). Lanes are
+ * computed in Rust over the whole prefix, so new rows continue the existing
+ * ones. If the branch tips moved meanwhile, the graph is reloaded instead so
+ * pages never mix two different histories.
+ */
+export function loadMoreCommits(count?: number): Promise<void> {
+  if (moreInFlight) return moreInFlight;
+  const p = get(activeRepoPath);
+  const g = get(commitGraph);
+  if (!p || !g || !g.has_more) return Promise.resolve();
+  const gen = refreshGen;
+  const want = Math.max(1, Math.min(count ?? graphPageSize(), Number.MAX_SAFE_INTEGER));
+  graphLoadingMore.set(true);
+  moreInFlight = (async () => {
+    try {
+      const page = await tauri.getCommitGraph(p, want, g.entries.length, graphOptions());
+      if (gen !== refreshGen || !stillActive(p) || get(commitGraph) !== g) return;
+      if (page.tips !== g.tips) {
+        await loadGraph(p, g.entries.length + want);
+        return;
+      }
+      commitGraph.set({
+        ...page,
+        entries: g.entries.concat(page.entries),
+        offset: 0,
+        total_lanes: Math.max(g.total_lanes, page.total_lanes),
+      });
+    } catch (err) {
+      if (stillActive(p)) toastError("Failed to load more commits", err);
+    } finally {
+      graphLoadingMore.set(false);
+      moreInFlight = null;
+    }
+  })();
+  return moreInFlight;
+}
+
+/**
+ * Make sure at least `count` rows are loaded (e.g. before jumping to a search
+ * match beyond the loaded window). Resolves once loaded or history ends.
+ */
+export async function ensureGraphLoaded(count: number): Promise<void> {
+  for (let guard = 0; guard < 100; guard++) {
+    if (moreInFlight) {
+      await moreInFlight;
+      continue;
+    }
+    const g = get(commitGraph);
+    if (!g || g.entries.length >= count || !g.has_more) return;
+    await loadMoreCommits(count - g.entries.length);
+    // Nothing changed (error or repo switch): give up instead of spinning.
+    if (get(commitGraph) === g) return;
+  }
+}
+
+/** Load the whole remaining history. */
+export function loadEntireGraph(): Promise<void> {
+  return ensureGraphLoaded(Number.MAX_SAFE_INTEGER);
 }

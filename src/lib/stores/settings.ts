@@ -22,6 +22,17 @@ const defaults: AppSettings = {
   external_diff_tool: null,
   external_merge_tool: null,
   keybinding_overrides: {},
+  // Commit graph view
+  graph_show_author: true,
+  graph_show_date: true,
+  graph_show_sha: true,
+  graph_author_width: 120,
+  graph_sha_width: 64,
+  graph_date_width: 90,
+  graph_date_format: "relative",
+  graph_row_density: "normal",
+  graph_hide_remotes: false,
+  graph_current_branch_only: false,
 };
 
 export const settings = writable<AppSettings>({ ...defaults });

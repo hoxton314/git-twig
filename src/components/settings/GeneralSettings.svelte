@@ -79,8 +79,8 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Maximum commits to load</span>
-        <span class="label-hint">Limits how many commits are loaded in the graph</span>
+        <span class="label-text">Commits per page</span>
+        <span class="label-hint">How many commits the graph loads at a time; more load as you scroll</span>
       </div>
       <div class="setting-control">
         <input

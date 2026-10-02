@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GraphEntry } from "../../lib/types/git";
   import { LANE_COLORS } from "../../lib/types/git";
+  import { GRAPH_LANE_WIDTH, GRAPH_LEFT_PAD, graphColumnWidth } from "./graphLayout";
 
   interface Props {
     entry: GraphEntry;
@@ -11,13 +12,11 @@
 
   let { entry, totalLanes, height, isUnpushed = false }: Props = $props();
 
-  const LEFT_PAD = 12;
-  const LANE_WIDTH = 20;
   const NODE_RADIUS = 5;
   const STROKE_WIDTH = 2;
   const OPACITY = 0.7;
 
-  const svgWidth = $derived(Math.max((totalLanes + 1) * LANE_WIDTH + LEFT_PAD, 48 + LEFT_PAD));
+  const svgWidth = $derived(graphColumnWidth(totalLanes));
   const cy = $derived(height / 2);
 
   /**
@@ -26,12 +25,25 @@
    * attributes don't resolve var().
    */
   function laneColor(lane: number): string {
-    return `var(--color-lane-${lane % LANE_COLORS.length})`;
+    return LANE_VARS[lane % LANE_VARS.length];
   }
+
+  // Spelled out literally (not built from the index) so Tailwind v4 sees
+  // every lane variable as used and keeps it in the CSS; otherwise the dark
+  // theme's unused-looking --color-lane-1/3/4/5 are tree-shaken and those
+  // lanes render black.
+  const LANE_VARS = [
+    "var(--color-lane-0)",
+    "var(--color-lane-1)",
+    "var(--color-lane-2)",
+    "var(--color-lane-3)",
+    "var(--color-lane-4)",
+    "var(--color-lane-5)",
+  ] as const satisfies readonly string[] & { length: typeof LANE_COLORS.length };
 
   /** X center for a given lane index. */
   function lx(lane: number): number {
-    return LEFT_PAD + lane * LANE_WIDTH + LANE_WIDTH / 2;
+    return GRAPH_LEFT_PAD + lane * GRAPH_LANE_WIDTH + GRAPH_LANE_WIDTH / 2;
   }
 </script>
 
@@ -63,6 +75,20 @@
       opacity={OPACITY}
     />
   {/if}
+
+  <!-- Merge-ins: other lanes waiting for this commit converge into its node -->
+  {#each entry.merge_ins ?? [] as mergeLane}
+    <path
+      d="M {lx(mergeLane)} 0
+         C {lx(mergeLane)} {cy},
+           {lx(entry.lane)} 0,
+           {lx(entry.lane)} {cy}"
+      fill="none"
+      style:stroke={laneColor(mergeLane)}
+      stroke-width={STROKE_WIDTH}
+      opacity={OPACITY}
+    />
+  {/each}
 
   <!-- Outgoing lines: from the commit node down to each parent's lane -->
   {#each entry.parent_lanes as parentLane}
