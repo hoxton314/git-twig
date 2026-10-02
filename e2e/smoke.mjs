@@ -162,7 +162,9 @@ try {
     if (log[0] !== "add notes from e2e" || log[1] !== "initial commit") {
       throw new Error(`unexpected history: ${JSON.stringify(log)}`);
     }
-    if (git("status", "--porcelain").trim() !== " M big.txt") throw new Error(`unexpected status: ${git("status", "--porcelain")}`);
+    // Only the pre-modified big.txt (used by the next step) is left.
+    const status = git("status", "--porcelain").replace(/\n$/, "");
+    if (status !== " M big.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
   });
 
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
