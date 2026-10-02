@@ -312,7 +312,17 @@ mod tests {
             std::fs::set_permissions(dir.join("tools/mark.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         assert_eq!(find_program("./tools/mark.sh", &dir), Some(dir.join("./tools/mark.sh")));
-        spawn(&["./tools/mark.sh".into()], &dir).unwrap();
+        // Another test thread forking while the script was being written can
+        // briefly hold it open for writing (ETXTBSY); retry that one error.
+        for attempt in 0.. {
+            match spawn(&["./tools/mark.sh".into()], &dir) {
+                Ok(()) => break,
+                Err(e) if attempt < 50 && e.to_string().contains("Text file busy") => {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                Err(e) => panic!("{e}"),
+            }
+        }
         for _ in 0..50 {
             if dir.join("a b;$(x)").exists() {
                 break;
