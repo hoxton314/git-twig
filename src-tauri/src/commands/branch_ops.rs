@@ -7,6 +7,7 @@
 use tauri::State;
 
 use crate::error::TwigError;
+use crate::hosting::net_auth::with_network_auth;
 use crate::git::branch_ops::{self, BranchComparison};
 use crate::git::writer::GitOutput;
 use crate::state::AppState;
@@ -51,25 +52,34 @@ pub async fn unset_branch_upstream(
 /// Fast-forward a branch that is not checked out to its upstream.
 #[tauri::command]
 pub async fn fast_forward_branch(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     branch_name: String,
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
-    let out = branch_ops::fast_forward_branch(&repo_path, &branch_name).await?;
+    let out =
+        with_network_auth(&app, &repo_path, branch_ops::fast_forward_branch(&repo_path, &branch_name))
+            .await?;
     Ok(result(out, format!("Updated '{branch_name}'")))
 }
 
 /// Push a local branch to its upstream, or to `remote` with `--set-upstream`.
 #[tauri::command]
 pub async fn push_local_branch(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     branch_name: String,
     remote: Option<String>,
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
-    let out = branch_ops::push_local_branch(&repo_path, &branch_name, remote.as_deref()).await?;
+    let out = with_network_auth(
+        &app,
+        &repo_path,
+        branch_ops::push_local_branch(&repo_path, &branch_name, remote.as_deref()),
+    )
+    .await?;
     Ok(result(out, format!("Pushed '{branch_name}'")))
 }
 

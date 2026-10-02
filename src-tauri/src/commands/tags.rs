@@ -3,6 +3,7 @@ use tauri::State;
 
 use super::staging::CommandResult;
 use crate::error::TwigError;
+use crate::hosting::net_auth::with_network_auth;
 use crate::git::tags::{self, TagInfo};
 use crate::state::AppState;
 
@@ -38,6 +39,7 @@ pub async fn delete_tag(
 /// `origin` or the only remote.
 #[tauri::command]
 pub async fn push_tag(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     name: Option<String>,
@@ -45,7 +47,9 @@ pub async fn push_tag(
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
     let remote = tags::resolve_remote(&repo_path, remote.as_deref()).await?;
-    let out = tags::push_tags(&repo_path, &remote, name.as_deref()).await?;
+    let out =
+        with_network_auth(&app, &repo_path, tags::push_tags(&repo_path, &remote, name.as_deref()))
+            .await?;
     Ok(CommandResult {
         success: out.success,
         message: if out.success {
@@ -58,6 +62,7 @@ pub async fn push_tag(
 
 #[tauri::command]
 pub async fn delete_remote_tag(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     name: String,
@@ -65,7 +70,9 @@ pub async fn delete_remote_tag(
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
     let remote = tags::resolve_remote(&repo_path, remote.as_deref()).await?;
-    let out = tags::delete_remote_tag(&repo_path, &remote, &name).await?;
+    let out =
+        with_network_auth(&app, &repo_path, tags::delete_remote_tag(&repo_path, &remote, &name))
+            .await?;
     Ok(CommandResult {
         success: out.success,
         message: if out.success {

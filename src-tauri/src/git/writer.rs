@@ -83,32 +83,33 @@ pub async fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<GitO
 /// Checkout a remote branch (e.g. "origin/feature") as a local tracking branch.
 /// If a local branch with the derived name already exists, checkout that instead
 /// of failing — it is almost always the branch the user wants.
+///
+/// The remote is the configured remote whose name prefixes (git forbids
+/// overlapping remote names) `remote_branch`, so names with `/` work.
 pub async fn checkout_remote_branch(
     repo_path: &Path,
     remote_branch: &str,
 ) -> Result<GitOutput, TwigError> {
     safe_ref(remote_branch)?;
-    let local_name = match remote_branch.split_once('/') {
-        Some((_, local)) if !local.is_empty() => local,
-        _ => {
-            return Err(TwigError::GitCli(format!(
-                "'{remote_branch}' is not a remote branch name"
-            )))
-        }
+    let remotes = run_git(repo_path, &["remote"]).await?;
+    let remote = remotes
+        .stdout
+        .lines()
+        .map(str::trim)
+        .filter(|r| {
+            !r.is_empty()
+                && remote_branch.len() > r.len() + 1
+                && remote_branch.starts_with(r)
+                && remote_branch.as_bytes()[r.len()] == b'/'
+        })
+        .max_by_key(|r| r.len());
+    let Some(remote) = remote else {
+        return Err(TwigError::GitCli(format!(
+            "'{remote_branch}' is not a remote branch name"
+        )));
     };
-    if local_name == "HEAD" {
-        return Err(TwigError::GitCli(
-            "cannot checkout the symbolic HEAD of a remote".to_string(),
-        ));
-    }
-
-    let local_ref = format!("refs/heads/{local_name}");
-    let exists = run_git(repo_path, &["rev-parse", "--verify", "--quiet", &local_ref]).await?;
-    if exists.success {
-        run_git(repo_path, &["checkout", local_name, "--"]).await
-    } else {
-        run_git(repo_path, &["checkout", "--track", remote_branch, "--"]).await
-    }
+    let branch = &remote_branch[remote.len() + 1..];
+    super::branch_ops::checkout_remote_tracking(repo_path, remote, branch).await
 }
 
 pub async fn create_branch(
@@ -166,11 +167,14 @@ pub async fn push_branch(
 ) -> Result<GitOutput, TwigError> {
     safe_ref(remote)?;
     safe_ref(branch_name)?;
+    // Fully qualified so a tag with the same name can't make it ambiguous.
+    let refspec = format!("refs/heads/{branch_name}:refs/heads/{branch_name}");
+    let mut args = vec!["push"];
     if set_upstream {
-        run_git(repo_path, &["push", "-u", remote, branch_name]).await
-    } else {
-        run_git(repo_path, &["push", remote, branch_name]).await
+        args.push("-u");
     }
+    args.extend(["--", remote, &refspec]);
+    run_git(repo_path, &args).await
 }
 
 pub async fn pull(repo_path: &Path, remote: &str, branch: Option<&str>) -> Result<GitOutput, TwigError> {
@@ -345,6 +349,54 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         git_ok(&dir, &["init", "-q", "-b", "main"]).await;
         dir
+    }
+
+    #[tokio::test]
+    async fn checkout_remote_branch_with_slashed_remote() {
+        let dir = temp_repo("remote-co").await;
+        git_ok(&dir, &["commit", "-q", "--allow-empty", "-m", "c1"]).await;
+        let head = run_git(&dir, &["rev-parse", "HEAD"]).await.unwrap().stdout.trim().to_string();
+        git_ok(&dir, &["remote", "add", "origin", "https://example.invalid/a.git"]).await;
+        git_ok(&dir, &["remote", "add", "my/fork", "https://example.invalid/b.git"]).await;
+        git_ok(&dir, &["update-ref", "refs/remotes/my/fork/feature", &head]).await;
+        git_ok(&dir, &["update-ref", "refs/remotes/origin/topic", &head]).await;
+
+        let out = checkout_remote_branch(&dir, "my/fork/feature").await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        let cur = run_git(&dir, &["symbolic-ref", "--short", "HEAD"]).await.unwrap();
+        assert_eq!(cur.stdout.trim(), "feature");
+        let up = run_git(&dir, &["rev-parse", "--abbrev-ref", "feature@{upstream}"]).await.unwrap();
+        assert_eq!(up.stdout.trim(), "my/fork/feature");
+
+        let out = checkout_remote_branch(&dir, "origin/topic").await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        // Existing local branch is checked out instead of failing.
+        let out = checkout_remote_branch(&dir, "my/fork/feature").await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        assert!(checkout_remote_branch(&dir, "nope/x").await.is_err());
+        assert!(checkout_remote_branch(&dir, "origin/HEAD").await.map(|o| !o.success).unwrap_or(true));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn push_branch_with_same_named_tag() {
+        let dir = temp_repo("push-tag").await;
+        git_ok(&dir, &["commit", "-q", "--allow-empty", "-m", "c1"]).await;
+        let bare = dir.with_extension("bare.git");
+        let _ = std::fs::remove_dir_all(&bare);
+        let bare_s = bare.to_string_lossy().to_string();
+        git_ok(&dir, &["init", "-q", "--bare", &bare_s]).await;
+        git_ok(&dir, &["remote", "add", "origin", &bare_s]).await;
+        git_ok(&dir, &["tag", "release"]).await;
+        git_ok(&dir, &["branch", "release"]).await;
+        let out = push_branch(&dir, "origin", "release", true).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        let up = run_git(&dir, &["rev-parse", "--abbrev-ref", "release@{upstream}"]).await.unwrap();
+        assert_eq!(up.stdout.trim(), "origin/release");
+        let out = push_branch(&dir, "origin", "main", false).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&bare);
     }
 
     #[tokio::test]

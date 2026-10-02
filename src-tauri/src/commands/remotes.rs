@@ -2,6 +2,7 @@
 use tauri::State;
 
 use crate::error::TwigError;
+use crate::hosting::net_auth::with_network_auth;
 use crate::git::remotes::{self, RemoteInfo};
 use crate::git::writer::GitOutput;
 use crate::state::AppState;
@@ -79,23 +80,25 @@ pub async fn set_remote_urls(
 
 #[tauri::command]
 pub async fn fetch_remote(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     name: String,
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
-    let out = remotes::fetch_remote(&repo_path, &name).await?;
+    let out = with_network_auth(&app, &repo_path, remotes::fetch_remote(&repo_path, &name)).await?;
     Ok(result(out, &format!("Fetched '{name}'")))
 }
 
 #[tauri::command]
 pub async fn prune_remote(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     name: String,
 ) -> Result<CommandResult, TwigError> {
     let repo_path = state.repo_path(&path)?;
-    let out = remotes::prune_remote(&repo_path, &name).await?;
+    let out = with_network_auth(&app, &repo_path, remotes::prune_remote(&repo_path, &name)).await?;
     let pruned = out.stdout.lines().filter(|l| l.contains("[pruned]")).count();
     let msg = match pruned {
         0 => format!("Nothing to prune on '{name}'"),
