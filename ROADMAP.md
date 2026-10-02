@@ -32,12 +32,12 @@ Order within a release is rough priority.
 
 ## v0.5 — Power tools
 
-- Bisect UI (bisect state is already detected and shown in the status bar).
-- Multi-select in the graph: cherry-pick a range, squash selected commits, diff any two commits.
-- Content search: search file contents, and search history for when a string was added or removed.
-- Patches: create and apply patch files.
-- Git LFS management: track, lock/unlock, fetch, prune.
-- Git hooks: show hook output; "skip hooks" option on commit.
+- [x] Bisect UI (bisect state is already detected and shown in the status bar).
+- [x] Multi-select in the graph: cherry-pick a range, squash selected commits, diff any two commits.
+- [x] Content search: search file contents, and search history for when a string was added or removed.
+- [x] Patches: create and apply patch files.
+- [x] Git LFS management: track, lock/unlock, fetch, prune.
+- [x] Git hooks: show hook output; "skip hooks" option on commit.
 
 ## v0.6 — Workspace and distribution
 
