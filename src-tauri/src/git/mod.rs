@@ -21,6 +21,7 @@ pub mod squash;
 pub mod patches;
 pub mod bisect;
 pub mod grep;
+pub mod pickaxe;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

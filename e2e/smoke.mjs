@@ -285,6 +285,19 @@ try {
     }
   });
 
+  await step("graph code search finds the commit that added a string", async () => {
+    await session.click(await session.findByText(".graph-toolbar .tool-btn", "Search"));
+    const [box] = await session.waitFor('input[aria-label="Search commits"]');
+    await session.click(await session.findByText('.graph-toolbar [role="radio"]', "Code"));
+    await session.type(box, "from the e2e test");
+    await session.type(box, "\uE007"); // Enter
+    await session.waitFor(".graph-toolbar .count", { pred: (t) => t.some((x) => /^1 (of 1|commit)$/.test(x)) });
+    const hits = await session.execute("return document.querySelectorAll('.commit-row.search-match').length;");
+    if (hits !== 1) throw new Error(`expected 1 highlighted commit, found ${hits}`);
+    await session.type(box, "\uE00C"); // Escape closes the search
+    await session.waitFor(".graph-toolbar .tool-btn");
+  });
+
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
     const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("big.txt")) });
     const texts = await session.texts(".file-item");
@@ -361,6 +374,15 @@ try {
   await session?.close().catch(() => {});
   killDriver();
   // Keep the temp dir only when it holds failure evidence.
-  if (!failed) rmSync(tmp, { recursive: true, force: true });
+  if (!failed) {
+    // A document portal started on the private bus mounts a FUSE fs at
+    // <runtime>/doc until the bus exits; retry, and never fail a passed run
+    // over a leftover temp dir.
+    try {
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (err) {
+      console.warn(`Could not remove ${tmp}: ${err.message}`);
+    }
+  }
 }
 process.exit(failed ? 1 : 0);

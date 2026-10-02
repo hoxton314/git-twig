@@ -46,6 +46,33 @@ export function searchCommits(
   });
 }
 
+/**
+ * Search the history for code changes: commits that add or remove `query`
+ * (`git log -S`), or with `regex`, whose changed lines match it (`-G`).
+ */
+export function searchChanges(
+  path: string,
+  query: string,
+  opts: { regex: boolean; ignoreCase: boolean; paths: string[] },
+  options?: GraphOptions,
+  maxResults?: number,
+): Promise<CommitSearchResult> {
+  return invoke<CommitSearchResult>("search_changes", {
+    path,
+    query,
+    regex: opts.regex,
+    ignoreCase: opts.ignoreCase,
+    paths: opts.paths,
+    options: options ?? null,
+    maxResults: maxResults ?? null,
+  });
+}
+
+/** Stop a running code-change search (the search bar closed or switched). */
+export function cancelSearchChanges(path: string): Promise<void> {
+  return invoke<void>("cancel_search_changes", { path });
+}
+
 /** Resolve a revision (branch, tag, HEAD, SHA) to a commit and its graph row. */
 export function locateCommit(
   path: string,

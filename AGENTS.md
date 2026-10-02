@@ -48,6 +48,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/git/patches.rs` | Save commits / working changes as patch files (format-patch via `-o`, byte-exact) and apply them (`git am --3way` / `git apply` with a 3-way fallback); UI in `src/lib/patchActions.ts` |
 | `src-tauri/src/git/bisect.rs` | `git bisect` start/mark/reset and progress (marks, candidates left, first bad commit; custom terms); UI in the operation banner, commit menu and `src/lib/bisectActions.ts` |
 | `src-tauri/src/git/grep.rs` | Code search: streamed, bounded `git grep` over the working tree or a commit; UI in `components/search/CodeSearch.svelte` (+ `src/lib/codeSearch.ts`) |
+| `src-tauri/src/git/pickaxe.rs` | History search for code changes (`git log -S` / `-G`) over the graph tips, mapped to graph rows (`graph::matches_in_graph`); the graph search "Code" mode |
 | `src/lib/stores/clock.ts` | Shared minute clock (`now`) for relative dates |
 | `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |

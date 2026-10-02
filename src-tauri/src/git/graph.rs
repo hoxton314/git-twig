@@ -558,6 +558,51 @@ pub fn search_commits(
     })
 }
 
+// ── Code-change search (pickaxe) ────────────────────────────────────
+
+/// `git log` revision arguments that walk the same tips as the graph.
+pub fn graph_tip_args(repo: &Repository, opts: &GraphOptions) -> Vec<String> {
+    let mut args = Vec::new();
+    if !opts.current_branch_only {
+        args.push("--branches".to_string());
+        if !opts.hide_remotes {
+            args.push("--remotes".to_string());
+        }
+    }
+    if repo.head().ok().and_then(|h| h.target()).is_some() {
+        args.push("HEAD".to_string());
+    }
+    args
+}
+
+/// Turn commit ids found by `git log` (pickaxe) into graph search matches,
+/// in graph order. Ids outside the graph are ignored.
+pub fn matches_in_graph(
+    repo: &Repository,
+    oids: &[String],
+    opts: &GraphOptions,
+    max_results: usize,
+    truncated: bool,
+) -> Result<CommitSearchResult, TwigError> {
+    let (order, tips, key) = graph_order(repo, opts)?;
+    let mut rows: Vec<(usize, Oid)> = Vec::with_capacity(oids.len());
+    for s in oids {
+        let Ok(oid) = Oid::from_str(s) else { continue };
+        if let Some(i) = row_of(&key, &order, oid) {
+            rows.push((i, oid));
+        }
+    }
+    rows.sort_unstable();
+    rows.dedup();
+    let truncated = truncated || rows.len() > max_results;
+    rows.truncate(max_results);
+    let matches = rows
+        .into_iter()
+        .map(|(index, oid)| Ok(SearchMatch { index, commit: commit_info(&repo.find_commit(oid)?) }))
+        .collect::<Result<Vec<_>, TwigError>>()?;
+    Ok(CommitSearchResult { scanned: order.len(), matches, truncated, tips })
+}
+
 // ── Locate ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
