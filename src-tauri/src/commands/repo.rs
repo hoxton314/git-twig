@@ -142,7 +142,7 @@ fn scan_repos(dir_path: &Path) -> Result<Vec<RepoInfo>, TwigError> {
         })
         .collect();
 
-    repos.sort_by(|a, b| b.last_commit_time.cmp(&a.last_commit_time));
+    repos.sort_by_key(|a| std::cmp::Reverse(a.last_commit_time));
 
     Ok(repos)
 }
