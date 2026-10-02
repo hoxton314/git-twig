@@ -128,3 +128,15 @@ export function openInTerminal(path: string): Promise<void> {
 export function openInEditor(path: string, file: string | null = null): Promise<void> {
   return invoke("open_in_editor", { path, file });
 }
+
+// ── Command line (`twig [path…]`) ───────────────────────────────────
+
+/** Paths this process was started with (returned once). */
+export function takeStartupPaths(): Promise<string[]> {
+  return invoke<string[]>("take_startup_paths");
+}
+
+/** Paths from a later `twig <path>` invocation, forwarded to this window. */
+export function onOpenPaths(handler: (paths: string[]) => void): Promise<UnlistenFn> {
+  return listen<string[]>("open-paths", (e) => handler(e.payload));
+}

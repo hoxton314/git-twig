@@ -1,3 +1,4 @@
+pub mod cli;
 pub mod launch;
 pub mod branches;
 pub mod diff;

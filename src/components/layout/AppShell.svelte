@@ -30,6 +30,7 @@
   import {
     openRepoWithDialog,
     openRepoInTerminal,
+    openPathsAsTabs,
     openRepoInEditor,
     openSettingsFolder,
     exportSettingsToFile,
@@ -71,7 +72,13 @@
 
   onMount(() => {
     // Settings first so restore honors "restore tabs on startup".
-    loadSettings().then(() => restoreSession(get(settings).restore_tabs_on_startup));
+    // Command-line paths open after the restored tabs, so they end up active.
+    loadSettings()
+      .then(() => restoreSession(get(settings).restore_tabs_on_startup))
+      .then(() => tauri.takeStartupPaths())
+      .then(openPathsAsTabs)
+      .catch((err) => console.error("startup paths:", err));
+    const stopOpenPaths = tauri.onOpenPaths(openPathsAsTabs);
     loadRepoHistory();
     const stopAutoFetch = initAutoFetch();
     installKeybindings();
@@ -224,6 +231,7 @@
       unlisten.then((fn) => fn());
       unlistenClose.then((fn) => fn());
       stopAutoFetch();
+      stopOpenPaths.then((unlisten) => unlisten());
       stopDrag?.();
     };
   });

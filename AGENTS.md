@@ -30,6 +30,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/state.rs` | `AppState` with `Mutex<HashMap<String, OpenRepo>>` |
 | `src-tauri/src/error.rs` | `TwigError` enum -- add new variants here |
 | `src-tauri/src/git/reader.rs` | git2-based reads: branches, diffs, status (graph IPC structs) |
+| `src-tauri/src/commands/cli.rs` | `twig [path…]`: startup paths (`take_startup_paths`) and forwarding from later launches via `tauri-plugin-single-instance` → `open-paths` event (frontend: `openPathsAsTabs` in `appActions.ts`) |
 | `src-tauri/src/commands/launch.rs` | "Open in terminal / editor": `terminal_command` / `editor_command` settings (or platform defaults), split by `split_command` and spawned without a shell; `find_program` does PATH lookup |
 | `src-tauri/src/git/create.rs` | `git init` (folder created if missing) and `git clone` from any URL with streamed progress; commands `init_repository` / `clone_repository` in `commands/repo.rs` (`register_repo` opens the result as a tab) |
 | `src/components/layout/NewRepoDialog.svelte` | Clone-from-URL / initialize dialogs, opened via the `newRepoDialog` store (`src/lib/newRepo.ts`) |

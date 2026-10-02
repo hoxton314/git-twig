@@ -11,7 +11,13 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    commands::cli::record_startup_args();
     tauri::Builder::default()
+        // Must be the first plugin: a second launch exits here and forwards
+        // its arguments to the running instance.
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            commands::cli::on_second_instance(app, args, cwd);
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -20,6 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // Repo management
             commands::repo::open_repo,
+            commands::cli::take_startup_paths,
             commands::repo::init_repository,
             commands::repo::clone_repository,
             commands::repo::close_repo,
