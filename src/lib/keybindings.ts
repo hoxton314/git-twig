@@ -33,6 +33,12 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // Branch list / remotes
+  { id: "remotes_manage",        label: "Manage remotes…",        category: "Git",        defaultShortcut: "" },
+  { id: "branch_create",         label: "Create branch…",         category: "Git",        defaultShortcut: "" },
+  { id: "branch_rename_current", label: "Rename current branch…", category: "Git",        defaultShortcut: "" },
+  { id: "branch_filter",         label: "Filter branches",        category: "Navigation", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

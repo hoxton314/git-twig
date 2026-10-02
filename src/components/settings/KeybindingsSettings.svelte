@@ -142,10 +142,14 @@
                 ? `Conflicts with: ${conflicts.get(action.id)?.join(", ")}`
                 : "Click to change"}
             >
-              {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
-                {#if i > 0}<span class="key-sep">+</span>{/if}
-                <kbd class="key">{part}</kbd>
-              {/each}
+              {#if effectiveShortcut(action.id)}
+                {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
+                  {#if i > 0}<span class="key-sep">+</span>{/if}
+                  <kbd class="key">{part}</kbd>
+                {/each}
+              {:else}
+                <span class="key-sep">Not set</span>
+              {/if}
             </button>
             {#if isCustomized(action.id)}
               <button
