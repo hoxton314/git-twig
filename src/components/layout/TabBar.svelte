@@ -1,6 +1,6 @@
 <script lang="ts">
   import { X, Plus, GitBranch, House, Settings, FolderOpen, GitFork, Pin, History, Search, Link, FolderGit2 } from "lucide-svelte";
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { onAction } from "../../lib/keybindings";
   import { scannedRepos, refreshScannedRepos } from "../../lib/stores/scannedRepos";
   import { openNewRepoDialog } from "../../lib/newRepo";
@@ -40,7 +40,8 @@
   let menuLeft = $state(0);
   let menuTop = $state(0);
   let query = $state("");
-  let selectedIdx = $state(-1);
+  /** Selected repository (by path, so it survives the list being rebuilt). */
+  let selectedPath = $state<string | null>(null);
   let searchEl: HTMLInputElement | undefined = $state(undefined);
   let menuListEl: HTMLDivElement | undefined = $state(undefined);
 
@@ -74,10 +75,18 @@
     }, []),
   );
 
-  // A new query selects the best match.
+  // The selection follows the repository; if it's gone (or nothing is
+  // selected yet) the best selectable match is used.
+  const selectedIdx = $derived.by(() => {
+    const i = selectedPath === null ? -1 : menuRows.findIndex((r) => r.path === selectedPath && !r.missing);
+    return i >= 0 ? i : firstSelectable(menuRows);
+  });
+
+  // Only a new query moves the selection back to the best match; a late
+  // scan result or history change keeps the user's choice.
   $effect(() => {
     void query;
-    selectedIdx = firstSelectable(menuRows);
+    untrack(() => (selectedPath = null));
   });
 
   async function revealSelected() {
@@ -100,7 +109,7 @@
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const next = stepSelection(menuRows, selectedIdx, e.key === "ArrowDown" ? 1 : -1);
-      if (next >= 0) selectedIdx = next;
+      if (next >= 0) selectedPath = menuRows[next].path;
       void revealSelected();
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -135,7 +144,9 @@
       menuTop = rect.bottom;
       menuLeft = Math.max(4, Math.min(left, window.innerWidth - MENU_WIDTH - 4));
       query = "";
-      void refreshScannedRepos();
+      selectedPath = null;
+      // Always rescan on open: folders may have been added or removed.
+      void refreshScannedRepos(true);
       tick().then(() => searchEl?.focus());
     }
   }
@@ -427,7 +438,7 @@
               disabled={row.missing}
               title={row.missing ? `${row.path} (folder not found)` : row.path}
               onclick={() => activateRow(row)}
-              onmousemove={() => { if (!row.missing) selectedIdx = idx; }}
+              onmousemove={() => { if (!row.missing) selectedPath = row.path; }}
             >
               {#if row.kind === "favorite"}<Pin size={14} />{:else if row.kind === "recent"}<History size={14} />{:else}<GitBranch size={14} />{/if}
               <span class="tab-menu-repo-name">{#each highlightRuns(row.name, row.nameHits) as run, k (k)}{#if run.hit}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</span>

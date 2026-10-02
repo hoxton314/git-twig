@@ -7,32 +7,41 @@ import type { RepoInfo } from "../types/git";
 import { settings } from "./settings";
 import * as tauri from "../tauri";
 
+/** The palette re-uses a scan this long; the "+" menu always rescans. */
 const TTL_MS = 30_000;
 
 export const scannedRepos = writable<RepoInfo[]>([]);
 
 let lastDir: string | null = null;
 let lastAt = 0;
-let inflight: Promise<void> | null = null;
+let inflight: { dir: string; promise: Promise<void> } | null = null;
 
-/** Rescan the default folder if it changed or the last scan is stale. */
+const currentDir = () => get(settings).default_repo_dir ?? null;
+
+/** Rescan the default folder if forced, it changed, or the last scan is stale. */
 export function refreshScannedRepos(force = false): Promise<void> {
-  const dir = get(settings).default_repo_dir ?? null;
+  const dir = currentDir();
   if (!dir) {
     lastDir = null;
     scannedRepos.set([]);
     return Promise.resolve();
   }
-  if (inflight) return inflight;
+  if (inflight && inflight.dir === dir) return inflight.promise;
   if (!force && dir === lastDir && Date.now() - lastAt < TTL_MS) return Promise.resolve();
-  inflight = tauri
+  const promise = tauri
     .listReposInDir(dir)
+    .catch(() => [] as RepoInfo[])
     .then((repos) => {
+      // Failures are cached too, so an unreadable folder isn't rescanned on
+      // every palette keystroke.
       lastDir = dir;
       lastAt = Date.now();
-      scannedRepos.set(repos);
+      // The setting may have changed while scanning: drop stale results.
+      if (currentDir() === dir) scannedRepos.set(repos);
     })
-    .catch(() => scannedRepos.set([]))
-    .finally(() => (inflight = null));
-  return inflight;
+    .finally(() => {
+      if (inflight?.promise === promise) inflight = null;
+    });
+  inflight = { dir, promise };
+  return promise;
 }
