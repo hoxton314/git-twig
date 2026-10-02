@@ -1,16 +1,18 @@
 //! Secrets stored in the OS credential store (Secret Service / Keychain /
 //! Windows Credential Manager) instead of `settings.json`.
 
-use keyring::Entry;
+use std::sync::Mutex;
+
+use keyring_core::{Entry, Error as KeyringError};
 
 use crate::error::TwigError;
 
 const SERVICE: &str = "dev.twig.app";
 const GITHUB_ACCOUNT: &str = "github-token";
 
-fn keyring_error(e: keyring::Error) -> TwigError {
+fn keyring_error(e: KeyringError) -> TwigError {
     match e {
-        keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_) => {
+        KeyringError::PlatformFailure(_) | KeyringError::NoStorageAccess(_) => {
             TwigError::Keyring(format!(
                 "{e}. On Linux, make sure a Secret Service provider \
                  (GNOME Keyring or KWallet) is running and unlocked."
@@ -20,12 +22,37 @@ fn keyring_error(e: keyring::Error) -> TwigError {
     }
 }
 
+/// Whether the platform credential store has been installed as
+/// `keyring_core`'s default store. Unlike keyring 3 (which connected per
+/// call), the store is a long-lived object; if creating it fails (e.g. the
+/// Secret Service isn't running yet at login) it is retried on the next use
+/// instead of failing for the rest of the session.
+static STORE_READY: Mutex<bool> = Mutex::new(false);
+
+fn ensure_store() -> Result<(), KeyringError> {
+    let mut ready = STORE_READY.lock().map_err(|_| {
+        KeyringError::Invalid("store".into(), "credential store lock poisoned".into())
+    })?;
+    if *ready {
+        return Ok(());
+    }
+    #[cfg(target_os = "macos")]
+    let store = apple_native_keyring_store::keychain::Store::new()?;
+    #[cfg(target_os = "windows")]
+    let store = windows_native_keyring_store::Store::new()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let store = zbus_secret_service_keyring_store::Store::new()?;
+    keyring_core::set_default_store(store);
+    *ready = true;
+    Ok(())
+}
+
 /// Keyring backends block (D-Bus round trips, Keychain prompts), so run
 /// them off the async worker threads.
 async fn run<T, F>(f: F) -> Result<T, TwigError>
 where
     T: Send + 'static,
-    F: FnOnce(&Entry) -> Result<T, keyring::Error> + Send + 'static,
+    F: FnOnce(&Entry) -> Result<T, KeyringError> + Send + 'static,
 {
     run_as(GITHUB_ACCOUNT, f).await
 }
@@ -33,10 +60,11 @@ where
 async fn run_as<T, F>(account: impl Into<String>, f: F) -> Result<T, TwigError>
 where
     T: Send + 'static,
-    F: FnOnce(&Entry) -> Result<T, keyring::Error> + Send + 'static,
+    F: FnOnce(&Entry) -> Result<T, KeyringError> + Send + 'static,
 {
     let account = account.into();
     tauri::async_runtime::spawn_blocking(move || {
+        ensure_store().map_err(keyring_error)?;
         let entry = Entry::new(SERVICE, &account).map_err(keyring_error)?;
         f(&entry).map_err(keyring_error)
     })
@@ -48,7 +76,7 @@ where
 pub async fn get_github_token() -> Result<Option<String>, TwigError> {
     run(|entry| match entry.get_password() {
         Ok(token) if !token.is_empty() => Ok(Some(token)),
-        Ok(_) | Err(keyring::Error::NoEntry) => Ok(None),
+        Ok(_) | Err(KeyringError::NoEntry) => Ok(None),
         Err(e) => Err(e),
     })
     .await
@@ -59,7 +87,7 @@ pub async fn set_github_token(token: Option<String>) -> Result<(), TwigError> {
     run(move |entry| match token.filter(|t| !t.is_empty()) {
         Some(t) => entry.set_password(&t),
         None => match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
             Err(e) => Err(e),
         },
     })
@@ -78,7 +106,7 @@ pub fn provider_account(provider: &str, host: &str) -> String {
 pub async fn get_token_for(account: String) -> Result<Option<String>, TwigError> {
     run_as(account, |entry| match entry.get_password() {
         Ok(token) if !token.is_empty() => Ok(Some(token)),
-        Ok(_) | Err(keyring::Error::NoEntry) => Ok(None),
+        Ok(_) | Err(KeyringError::NoEntry) => Ok(None),
         Err(e) => Err(e),
     })
     .await
@@ -89,7 +117,7 @@ pub async fn set_token_for(account: String, token: Option<String>) -> Result<(),
     run_as(account, move |entry| match token.filter(|t| !t.is_empty()) {
         Some(t) => entry.set_password(&t),
         None => match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
             Err(e) => Err(e),
         },
     })

@@ -23,7 +23,13 @@ if (!existsSync(app)) {
 
 // ── Isolated environment ────────────────────────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), "twig-e2e-"));
-const xdg = { data: join(tmp, "data"), config: join(tmp, "config"), cache: join(tmp, "cache") };
+const xdg = {
+  data: join(tmp, "data"),
+  config: join(tmp, "config"),
+  cache: join(tmp, "cache"),
+  runtime: join(tmp, "run"),
+};
+mkdirSync(xdg.runtime, { recursive: true, mode: 0o700 });
 const appData = join(xdg.data, "dev.twig.app");
 mkdirSync(appData, { recursive: true });
 const gitconfig = join(tmp, "gitconfig");
@@ -33,6 +39,9 @@ const env = {
   XDG_DATA_HOME: xdg.data,
   XDG_CONFIG_HOME: xdg.config,
   XDG_CACHE_HOME: xdg.cache,
+  // Without its own runtime dir, a keyring daemon activated on the private
+  // bus can find and use the developer's real one.
+  XDG_RUNTIME_DIR: xdg.runtime,
   GIT_CONFIG_GLOBAL: gitconfig,
   GIT_CONFIG_NOSYSTEM: "1",
   // Software rendering under Xvfb: otherwise screenshots can show a stale frame.
