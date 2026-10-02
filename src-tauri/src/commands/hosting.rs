@@ -272,23 +272,26 @@ pub async fn hosting_checkout_pr(
     let head_ref = pr_head_ref(remote.provider, number);
     let branch = format!("pr/{number}");
 
-    let fetch = with_network_auth(
+    let fetched = with_network_auth(
         &app,
         &repo_path,
-        run_git(&repo_path, &["fetch", "--no-tags", &remote.remote_name, &head_ref]),
+        crate::git::remotes::fetch_ref_commit(
+            &repo_path,
+            &remote.remote_name,
+            &head_ref,
+            &crate::git::remotes::unique_scratch_name(&format!("pr-{number}")),
+        ),
     )
     .await?;
-    if !fetch.success {
-        return Ok(CommandResult {
-            success: false,
-            message: format!("Fetching {head_ref} from {} failed:\n{}", remote.remote_name, fetch.stderr),
-        });
-    }
-    let sha_out = run_git(&repo_path, &["rev-parse", "--verify", "--quiet", "FETCH_HEAD^{commit}"]).await?;
-    let sha = sha_out.stdout.trim().to_string();
-    if !sha_out.success || sha.is_empty() {
-        return Err(TwigError::GitCli("could not resolve the fetched PR head".into()));
-    }
+    let sha = match fetched {
+        Ok(sha) => sha,
+        Err(fetch) => {
+            return Ok(CommandResult {
+                success: false,
+                message: format!("Fetching {head_ref} from {} failed:\n{}", remote.remote_name, fetch.stderr),
+            })
+        }
+    };
 
     let local_ref = format!("refs/heads/{branch}");
     if !writer::rev_exists(&repo_path, &local_ref).await? {
