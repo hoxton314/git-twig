@@ -13,6 +13,8 @@
   import CommitRow from "./CommitRow.svelte";
   import GraphCanvas from "./GraphCanvas.svelte";
   import { Loader2, Pencil } from "lucide-svelte";
+  import CommitContextMenu from "./CommitContextMenu.svelte";
+  import { openCommitMenu, revealRequest } from "../../lib/stores/commitUi";
 
   const repoPath = $derived($activeRepoPath);
   const graph = $derived($commitGraph);
@@ -149,6 +151,16 @@
     scrollRowIntoView(next);
   }
 
+  // Scroll to commits revealed from elsewhere (tags list, undo history).
+  let handledReveal = 0;
+  $effect(() => {
+    const req = $revealRequest;
+    if (!req || req.seq === handledReveal || !graph) return;
+    handledReveal = req.seq;
+    const idx = graph.entries.findIndex((en) => en.commit.oid === req.oid);
+    if (idx >= 0) scrollRowIntoView(idx);
+  });
+
   // Load graph when active repo changes
   let lastLoadedPath: string | null = null;
   $effect(() => {
@@ -205,6 +217,7 @@
               refs={entryRefs}
               isSelected={selected === entry.commit.oid}
               onSelect={() => selectCommit(entry.commit.oid)}
+              oncontextmenu={(e) => openCommitMenu(e, entry.commit.oid)}
             />
           </div>
         {/each}
@@ -217,6 +230,8 @@
     <div class="empty">Could not load commit history.</div>
   {/if}
 </div>
+
+<CommitContextMenu />
 
 {#snippet wipRow()}
     {#if hasWip}

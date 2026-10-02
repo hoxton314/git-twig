@@ -1,0 +1,148 @@
+<script lang="ts">
+  /**
+   * Context menu for commits in the graph, plus the keyboard / command-palette
+   * actions that act on the selected commit. Mounted once by CommitGraph.
+   */
+  import { onMount } from "svelte";
+  import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
+  import CreateBranchDialog from "./CreateBranchDialog.svelte";
+  import CreateTagDialog from "../tags/CreateTagDialog.svelte";
+  import { activeRepoPath } from "../../lib/stores/repos";
+  import { branches, commitGraph, selectedCommitOid } from "../../lib/stores/graph";
+  import {
+    commitMenu,
+    createBranchTarget,
+    createTagTarget,
+    undoHistoryOpen,
+  } from "../../lib/stores/commitUi";
+  import { onAction } from "../../lib/keybindings";
+  import {
+    checkoutCommitAction,
+    cherryPickAction,
+    copyText,
+    resetAction,
+    revertAction,
+  } from "../../lib/commitActions";
+  import { pushTagAction } from "../../lib/tagActions";
+  import type { CommitInfo } from "../../lib/types/git";
+
+  const menu = $derived($commitMenu);
+  const currentBranch = $derived($branches.find((b) => !b.is_remote && b.is_head) ?? null);
+
+  function findCommit(oid: string | null): CommitInfo | null {
+    if (!oid || oid === "__wip__") return null;
+    return $commitGraph?.entries.find((e) => e.commit.oid === oid)?.commit ?? null;
+  }
+
+  const menuCommit = $derived(menu ? findCommit(menu.oid) : null);
+
+  function fullMessage(c: CommitInfo): string {
+    return c.body.trim() ? `${c.summary}\n\n${c.body.trim()}` : c.summary;
+  }
+
+  function itemsFor(c: CommitInfo): MenuItem[] {
+    const path = $activeRepoPath;
+    if (!path) return [];
+    const isHead = currentBranch?.oid === c.oid;
+    const branch = currentBranch?.name ?? null;
+    const resetTarget = branch ?? "HEAD";
+    const label = `${c.short_oid} ${c.summary}`;
+    return [
+      { label: "Checkout this commit (detached)", action: () => checkoutCommitAction(path, c.oid) },
+      {
+        label: "Create branch here…",
+        action: () => createBranchTarget.set({ oid: c.oid, label }),
+      },
+      { label: "Create tag here…", action: () => createTagTarget.set({ oid: c.oid, label }) },
+      { separator: true },
+      { label: "Cherry-pick commit", disabled: isHead, action: () => cherryPickAction(path, c.oid) },
+      { label: "Revert commit", action: () => revertAction(path, c.oid) },
+      { separator: true },
+      {
+        label: `Reset ${resetTarget} here — soft`,
+        disabled: isHead,
+        action: () => resetAction(path, c.oid, "soft", branch),
+      },
+      {
+        label: `Reset ${resetTarget} here — mixed`,
+        disabled: isHead,
+        action: () => resetAction(path, c.oid, "mixed", branch),
+      },
+      {
+        label: `Reset ${resetTarget} here — hard`,
+        danger: true,
+        action: () => resetAction(path, c.oid, "hard", branch),
+      },
+      { separator: true },
+      { label: "Copy SHA", action: () => copyText(c.oid, "SHA") },
+      { label: "Copy short SHA", action: () => copyText(c.short_oid, "short SHA") },
+      { label: "Copy message", action: () => copyText(fullMessage(c), "commit message") },
+      { separator: true },
+      { label: "Undo history…", shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
+    ];
+  }
+
+  /** Open the menu for the selected commit, anchored to its row. */
+  function openForSelected() {
+    const oid = $selectedCommitOid;
+    if (!findCommit(oid)) return;
+    const row = document.querySelector<HTMLElement>(".commit-graph .commit-row.selected");
+    const area = document.querySelector<HTMLElement>(".commit-graph");
+    const rect = row?.getBoundingClientRect() ?? area?.getBoundingClientRect();
+    if (!rect) return;
+    const x = row ? rect.left + Math.min(240, rect.width / 3) : rect.left + rect.width / 2;
+    const y = row ? rect.bottom : rect.top + rect.height / 3;
+    commitMenu.set({ oid: oid as string, x, y });
+  }
+
+  /** Run `fn` with the active repo path and the selected commit, if any. */
+  function withSelected(fn: (path: string, c: CommitInfo) => void) {
+    return () => {
+      const path = $activeRepoPath;
+      const c = findCommit($selectedCommitOid);
+      if (path && c) fn(path, c);
+    };
+  }
+
+  onMount(() => {
+    // The dedicated Menu key opens the menu when focus is in the graph.
+    function onKeydown(e: KeyboardEvent) {
+      if (e.key !== "ContextMenu" || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (!active?.closest(".commit-graph")) return;
+      e.preventDefault();
+      openForSelected();
+    }
+    window.addEventListener("keydown", onKeydown);
+
+    const unsubs = [
+      onAction("commit_context_menu", openForSelected),
+      onAction(
+        "branch_from_selected",
+        withSelected((_, c) => createBranchTarget.set({ oid: c.oid, label: `${c.short_oid} ${c.summary}` })),
+      ),
+      onAction(
+        "create_tag",
+        withSelected((_, c) => createTagTarget.set({ oid: c.oid, label: `${c.short_oid} ${c.summary}` })),
+      ),
+      onAction("cherry_pick_selected", withSelected((p, c) => cherryPickAction(p, c.oid))),
+      onAction("revert_selected", withSelected((p, c) => revertAction(p, c.oid))),
+      onAction("copy_commit_sha", withSelected((_, c) => copyText(c.oid, "SHA"))),
+      onAction("push_all_tags", () => {
+        if ($activeRepoPath) pushTagAction($activeRepoPath);
+      }),
+    ];
+    return () => {
+      window.removeEventListener("keydown", onKeydown);
+      unsubs.forEach((fn) => fn());
+      commitMenu.set(null);
+    };
+  });
+</script>
+
+{#if menu && menuCommit}
+  <ContextMenu x={menu.x} y={menu.y} items={itemsFor(menuCommit)} onclose={() => commitMenu.set(null)} />
+{/if}
+
+<CreateBranchDialog />
+<CreateTagDialog />

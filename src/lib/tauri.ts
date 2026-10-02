@@ -15,6 +15,8 @@ import type {
   GitConfig,
   StashEntry,
 } from "./types/git";
+// Commit operations, undo history, tags
+import type { CommitOpResult, ReflogEntry, ResetMode, TagInfo } from "./types/git";
 import type {
   GitHubUser,
   GitHubRepo,
@@ -395,4 +397,65 @@ export function githubListBranches(
   repo: string,
 ): Promise<string[]> {
   return invoke<string[]>("github_list_branches", { owner, repo });
+}
+
+// ── Commit operations & undo history (reflog) ─────────────────────────
+
+export function checkoutCommit(path: string, oid: string): Promise<CommitOpResult> {
+  return invoke<CommitOpResult>("checkout_commit", { path, oid });
+}
+
+export function cherryPickCommit(path: string, oid: string): Promise<CommitOpResult> {
+  return invoke<CommitOpResult>("cherry_pick_commit", { path, oid });
+}
+
+export function revertCommit(path: string, oid: string): Promise<CommitOpResult> {
+  return invoke<CommitOpResult>("revert_commit", { path, oid });
+}
+
+export function resetToCommit(path: string, oid: string, mode: ResetMode): Promise<CommitOpResult> {
+  return invoke<CommitOpResult>("reset_to_commit", { path, oid, mode });
+}
+
+export function getHeadReflog(path: string, limit?: number): Promise<ReflogEntry[]> {
+  return invoke<ReflogEntry[]>("get_head_reflog", { path, limit: limit ?? null });
+}
+
+/** Move HEAD back to `oid` (checking out `branch` if it points there). */
+export function restoreHead(
+  path: string,
+  oid: string,
+  branch: string | null,
+  autoStash: boolean,
+): Promise<CommitOpResult> {
+  return invoke<CommitOpResult>("restore_head", { path, oid, branch, autoStash });
+}
+
+// ── Tags ──────────────────────────────────────────────────────────────
+
+export function getTags(path: string): Promise<TagInfo[]> {
+  return invoke<TagInfo[]>("get_tags", { path });
+}
+
+/** A non-empty `message` creates an annotated tag. */
+export function createTag(
+  path: string,
+  name: string,
+  target: string,
+  message?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("create_tag", { path, name, target, message: message ?? null });
+}
+
+export function deleteTag(path: string, name: string): Promise<CommandResult> {
+  return invoke<CommandResult>("delete_tag", { path, name });
+}
+
+/** Push one tag, or all tags when `name` is omitted. */
+export function pushTag(path: string, name?: string, remote?: string): Promise<CommandResult> {
+  return invoke<CommandResult>("push_tag", { path, name: name ?? null, remote: remote ?? null });
+}
+
+export function deleteRemoteTag(path: string, name: string, remote?: string): Promise<CommandResult> {
+  return invoke<CommandResult>("delete_remote_tag", { path, name, remote: remote ?? null });
 }

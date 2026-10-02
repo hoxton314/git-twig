@@ -180,3 +180,41 @@ export const LANE_COLORS = [
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
 }
+
+// ── Commit operations, undo history (reflog), tags ───────────────────
+
+export type ResetMode = "soft" | "mixed" | "hard" | "keep";
+
+export interface CommitOpResult {
+  success: boolean;
+  message: string;
+  /** Cherry-pick/revert stopped on conflicts; repo is left mid-operation. */
+  conflicted: boolean;
+  previous_head: string | null;
+  previous_branch: string | null;
+  /** Stash commit created to keep uncommitted changes, if any. */
+  stash_oid: string | null;
+}
+
+export interface ReflogEntry {
+  index: number;
+  old_oid: string;
+  new_oid: string;
+  short_new_oid: string;
+  action: string;
+  message: string;
+  timestamp: number;
+  commit_summary: string | null;
+  checkout_branch: string | null;
+}
+
+export interface TagInfo {
+  name: string;
+  target_oid: string | null;
+  short_target_oid: string | null;
+  annotated: boolean;
+  message: string | null;
+  tagger_name: string | null;
+  timestamp: number;
+  commit_summary: string | null;
+}
