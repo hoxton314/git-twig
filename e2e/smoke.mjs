@@ -23,7 +23,13 @@ if (!existsSync(app)) {
 
 // ── Isolated environment ────────────────────────────────────────────
 const tmp = mkdtempSync(join(tmpdir(), "twig-e2e-"));
-const xdg = { data: join(tmp, "data"), config: join(tmp, "config"), cache: join(tmp, "cache") };
+const xdg = {
+  data: join(tmp, "data"),
+  config: join(tmp, "config"),
+  cache: join(tmp, "cache"),
+  runtime: join(tmp, "run"),
+};
+mkdirSync(xdg.runtime, { recursive: true, mode: 0o700 });
 const appData = join(xdg.data, "dev.twig.app");
 mkdirSync(appData, { recursive: true });
 const gitconfig = join(tmp, "gitconfig");
@@ -75,6 +81,10 @@ const hasDbusRunSession = (() => {
   }
 })();
 if (!hasDbusRunSession) console.warn("dbus-run-session not found; using the shared session bus");
+// With a private bus also use a private runtime dir: otherwise a keyring
+// daemon activated on that bus finds and uses the developer's real one.
+// (Without one, keep the real runtime dir: zbus may locate the shared bus there.)
+if (hasDbusRunSession) env.XDG_RUNTIME_DIR = xdg.runtime;
 const [cmd, ...cmdArgs] = hasDbusRunSession
   ? ["dbus-run-session", "--", driverBin, "--port", String(port)]
   : [driverBin, "--port", String(port)];
