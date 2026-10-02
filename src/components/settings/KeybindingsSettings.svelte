@@ -1,9 +1,9 @@
 <script lang="ts">
   import { RotateCcw } from "lucide-svelte";
   import { ACTIONS, eventToShortcut, normalizeShortcut, resolveShortcut } from "../../lib/keybindings";
-  import { settings, updateSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
 
   // Group actions by category
   const categories = $derived.by(() => {
@@ -70,7 +70,7 @@
       const overrides = { ...s.keybinding_overrides };
       if (action.defaultShortcut) overrides[actionId] = "";
       else delete overrides[actionId];
-      updateSettings({ keybinding_overrides: overrides });
+      updateGlobalSettings({ keybinding_overrides: overrides });
       return;
     }
 
@@ -92,17 +92,17 @@
       overrides[actionId] = shortcut;
     }
 
-    updateSettings({ keybinding_overrides: overrides });
+    updateGlobalSettings({ keybinding_overrides: overrides });
   }
 
   function resetBinding(actionId: string) {
     const overrides = { ...s.keybinding_overrides };
     delete overrides[actionId];
-    updateSettings({ keybinding_overrides: overrides });
+    updateGlobalSettings({ keybinding_overrides: overrides });
   }
 
   function resetAllBindings() {
-    updateSettings({ keybinding_overrides: {} });
+    updateGlobalSettings({ keybinding_overrides: {} });
   }
 
   function isCustomized(actionId: string): boolean {

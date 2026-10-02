@@ -3,14 +3,14 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import { RefreshCw, Loader2, CheckCircle2, AlertTriangle, Download, ExternalLink } from "lucide-svelte";
-  import { settings, updateSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { updater, checkForUpdates, ensureUpdaterSupport, installUpdate } from "../../lib/stores/updater";
   import { renderMarkdown } from "../../lib/markdown";
   import { toastError } from "../../lib/stores/toasts";
 
   const RELEASES_URL = "https://github.com/hoxton314/git-twig/releases";
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
   const u = $derived($updater);
   const busy = $derived(u.status === "checking" || u.status === "downloading");
   const notesHtml = $derived(u.status === "available" && u.notes ? renderMarkdown(u.notes) : "");
@@ -110,7 +110,7 @@
               type="checkbox"
               aria-label="Automatically check for updates on startup"
               checked={s.check_updates_on_startup}
-              onchange={() => updateSettings({ check_updates_on_startup: !s.check_updates_on_startup })}
+              onchange={() => updateGlobalSettings({ check_updates_on_startup: !s.check_updates_on_startup })}
             />
             <span class="toggle-slider"></span>
           </label>
@@ -124,7 +124,7 @@
             <span class="label-hint">You won't be prompted about version {s.skipped_update_version} at startup</span>
           </div>
           <div class="setting-control">
-            <button class="btn-secondary" onclick={() => updateSettings({ skipped_update_version: null })}>
+            <button class="btn-secondary" onclick={() => updateGlobalSettings({ skipped_update_version: null })}>
               Stop skipping
             </button>
           </div>

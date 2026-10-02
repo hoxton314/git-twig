@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { settings, updateSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { diffViewMode } from "../../lib/stores/ui";
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
 
   // Changing the default also switches the current view. (Done in the click
   // handler rather than an $effect, which re-ran on *any* settings change and
   // on mount, clobbering a view mode the user had toggled in the diff panel.)
   function setDiffView(mode: "unified" | "split") {
-    updateSettings({ diff_view_mode: mode });
+    updateGlobalSettings({ diff_view_mode: mode });
     $diffViewMode = mode;
   }
 
@@ -20,7 +20,7 @@
     }
     const clamped = Math.min(20, Math.max(0, n));
     input.value = String(clamped);
-    updateSettings({ context_lines: clamped });
+    updateGlobalSettings({ context_lines: clamped });
   }
 </script>
 
@@ -61,7 +61,7 @@
       <div class="setting-control">
         <select
           value={s.tab_size}
-          onchange={(e) => updateSettings({ tab_size: Number(e.currentTarget.value) })}
+          onchange={(e) => updateGlobalSettings({ tab_size: Number(e.currentTarget.value) })}
         >
           <option value={2}>2 spaces</option>
           <option value={4}>4 spaces</option>
@@ -98,7 +98,7 @@
             type="checkbox"
             aria-label="Show whitespace changes"
             checked={s.show_whitespace_changes}
-            onchange={() => updateSettings({ show_whitespace_changes: !s.show_whitespace_changes })}
+            onchange={() => updateGlobalSettings({ show_whitespace_changes: !s.show_whitespace_changes })}
           />
           <span class="toggle-slider"></span>
         </label>
@@ -116,7 +116,7 @@
             type="checkbox"
             aria-label="Word wrap in diffs"
             checked={s.word_wrap_in_diffs}
-            onchange={() => updateSettings({ word_wrap_in_diffs: !s.word_wrap_in_diffs })}
+            onchange={() => updateGlobalSettings({ word_wrap_in_diffs: !s.word_wrap_in_diffs })}
           />
           <span class="toggle-slider"></span>
         </label>
@@ -133,7 +133,7 @@
           <input
             type="checkbox"
             checked={s.syntax_highlighting}
-            onchange={() => updateSettings({ syntax_highlighting: !s.syntax_highlighting })}
+            onchange={() => updateGlobalSettings({ syntax_highlighting: !s.syntax_highlighting })}
           />
           <span class="toggle-slider"></span>
         </label>
@@ -151,7 +151,7 @@
           class="text-input"
           placeholder="Not set"
           value={s.external_diff_tool ?? ""}
-          onchange={(e) => updateSettings({ external_diff_tool: e.currentTarget.value.trim() || null })}
+          onchange={(e) => updateGlobalSettings({ external_diff_tool: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>
@@ -167,7 +167,7 @@
           class="text-input"
           placeholder="Not set"
           value={s.external_merge_tool ?? ""}
-          onchange={(e) => updateSettings({ external_merge_tool: e.currentTarget.value.trim() || null })}
+          onchange={(e) => updateGlobalSettings({ external_merge_tool: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>
@@ -184,7 +184,7 @@
           placeholder="Default ($TERMINAL or a found terminal)"
           aria-label="Terminal command"
           value={s.terminal_command ?? ""}
-          onchange={(e) => updateSettings({ terminal_command: e.currentTarget.value.trim() || null })}
+          onchange={(e) => updateGlobalSettings({ terminal_command: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>
@@ -201,7 +201,7 @@
           placeholder="Default (code, else the system opener)"
           aria-label="Editor command"
           value={s.editor_command ?? ""}
-          onchange={(e) => updateSettings({ editor_command: e.currentTarget.value.trim() || null })}
+          onchange={(e) => updateGlobalSettings({ editor_command: e.currentTarget.value.trim() || null })}
         />
       </div>
     </div>

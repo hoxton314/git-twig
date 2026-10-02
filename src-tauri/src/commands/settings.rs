@@ -366,9 +366,56 @@ pub async fn save_settings(
     Ok(())
 }
 
+/// Per-repository overrides (repo path → setting overrides), kept next to
+/// `settings.json`. The frontend owns which keys are allowed; this only
+/// guarantees the file stays a map of objects.
+pub type RepoSettingsMap = std::collections::BTreeMap<String, serde_json::Map<String, serde_json::Value>>;
+
+fn repo_settings_file(app: &tauri::AppHandle) -> Result<PathBuf, TwigError> {
+    Ok(settings_file(app)?.with_file_name("repo_settings.json"))
+}
+
+/// Parse the overrides file; anything that isn't a map of objects is invalid.
+pub(crate) fn parse_repo_settings(json: &str) -> Result<RepoSettingsMap, serde_json::Error> {
+    serde_json::from_str(json)
+}
+
+#[tauri::command]
+pub async fn load_repo_settings(app: tauri::AppHandle) -> Result<RepoSettingsMap, TwigError> {
+    let file = repo_settings_file(&app)?;
+    if !file.exists() {
+        return Ok(RepoSettingsMap::new());
+    }
+    let json = fs::read_to_string(&file)?;
+    match parse_repo_settings(&json) {
+        Ok(map) => Ok(map),
+        Err(e) => {
+            quarantine_corrupt(&file, &e);
+            Ok(RepoSettingsMap::new())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn save_repo_settings(app: tauri::AppHandle, overrides: RepoSettingsMap) -> Result<(), TwigError> {
+    // Repositories without overrides are dropped rather than kept as `{}`.
+    let overrides: RepoSettingsMap = overrides.into_iter().filter(|(_, v)| !v.is_empty()).collect();
+    let json = serde_json::to_string_pretty(&overrides)?;
+    write_atomic(&repo_settings_file(&app)?, &json, false)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repo_settings_must_be_a_map_of_objects() {
+        let map = parse_repo_settings(r#"{"/a":{"context_lines":10},"/b":{}}"#).unwrap();
+        assert_eq!(map["/a"]["context_lines"], 10);
+        assert!(parse_repo_settings(r#"{"/a":5}"#).is_err());
+        assert!(parse_repo_settings("[]").is_err());
+    }
 
     #[test]
     fn missing_fields_take_the_documented_defaults() -> Result<(), serde_json::Error> {
