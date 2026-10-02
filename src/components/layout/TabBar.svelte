@@ -1,8 +1,20 @@
 <script lang="ts">
-  import { X, Plus, GitBranch, House, Settings, FolderOpen, GitFork, Pin, History } from "lucide-svelte";
+  import { X, Plus, GitBranch, House, Settings, FolderOpen, GitFork, Pin, History, Search, Link, FolderGit2 } from "lucide-svelte";
+  import { tick, untrack } from "svelte";
+  import { onAction } from "../../lib/keybindings";
+  import { scannedRepos, refreshScannedRepos } from "../../lib/stores/scannedRepos";
+  import { openNewRepoDialog } from "../../lib/newRepo";
+  import {
+    buildEntries,
+    filterEntries,
+    flatRows,
+    stepSelection,
+    firstSelectable,
+    highlightRuns,
+    type RepoMenuRow,
+  } from "../../lib/repoMenu";
   import { openRepos, activeRepoPath, removeRepo, addRepo, moveRepo } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
-  import { settings } from "../../lib/stores/settings";
   import { shortcutLabels, withShortcut } from "../../lib/keybindings";
   import { repoHistory, favoritePaths, missingRepoPaths, toggleFavoriteRepo, baseName } from "../../lib/stores/repoHistory";
   import { toast, toastError } from "../../lib/stores/toasts";
@@ -27,7 +39,11 @@
   let tabBarEl: HTMLDivElement | undefined = $state(undefined);
   let menuLeft = $state(0);
   let menuTop = $state(0);
-  let suggestedRepos = $state<RepoInfo[]>([]);
+  let query = $state("");
+  /** Selected repository (by path, so it survives the list being rebuilt). */
+  let selectedPath = $state<string | null>(null);
+  let searchEl: HTMLInputElement | undefined = $state(undefined);
+  let menuListEl: HTMLDivElement | undefined = $state(undefined);
 
   /** Favorites, then recently opened repos that aren't open as tabs. */
   const quickRepos = $derived.by(() => {
@@ -48,6 +64,74 @@
     return out;
   });
 
+  // Searchable menu: favorites/recent + default-folder repositories.
+  const menuSections = $derived(filterEntries(buildEntries(quickRepos, $scannedRepos, openPaths), query));
+  const menuRows = $derived(flatRows(menuSections));
+  /** Index in `menuRows` of each section's first row. */
+  const sectionStart = $derived(
+    menuSections.reduce<number[]>((acc, _, i) => {
+      acc.push(i === 0 ? 0 : acc[i - 1] + menuSections[i - 1].rows.length);
+      return acc;
+    }, []),
+  );
+
+  // The selection follows the repository; if it's gone (or nothing is
+  // selected yet) the best selectable match is used.
+  const selectedIdx = $derived.by(() => {
+    const i = selectedPath === null ? -1 : menuRows.findIndex((r) => r.path === selectedPath && !r.missing);
+    return i >= 0 ? i : firstSelectable(menuRows);
+  });
+
+  // Only a new query moves the selection back to the best match; a late
+  // scan result or history change keeps the user's choice.
+  $effect(() => {
+    void query;
+    untrack(() => (selectedPath = null));
+  });
+
+  async function revealSelected() {
+    await tick();
+    menuListEl?.querySelector<HTMLElement>(`[data-row="${selectedIdx}"]`)?.scrollIntoView({ block: "nearest" });
+  }
+
+  function activateRow(row: RepoMenuRow) {
+    if (row.missing) return;
+    if (row.open) {
+      showMenu = false;
+      $activeRepoPath = row.path;
+      $currentView = "repos";
+    } else {
+      openSuggestedRepo(row.path);
+    }
+  }
+
+  function onSearchKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = stepSelection(menuRows, selectedIdx, e.key === "ArrowDown" ? 1 : -1);
+      if (next >= 0) selectedPath = menuRows[next].path;
+      void revealSelected();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const row = menuRows[selectedIdx];
+      if (row) activateRow(row);
+    } else if (e.key === "Escape") {
+      // First Esc clears the query; the second closes the menu.
+      if (query) {
+        e.preventDefault();
+        e.stopPropagation();
+        query = "";
+      }
+    }
+  }
+
+  // Bindable action: open this menu from the keyboard.
+  $effect(() =>
+    onAction("open_repo_menu", () => {
+      if (!showMenu) toggleMenu();
+    }),
+  );
+
   const MENU_WIDTH = 280;
 
   function toggleMenu() {
@@ -59,12 +143,11 @@
       // Anchor below the button (the custom title bar may sit above the tabs).
       menuTop = rect.bottom;
       menuLeft = Math.max(4, Math.min(left, window.innerWidth - MENU_WIDTH - 4));
-      const dir = $settings.default_repo_dir;
-      if (dir) {
-        tauri.listReposInDir(dir).then((r) => (suggestedRepos = r)).catch(() => (suggestedRepos = []));
-      } else {
-        suggestedRepos = [];
-      }
+      query = "";
+      selectedPath = null;
+      // Always rescan on open: folders may have been added or removed.
+      void refreshScannedRepos(true);
+      tick().then(() => searchEl?.focus());
     }
   }
 
@@ -325,58 +408,67 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="tab-menu" role="menu" tabindex="-1" style="left: {menuLeft}px; top: {menuTop}px; max-width: {MENU_WIDTH}px" onclick={(e) => e.stopPropagation()}>
-      {#if quickRepos.length > 0}
-        <div class="tab-menu-section">Favorites &amp; recent</div>
-        <div class="tab-menu-suggestions">
-          {#each quickRepos as repo (repo.path)}
+      <div class="tab-menu-search">
+        <Search size={13} />
+        <input
+          bind:this={searchEl}
+          bind:value={query}
+          onkeydown={onSearchKeydown}
+          placeholder="Search repositories…"
+          aria-label="Search repositories"
+          aria-controls="tab-menu-results"
+          aria-activedescendant={selectedIdx >= 0 ? `tab-menu-row-${selectedIdx}` : undefined}
+          spellcheck="false"
+          autocomplete="off"
+        />
+      </div>
+      <div class="tab-menu-results" id="tab-menu-results" role="listbox" aria-label="Repositories" bind:this={menuListEl}>
+        {#each menuSections as section, si (section.title)}
+          <div class="tab-menu-section">{section.title}</div>
+          {#each section.rows as row, ri (row.path)}
+            {@const idx = sectionStart[si] + ri}
             <button
               class="tab-menu-item"
-              class:tab-menu-item-open={repo.missing}
-              disabled={repo.missing}
-              title={repo.missing ? `${repo.path} (folder not found)` : repo.path}
-              onclick={() => openSuggestedRepo(repo.path)}
+              class:tab-menu-item-open={row.open || row.missing}
+              class:tab-menu-item-selected={idx === selectedIdx}
+              id="tab-menu-row-{idx}"
+              data-row={idx}
+              role="option"
+              aria-selected={idx === selectedIdx}
+              disabled={row.missing}
+              title={row.missing ? `${row.path} (folder not found)` : row.path}
+              onclick={() => activateRow(row)}
+              onmousemove={() => { if (!row.missing) selectedPath = row.path; }}
             >
-              {#if repo.favorite}<Pin size={14} />{:else}<History size={14} />{/if}
-              <span class="tab-menu-repo-name">{repo.name}</span>
-              {#if repo.missing}<span class="tab-menu-repo-branch">missing</span>{/if}
+              {#if row.kind === "favorite"}<Pin size={14} />{:else if row.kind === "recent"}<History size={14} />{:else}<GitBranch size={14} />{/if}
+              <span class="tab-menu-repo-name">{#each highlightRuns(row.name, row.nameHits) as run, k (k)}{#if run.hit}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</span>
+              {#if row.missing}<span class="tab-menu-repo-branch">missing</span>{:else if row.open}<span class="tab-menu-repo-branch">open</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
             </button>
           {/each}
-        </div>
-        <div class="tab-menu-divider"></div>
-      {/if}
-      {#if suggestedRepos.length > 0}
-        <div class="tab-menu-section">Repositories</div>
-        <div class="tab-menu-suggestions">
-          {#each suggestedRepos as repo (repo.path)}
-            {#if openPaths.has(repo.path)}
-              <button class="tab-menu-item tab-menu-item-open" onclick={() => { showMenu = false; $activeRepoPath = repo.path; $currentView = "repos"; }}>
-                <GitBranch size={14} />
-                <span class="tab-menu-repo-name">{repo.name}</span>
-                {#if repo.head_name}
-                  <span class="tab-menu-repo-branch">{repo.head_name}</span>
-                {/if}
-              </button>
-            {:else}
-              <button class="tab-menu-item" onclick={() => openSuggestedRepo(repo.path)}>
-                <GitBranch size={14} />
-                <span class="tab-menu-repo-name">{repo.name}</span>
-                {#if repo.head_name}
-                  <span class="tab-menu-repo-branch">{repo.head_name}</span>
-                {/if}
-              </button>
-            {/if}
-          {/each}
-        </div>
-        <div class="tab-menu-divider"></div>
-      {/if}
+        {/each}
+        {#if menuRows.length === 0}
+          <div class="tab-menu-empty">
+            {query.trim() ? `No repositories match "${query.trim()}"` : "No recent repositories"}
+          </div>
+        {/if}
+      </div>
+      <div class="tab-menu-divider"></div>
       <button class="tab-menu-item" onclick={handleOpenRepo}>
         <FolderOpen size={14} />
         Open local...
         {#if keys["open_repo"]}<span class="tab-menu-shortcut">{keys["open_repo"]}</span>{/if}
       </button>
+      <button class="tab-menu-item" onclick={() => { showMenu = false; openNewRepoDialog("clone"); }}>
+        <Link size={14} />
+        Clone from URL...
+      </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; showCloneModal = true; }}>
         <GitFork size={14} />
         Clone from GitHub...
+      </button>
+      <button class="tab-menu-item" onclick={() => { showMenu = false; openNewRepoDialog("init"); }}>
+        <FolderGit2 size={14} />
+        New repository...
       </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; showCreateRepoModal = true; }}>
         <Plus size={14} />
@@ -582,9 +674,52 @@
     padding: 6px 10px 4px;
   }
 
-  .tab-menu-suggestions {
-    max-height: 240px;
+  .tab-menu-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 2px 4px;
+    padding: 5px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+  }
+
+  .tab-menu-search:focus-within {
+    border-color: var(--color-accent);
+  }
+
+  .tab-menu-search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: 12px;
+  }
+
+  .tab-menu-results {
+    max-height: 320px;
     overflow-y: auto;
+  }
+
+  .tab-menu-item-selected {
+    background: var(--color-surface-elevated);
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .tab-menu-repo-name :global(mark) {
+    background: transparent;
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+
+  .tab-menu-empty {
+    padding: 10px;
+    font-size: 12px;
+    color: var(--color-text-muted);
   }
 
   .tab-menu-repo-name {
