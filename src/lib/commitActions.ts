@@ -51,12 +51,12 @@ function stashNote(r: CommitOpResult): string {
 }
 
 /** Run an operation that may move HEAD; refresh and report. */
-async function runHeadOp(
+async function runHeadOp<T extends CommitOpResult>(
   path: string,
   title: string,
-  op: () => Promise<CommitOpResult>,
-  onSuccess: (r: CommitOpResult) => void,
-): Promise<CommitOpResult | null> {
+  op: () => Promise<T>,
+  onSuccess: (r: T) => void,
+): Promise<T | null> {
   try {
     const r = await op();
     await refreshAll(path);
@@ -134,6 +134,35 @@ async function applyCommit(path: string, oid: string, kind: "cherry-pick" | "rev
 }
 
 export const cherryPickAction = (path: string, oid: string) => applyCommit(path, oid, "cherry-pick");
+
+/**
+ * Cherry-pick several commits. `oids` are in graph order (newest first);
+ * they're applied oldest first.
+ */
+export async function cherryPickRangeAction(path: string, oids: string[]) {
+  if (oids.length === 1) return cherryPickAction(path, oids[0]);
+  const ordered = [...oids].reverse();
+  const r = await runHeadOp(
+    path,
+    "Cherry-pick Failed",
+    () => tauri.cherryPickCommits(path, ordered),
+    (res) => {
+      const skipped = res.skipped.length;
+      const note = skipped > 0 ? ` (${skipped} already on HEAD, skipped)` : "";
+      toast("success", `Cherry-picked ${res.picked} commit${res.picked === 1 ? "" : "s"}${note}`, {
+        action: res.previous_head ? { label: "Undo", run: () => undoTo(path, res, "keep") } : undefined,
+      });
+    },
+  );
+  if (r?.conflicted) {
+    const total = ordered.length - r.skipped.length;
+    toast(
+      "warning",
+      `Cherry-pick stopped with conflicts after ${r.picked} of ${total} commits. Resolve them, then continue (the rest of the range follows), skip or abort from the banner above the graph.`,
+      { title: "Conflicts", duration: 0 },
+    );
+  }
+}
 export const revertAction = (path: string, oid: string) => applyCommit(path, oid, "revert");
 
 const RESET_TEXT: Record<Exclude<ResetMode, "keep">, string> = {

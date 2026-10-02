@@ -120,6 +120,77 @@ pub async fn cherry_pick(repo_path: &Path, rev: &str) -> Result<CommitOpResult, 
     apply_commit(repo_path, "cherry-pick", rev).await
 }
 
+/// Most commits one range cherry-pick accepts.
+pub const MAX_PICK: usize = 500;
+
+/// Outcome of [`cherry_pick_many`]: the usual result plus what was skipped.
+#[derive(Debug, Serialize)]
+pub struct PickManyResult {
+    #[serde(flatten)]
+    pub result: CommitOpResult,
+    /// Commits applied before stopping (all of them on success).
+    pub picked: usize,
+    /// Commits left out because HEAD already contains them.
+    pub skipped: Vec<String>,
+}
+
+/// Cherry-pick several commits onto HEAD, in the given order (the caller
+/// passes them oldest first). Commits HEAD already contains are left out.
+/// On conflicts git's sequencer state is kept, so the operation banner's
+/// continue / skip / abort apply to the rest of the range.
+pub async fn cherry_pick_many(repo_path: &Path, revs: &[String]) -> Result<PickManyResult, TwigError> {
+    if revs.is_empty() {
+        return Err(TwigError::InvalidArgument("no commits to cherry-pick".to_string()));
+    }
+    if revs.len() > MAX_PICK {
+        return Err(TwigError::InvalidArgument(format!("at most {MAX_PICK} commits can be cherry-picked at once")));
+    }
+    let before = head_state(repo_path).await?;
+    let Some(head) = before.oid.clone() else {
+        return Err(TwigError::InvalidArgument(
+            "cannot cherry-pick onto a branch without commits".to_string(),
+        ));
+    };
+    let mut oids = Vec::with_capacity(revs.len());
+    let mut skipped = Vec::new();
+    let mut any_merge = false;
+    for rev in revs {
+        let oid = resolve_commit(repo_path, rev).await?;
+        if oids.contains(&oid) || skipped.contains(&oid) {
+            continue;
+        }
+        let contained = run_git(repo_path, &["merge-base", "--is-ancestor", &oid, &head]).await?;
+        if contained.success {
+            skipped.push(oid);
+            continue;
+        }
+        any_merge |= parent_count(repo_path, &oid).await? > 1;
+        oids.push(oid);
+    }
+    if oids.is_empty() {
+        return Err(TwigError::InvalidArgument(
+            "every selected commit is already on HEAD".to_string(),
+        ));
+    }
+    let mut args: Vec<&str> = vec!["cherry-pick"];
+    if any_merge {
+        // Mainline for the merges; git ignores it for ordinary commits.
+        args.extend_from_slice(&["-m", "1"]);
+    }
+    args.extend(oids.iter().map(String::as_str));
+    let out = run_git(repo_path, &args).await?;
+    let mut result = CommitOpResult::from_output(out, &before);
+    let mut picked = oids.len();
+    if !result.success {
+        result.conflicted = rev_exists(repo_path, "CHERRY_PICK_HEAD").await?;
+        // Commits applied so far: HEAD moved past the old head by that many.
+        let range = format!("{head}..HEAD");
+        let count = run_git(repo_path, &["rev-list", "--count", &range]).await?;
+        picked = count.stdout.trim().parse().unwrap_or(0);
+    }
+    Ok(PickManyResult { result, picked, skipped })
+}
+
 pub async fn revert(repo_path: &Path, rev: &str) -> Result<CommitOpResult, TwigError> {
     apply_commit(repo_path, "revert", rev).await
 }
@@ -267,6 +338,61 @@ mod tests {
         git(&dir, &["config", "user.email", "t@t"]).await;
         git(&dir, &["config", "commit.gpgsign", "false"]).await;
         dir
+    }
+
+    #[tokio::test]
+    async fn cherry_pick_many_mixes_merges_and_plain_commits() {
+        let dir = temp_repo("pickmerge").await;
+        commit_file(&dir, "a.txt", "base\n", "base").await;
+        git(&dir, &["checkout", "-q", "-b", "topic"]).await;
+        commit_file(&dir, "t.txt", "topic\n", "topic work").await;
+        git(&dir, &["checkout", "-q", "-b", "integration", "main"]).await;
+        commit_file(&dir, "i.txt", "i\n", "integration work").await;
+        git(&dir, &["merge", "-q", "--no-ff", "--no-edit", "topic"]).await;
+        let merge = git(&dir, &["rev-parse", "HEAD"]).await;
+        let after = commit_file(&dir, "c.txt", "c\n", "after merge").await;
+        git(&dir, &["checkout", "-q", "main"]).await;
+
+        let r = cherry_pick_many(&dir, &[merge, after]).await.unwrap();
+        assert!(r.result.success, "{}", r.result.message);
+        assert_eq!(r.picked, 2);
+        assert!(dir.join("t.txt").exists() && dir.join("c.txt").exists());
+        assert!(!dir.join("i.txt").exists(), "only the merge's first-parent diff is applied");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn cherry_pick_many_applies_in_order_and_stops_on_conflict() {
+        let dir = temp_repo("pickmany").await;
+        let base = commit_file(&dir, "a.txt", "base\n", "base").await;
+        git(&dir, &["checkout", "-q", "-b", "feature"]).await;
+        let one = commit_file(&dir, "b.txt", "one\n", "one").await;
+        let two = commit_file(&dir, "b.txt", "two\n", "two").await;
+        let three = commit_file(&dir, "a.txt", "feature side\n", "three").await;
+        git(&dir, &["checkout", "-q", "main"]).await;
+
+        // Oldest first: "two" builds on "one"'s file, so order matters.
+        let r = cherry_pick_many(&dir, &[one.clone(), two.clone()]).await.unwrap();
+        assert!(r.result.success, "{}", r.result.message);
+        assert_eq!(r.picked, 2);
+        assert_eq!(r.result.previous_head.as_deref(), Some(base.as_str()));
+        assert_eq!(std::fs::read_to_string(dir.join("b.txt")).unwrap(), "two\n");
+        let log = git(&dir, &["log", "--format=%s", "-n", "3"]).await;
+        assert_eq!(log.lines().collect::<Vec<_>>(), ["two", "one", "base"]);
+
+        // Already on HEAD (the base) is skipped; a conflict keeps the sequencer.
+        commit_file(&dir, "a.txt", "main side\n", "main edit").await;
+        let r = cherry_pick_many(&dir, &[base.clone(), three.clone()]).await.unwrap();
+        assert_eq!(r.skipped, vec![base.clone()]);
+        assert!(!r.result.success);
+        assert!(r.result.conflicted);
+        assert_eq!(r.picked, 0);
+        git(&dir, &["cherry-pick", "--abort"]).await;
+
+        assert!(cherry_pick_many(&dir, std::slice::from_ref(&base)).await.is_err(), "nothing left to pick");
+        assert!(cherry_pick_many(&dir, &[]).await.is_err());
+        assert!(cherry_pick_many(&dir, &["-n".into()]).await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

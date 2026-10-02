@@ -16,6 +16,14 @@ export interface CommitOpResult {
   stash_oid: string | null;
 }
 
+/** Result of cherry-picking several commits. */
+export interface PickManyResult extends CommitOpResult {
+  /** Commits applied before stopping (all of them on success). */
+  picked: number;
+  /** Commits left out because HEAD already contains them. */
+  skipped: string[];
+}
+
 export interface ReflogEntry {
   index: number;
   old_oid: string;

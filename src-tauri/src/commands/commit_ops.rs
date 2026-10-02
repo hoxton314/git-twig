@@ -28,6 +28,18 @@ pub async fn cherry_pick_commit(
     commit_ops::cherry_pick(&repo_path, &oid).await
 }
 
+/// Cherry-pick several commits (oldest first) onto HEAD. Conflicts leave the
+/// repo mid-cherry-pick with the rest of the range queued.
+#[tauri::command]
+pub async fn cherry_pick_commits(
+    state: State<'_, AppState>,
+    path: String,
+    oids: Vec<String>,
+) -> Result<commit_ops::PickManyResult, TwigError> {
+    let repo_path = state.repo_path(&path)?;
+    commit_ops::cherry_pick_many(&repo_path, &oids).await
+}
+
 /// Revert a commit. Conflicts leave the repo mid-revert.
 #[tauri::command]
 pub async fn revert_commit(

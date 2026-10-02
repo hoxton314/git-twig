@@ -4,6 +4,7 @@ import type {
   BlameResult,
   CommandResult,
   CommitOpResult,
+  PickManyResult,
   ConflictVersions,
   DiffFile,
   FileHistoryPage,
@@ -23,6 +24,11 @@ export function checkoutCommit(path: string, oid: string): Promise<CommitOpResul
 
 export function cherryPickCommit(path: string, oid: string): Promise<CommitOpResult> {
   return invoke<CommitOpResult>("cherry_pick_commit", { path, oid });
+}
+
+/** Cherry-pick `oids` onto HEAD in the given order (pass them oldest first). */
+export function cherryPickCommits(path: string, oids: string[]): Promise<PickManyResult> {
+  return invoke<PickManyResult>("cherry_pick_commits", { path, oids });
 }
 
 export function revertCommit(path: string, oid: string): Promise<CommitOpResult> {
