@@ -38,12 +38,30 @@ export function toggle(sel: Selection, primary: string | null, oid: string, orde
 
 /** Shift-click / Shift+arrow: everything between the anchor and `oid`. */
 export function extendTo(sel: Selection, primary: string | null, oid: string, order: string[]): Selection {
-  const anchor = sel.anchor && order.includes(sel.anchor) ? sel.anchor : primary;
+  // The anchor only counts while the selection it belongs to is current:
+  // once something else selected a commit, ranges start from that one.
+  const live = primary !== null && (sel.anchor === primary || sel.oids.includes(primary));
+  const anchor = live && sel.anchor && order.includes(sel.anchor) ? sel.anchor : primary;
   const a = anchor ? order.indexOf(anchor) : -1;
   const b = order.indexOf(oid);
   if (a < 0 || b < 0) return { oids: [oid], anchor: oid };
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   return { oids: order.slice(lo, hi + 1), anchor };
+}
+
+/**
+ * After a graph reload: drop selected commits that were loaded before but are
+ * gone now (amended, rebased away). Commits that weren't in the old rows
+ * either (picked from search results further down) are kept.
+ */
+export function pruneSelection(sel: Selection, oldOrder: string[], newOrder: string[]): Selection {
+  if (sel.oids.length === 0) return sel;
+  const before = new Set(oldOrder);
+  const after = new Set(newOrder);
+  const oids = sel.oids.filter((o) => after.has(o) || !before.has(o));
+  if (oids.length === sel.oids.length) return sel;
+  const anchor = sel.anchor && oids.includes(sel.anchor) ? sel.anchor : null;
+  return { oids, anchor };
 }
 
 /**

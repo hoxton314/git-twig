@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_SELECTION, comparePair, effectiveSelection, extendTo, primaryAfterToggle, toggle } from "./graphSelection";
+import { EMPTY_SELECTION, comparePair, effectiveSelection, extendTo, primaryAfterToggle, pruneSelection, toggle } from "./graphSelection";
 
 const order = ["e", "d", "c", "b", "a"]; // newest first
 
@@ -36,8 +36,18 @@ describe("graph multi-selection", () => {
     expect(extendTo(sel, "e", "c", order).oids).toEqual(["c", "b"]);
     // An anchor no longer in the graph falls back to the primary.
     expect(extendTo({ oids: [], anchor: "gone" }, "a", "b", order).oids).toEqual(["b", "a"]);
+    // A stale anchor (another commit was selected elsewhere since) is ignored.
+    expect(extendTo({ oids: [], anchor: "e" }, "c", "a", order).oids).toEqual(["c", "b", "a"]);
+    expect(extendTo({ oids: ["e", "d"], anchor: "e" }, "b", "a", order).oids).toEqual(["b", "a"]);
     // Nothing to anchor on: just the target.
     expect(extendTo(EMPTY_SELECTION, null, "c", order)).toEqual({ oids: ["c"], anchor: "c" });
+  });
+
+  it("drops commits that vanished on reload but keeps unloaded ones", () => {
+    const sel = { oids: ["e", "c", "z"], anchor: "e" }; // z: from search, never loaded
+    const pruned = pruneSelection(sel, order, ["e2", "d", "c", "b", "a"]); // e amended
+    expect(pruned).toEqual({ oids: ["c", "z"], anchor: null });
+    expect(pruneSelection(sel, order, order)).toBe(sel);
   });
 
   it("compares older → newer for exactly two commits", () => {
