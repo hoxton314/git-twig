@@ -109,7 +109,7 @@ npm run tauri build      # Production build
 npm run build            # Frontend only build
 npm run check            # TypeScript + Svelte type checking
 npm test                 # Frontend unit tests (Vitest, `src/**/*.test.ts`)
-npm run tauri build -- --debug --no-bundle && xvfb-run -a npm run test:e2e
+npm run tauri build -- --debug --no-bundle && xvfb-run -a -s "-screen 0 1440x900x24" npm run test:e2e
                          # E2E smoke tests (e2e/smoke.mjs; needs tauri-driver + WebKitWebDriver)
 ```
 

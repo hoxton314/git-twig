@@ -1,12 +1,12 @@
 // End-to-end smoke test against the real app via tauri-driver.
 //
 //   npm run tauri build -- --debug --no-bundle   # builds src-tauri/target/debug/twig
-//   xvfb-run -a npm run test:e2e                 # needs tauri-driver + WebKitWebDriver
+//   xvfb-run -a -s "-screen 0 1440x900x24" npm run test:e2e   # needs tauri-driver + WebKitWebDriver
 //
 // Uses throwaway XDG dirs, git config and repo, so a developer's real
 // settings, session and repos are never touched.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Session } from "./webdriver.mjs";
@@ -14,7 +14,7 @@ import { Session } from "./webdriver.mjs";
 const root = resolve(import.meta.dirname, "..");
 const app = process.env.TWIG_E2E_APP ?? join(root, "src-tauri/target/debug/twig");
 const driverBin = process.env.TAURI_DRIVER ?? "tauri-driver";
-const port = 4444;
+const port = Number(process.env.TWIG_E2E_PORT ?? 4444);
 
 if (!existsSync(app)) {
   console.error(`App binary not found: ${app}\nBuild it with: npm run tauri build -- --debug --no-bundle`);
@@ -57,31 +57,21 @@ writeFileSync(
 );
 
 // ── Driver ──────────────────────────────────────────────────────────
+const base = `http://127.0.0.1:${port}`;
+const listening = () => fetch(`${base}/status`).then(() => true, () => false);
+if (await listening()) {
+  console.error(`Port ${port} is already in use; set TWIG_E2E_PORT to a free port.`);
+  process.exit(2);
+}
 const driver = spawn(driverBin, ["--port", String(port)], { env, stdio: ["ignore", "inherit", "inherit"] });
+let driverExit = null;
 driver.on("error", (err) => {
   console.error(`Could not start ${driverBin}: ${err.message}\nInstall it with: cargo install tauri-driver --locked`);
   process.exit(2);
 });
-const base = `http://127.0.0.1:${port}`;
-for (let i = 0; ; i++) {
-  try {
-    await fetch(`${base}/status`);
-    break;
-  } catch {
-    if (i > 100) throw new Error("tauri-driver did not start");
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-
-/** Poll a condition outside the app (e.g. the repo's real git state). */
-async function until(cond, what, timeout = 15_000) {
-  const end = Date.now() + timeout;
-  while (Date.now() < end) {
-    if (cond()) return;
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
+driver.on("exit", (code, signal) => {
+  driverExit = `tauri-driver exited (${signal ?? code})`;
+});
 
 let session;
 let failed = false;
@@ -92,6 +82,11 @@ const step = async (name, fn) => {
 };
 
 try {
+  for (let i = 0; !(await listening()); i++) {
+    if (driverExit) throw new Error(`${driverExit} before accepting connections (is WebKitWebDriver installed?)`);
+    if (i > 100) throw new Error("tauri-driver did not start within 10s");
+    await new Promise((r) => setTimeout(r, 100));
+  }
   session = await Session.create(base, { "tauri:options": { application: app } });
 
   await step("app starts and restores the repo tab", async () => {
@@ -100,8 +95,9 @@ try {
 
   await step("untracked file is listed and can be staged", async () => {
     // Row actions show on hover/selection: select the row like a user would.
-    const [row] = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("notes.txt")) });
-    await session.click(row);
+    const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("notes.txt")) });
+    const texts = await session.texts(".file-item");
+    await session.click(rows[texts.findIndex((t) => t.includes("notes.txt"))]);
     const [stage] = await session.waitFor('.file-item.selected button[aria-label="Stage file"]');
     await session.click(stage);
     await until(() => git("diff", "--cached", "--name-only").includes("notes.txt"), "notes.txt staged");
@@ -137,5 +133,7 @@ try {
 } finally {
   await session?.close().catch(() => {});
   driver.kill();
+  // Keep the temp dir only when it holds failure evidence.
+  if (!failed) rmSync(tmp, { recursive: true, force: true });
 }
 process.exit(failed ? 1 : 0);
