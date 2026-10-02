@@ -167,8 +167,10 @@ pub async fn push_branch(
 ) -> Result<GitOutput, TwigError> {
     safe_ref(remote)?;
     safe_ref(branch_name)?;
-    // Fully qualified so a tag with the same name can't make it ambiguous.
-    let refspec = format!("refs/heads/{branch_name}:refs/heads/{branch_name}");
+    // Qualified source so a same-named tag can't make it ambiguous; no
+    // destination, so `remote.<name>.push` mappings (e.g. Gerrit
+    // `refs/for/*`) still apply.
+    let refspec = format!("refs/heads/{branch_name}");
     let mut args = vec!["push"];
     if set_upstream {
         args.push("-u");
@@ -395,6 +397,13 @@ mod tests {
         assert_eq!(up.stdout.trim(), "origin/release");
         let out = push_branch(&dir, "origin", "main", false).await.unwrap();
         assert!(out.success, "{}", out.stderr);
+
+        // A configured push mapping is honoured.
+        git_ok(&dir, &["config", "remote.origin.push", "refs/heads/*:refs/for/*"]).await;
+        let out = push_branch(&dir, "origin", "main", false).await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        let mapped = run_git(&bare, &["rev-parse", "--verify", "--quiet", "refs/for/main"]).await.unwrap();
+        assert!(mapped.success, "push mapping ignored");
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&bare);
     }
