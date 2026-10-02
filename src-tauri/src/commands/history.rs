@@ -105,7 +105,7 @@ pub async fn plan_squash(
     path: String,
     oids: Vec<String>,
 ) -> Result<SquashPlan, TwigError> {
-    state.read_repo(&path, move |repo| squash::plan_squash(repo, &oids)).await
+    state.read_repo(&path, move |repo| squash::plan_squash(repo, &oids, true)).await
 }
 
 /// Squash the contiguous run `oids` on the current branch into one commit
@@ -123,7 +123,7 @@ pub async fn squash_commits(
         .read_repo(&path, move |repo| {
             Ok((
                 read_operation_state(repo)?.kind,
-                squash::plan_squash(repo, &oids)?,
+                squash::plan_squash(repo, &oids, false)?,
                 repo.path().to_path_buf(),
             ))
         })

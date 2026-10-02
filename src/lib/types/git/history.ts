@@ -130,6 +130,8 @@ export interface SquashPlan {
   later: number;
   /** Remote-tracking branches that already contain the commits. */
   pushed_to: string[];
+  /** The remote check stopped early; `pushed_to` may be incomplete. */
+  pushed_unknown: boolean;
 }
 
 export interface RebaseCommitList {

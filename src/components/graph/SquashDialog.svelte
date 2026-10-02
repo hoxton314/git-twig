@@ -5,6 +5,7 @@
   import { commitSelection, refreshAll, selectedCommitOid } from "../../lib/stores/graph";
   import { squashTarget, undoHistoryOpen } from "../../lib/stores/commitUi";
   import { toast, toastError } from "../../lib/stores/toasts";
+  import { operationState, refreshOperation } from "../../lib/stores/operation";
   import { EMPTY_SELECTION } from "../../lib/graphSelection";
   import * as tauri from "../../lib/tauri";
   import type { SquashPlan } from "../../lib/types/git";
@@ -54,6 +55,18 @@
     try {
       const res = await tauri.squashCommits(path, oids, message, autostash);
       await refreshAll(path);
+      await refreshOperation(path);
+      if ($operationState?.kind === "rebase") {
+        // Stopped part-way (e.g. a newer commit conflicts): the banner owns it now.
+        $commitSelection = EMPTY_SELECTION;
+        toast("warning", "The squash paused with conflicts. Use the banner to continue or abort.", {
+          title: "Squash",
+          duration: 0,
+        });
+        busy = false;
+        close();
+        return;
+      }
       if (!res.success) {
         error = res.message.trim() || "The squash did not complete.";
         return;
@@ -89,6 +102,8 @@
             These commits are already on {plan.pushed_to.join(", ")}. Squashing rewrites them, so the branch
             will need a force push, and anyone who based work on them will have to rebase.
           </p>
+        {:else if plan.pushed_unknown}
+          <p class="desc">Couldn't check every remote branch for these commits (very large history).</p>
         {/if}
         <label class="field">
           <span>Commit message</span>

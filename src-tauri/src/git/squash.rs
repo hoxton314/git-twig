@@ -14,6 +14,8 @@ use crate::git::writer::GitOutput;
 
 /// How far down HEAD's first-parent line selected commits are looked for.
 const MAX_DEPTH: usize = 1000;
+/// Commits walked in total when looking for the squashed commits on remotes.
+const PUSHED_SCAN_BUDGET: usize = 20_000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SquashPlan {
@@ -29,6 +31,9 @@ pub struct SquashPlan {
     pub later: usize,
     /// Remote-tracking branches that already contain the squashed commits.
     pub pushed_to: Vec<String>,
+    /// The remote check stopped early (very large history); `pushed_to`
+    /// may be incomplete.
+    pub pushed_unknown: bool,
     /// Todo for the rebase, oldest first.
     #[serde(skip)]
     pub items: Vec<RebaseTodoItem>,
@@ -40,8 +45,9 @@ fn invalid(msg: impl Into<String>) -> TwigError {
 
 /// Validate `oids` and plan the squash. They must be a contiguous run on
 /// HEAD's first-parent line with no merge commits between them and HEAD
-/// (the rebase would flatten those).
-pub fn plan_squash(repo: &Repository, oids: &[String]) -> Result<SquashPlan, TwigError> {
+/// (the rebase would flatten those). `check_pushed` looks for them on
+/// remote-tracking branches (for the dialog's warning).
+pub fn plan_squash(repo: &Repository, oids: &[String], check_pushed: bool) -> Result<SquashPlan, TwigError> {
     let selected: HashSet<Oid> = oids
         .iter()
         .map(|s| Oid::from_str(s).map_err(|_| invalid(format!("'{s}' is not a commit id"))))
@@ -98,7 +104,6 @@ pub fn plan_squash(repo: &Repository, oids: &[String]) -> Result<SquashPlan, Twi
     }
 
     let first = &line[oldest];
-    let base = if first.parent_count() > 0 { Some(first.parent_id(0)?.to_string()) } else { None };
     let message = line[newest..=oldest]
         .iter()
         .rev()
@@ -119,7 +124,36 @@ pub fn plan_squash(repo: &Repository, oids: &[String]) -> Result<SquashPlan, Twi
     // build_todo applies a squash group's message from its squash lines.
     items[oldest - newest].message = Some(message.clone());
 
-    let mut pushed_to = Vec::new();
+    let base_oid = if first.parent_count() > 0 { Some(first.parent_id(0)?) } else { None };
+    let (pushed_to, pushed_unknown) = if check_pushed {
+        remotes_containing(repo, first.id(), base_oid)?
+    } else {
+        (Vec::new(), false)
+    };
+
+    Ok(SquashPlan {
+        count: selected.len(),
+        base: base_oid.map(|o| o.to_string()),
+        first: first.id().to_string(),
+        message,
+        later: newest,
+        pushed_to,
+        pushed_unknown,
+        items,
+    })
+}
+
+/// Remote-tracking branches whose history contains `commit`. Each walk stops
+/// at `base` (the commit's parent), so it only covers what diverged since;
+/// a shared step budget bounds the total on huge repos (second value: the
+/// budget ran out and the list may be incomplete).
+fn remotes_containing(
+    repo: &Repository,
+    commit: Oid,
+    base: Option<Oid>,
+) -> Result<(Vec<String>, bool), TwigError> {
+    let mut budget = PUSHED_SCAN_BUDGET;
+    let mut out = Vec::new();
     for r in repo.references_glob("refs/remotes/*")? {
         let r = r?;
         let (Some(name), Some(tip)) = (r.shorthand().map(String::from), r.target()) else {
@@ -128,21 +162,29 @@ pub fn plan_squash(repo: &Repository, oids: &[String]) -> Result<SquashPlan, Twi
         if name.ends_with("/HEAD") {
             continue;
         }
-        if tip == first.id() || repo.graph_descendant_of(tip, first.id()).unwrap_or(false) {
-            pushed_to.push(name);
+        let mut walk = repo.revwalk()?;
+        walk.push(tip)?;
+        if let Some(b) = base {
+            walk.hide(b)?;
+        }
+        let mut found = false;
+        for oid in walk {
+            if budget == 0 {
+                out.sort();
+                return Ok((out, true));
+            }
+            budget -= 1;
+            if oid? == commit {
+                found = true;
+                break;
+            }
+        }
+        if found {
+            out.push(name);
         }
     }
-    pushed_to.sort();
-
-    Ok(SquashPlan {
-        count: selected.len(),
-        base,
-        first: first.id().to_string(),
-        message,
-        later: newest,
-        pushed_to,
-        items,
-    })
+    out.sort();
+    Ok((out, false))
 }
 
 /// Run the planned squash with `message` as the combined commit message.
@@ -202,7 +244,7 @@ mod tests {
         let (dir, c) = repo("middle", 5).await;
         let r = Repository::open(&dir).unwrap();
         // Graph order (newest first) must not matter.
-        let plan = plan_squash(&r, &[c[3].clone(), c[1].clone(), c[2].clone()]).unwrap();
+        let plan = plan_squash(&r, &[c[3].clone(), c[1].clone(), c[2].clone()], true).unwrap();
         assert_eq!(plan.count, 3);
         assert_eq!(plan.base.as_deref(), Some(c[0].as_str()));
         assert_eq!(plan.first, c[1]);
@@ -224,7 +266,12 @@ mod tests {
         let (dir, c) = repo("root", 3).await;
         git(&dir, &["update-ref", "refs/remotes/origin/main", &c[1]]).await;
         let r = Repository::open(&dir).unwrap();
-        let plan = plan_squash(&r, &[c[0].clone(), c[1].clone()]).unwrap();
+        let plan = plan_squash(&r, &[c[0].clone(), c[1].clone()], true).unwrap();
+        assert!(!plan.pushed_unknown);
+        // A remote ref behind the run doesn't contain it.
+        git(&dir, &["update-ref", "refs/remotes/origin/old", &c[0]]).await;
+        assert_eq!(plan_squash(&r, &[c[1].clone(), c[2].clone()], true).unwrap().pushed_to, ["origin/main"]);
+        assert!(plan_squash(&r, &[c[1].clone(), c[2].clone()], false).unwrap().pushed_to.is_empty());
         assert_eq!(plan.base, None);
         assert_eq!(plan.pushed_to, ["origin/main"]);
         let out = squash(&dir, r.path(), plan, "base", false).await.unwrap();
@@ -239,7 +286,7 @@ mod tests {
         let r = Repository::open(&dir).unwrap();
         let err = |oids: &[&String]| {
             let v: Vec<String> = oids.iter().map(|s| s.to_string()).collect();
-            plan_squash(&r, &v).unwrap_err().to_string()
+            plan_squash(&r, &v, false).unwrap_err().to_string()
         };
         assert!(err(&[&c[3]]).contains("at least two"));
         assert!(err(&[&c[1], &c[3]]).contains("next to each other"));
@@ -254,7 +301,7 @@ mod tests {
 
         git(&dir, &["merge", "-q", "--no-ff", "--no-edit", "side"]).await;
         assert!(err(&[&c[2], &c[3]]).contains("merge commit"));
-        assert!(plan_squash(&r, &["nope".into(), c[0].clone()]).is_err());
+        assert!(plan_squash(&r, &["nope".into(), c[0].clone()], false).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

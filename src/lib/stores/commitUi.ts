@@ -10,10 +10,10 @@ import { toast } from "./toasts";
 /** Open commit context menu (viewport coordinates). */
 export const commitMenu = writable<{ oid: string; x: number; y: number } | null>(null);
 
-/** "Create branch here…" dialog target. */
 /** Commits the squash dialog is open for (null = closed). */
 export const squashTarget = writable<string[] | null>(null);
 
+/** "Create branch here…" dialog target. */
 export const createBranchTarget = writable<{ oid: string; label: string } | null>(null);
 
 /** "Create tag here…" dialog target. */
