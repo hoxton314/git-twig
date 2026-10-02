@@ -18,6 +18,7 @@ pub mod remotes;
 pub mod conflicts;
 pub mod history;
 pub mod squash;
+pub mod patches;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

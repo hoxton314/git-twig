@@ -3,7 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BlameResult,
   CommandResult,
+  ApplyPatchResult,
   CommitOpResult,
+  PatchInfo,
   PickManyResult,
   ConflictVersions,
   DiffFile,
@@ -222,4 +224,32 @@ export function getBlame(
 
 export function listTrackedFiles(path: string): Promise<string[]> {
   return invoke<string[]>("list_tracked_files", { path });
+}
+
+// ── Patch files ──────────────────────────────────────────────────────
+
+/**
+ * Save commits (oldest first) as patches: one file each in the folder
+ * `target`, or all in the mbox file `target` when `singleFile`.
+ */
+export function formatPatches(
+  path: string,
+  oids: string[],
+  target: string,
+  singleFile: boolean,
+): Promise<string[]> {
+  return invoke<string[]>("format_patches", { path, oids, target, singleFile });
+}
+
+/** Save uncommitted changes to tracked files (vs HEAD) as a patch file. */
+export function saveWorkingPatch(path: string, target: string): Promise<void> {
+  return invoke<void>("save_working_patch", { path, target });
+}
+
+export function inspectPatch(path: string, file: string): Promise<PatchInfo> {
+  return invoke<PatchInfo>("inspect_patch", { path, file });
+}
+
+export function applyPatch(path: string, file: string): Promise<ApplyPatchResult> {
+  return invoke<ApplyPatchResult>("apply_patch", { path, file });
 }

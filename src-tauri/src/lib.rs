@@ -140,6 +140,10 @@ pub fn run() {
             commands::history::interactive_rebase,
             commands::history::plan_squash,
             commands::history::squash_commits,
+            commands::patches::format_patches,
+            commands::patches::save_working_patch,
+            commands::patches::inspect_patch,
+            commands::patches::apply_patch,
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,
