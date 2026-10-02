@@ -10,3 +10,6 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Conflict resolution & history rewriting (rebase, force push)
+pub mod conflicts;
+pub mod history;
