@@ -19,7 +19,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 3. **Write operations** use system `git` CLI via `tokio::process` (`src-tauri/src/git/writer.rs`)
 4. **No `unwrap()` in Rust** -- use `TwigError` and return `Result` from all commands
 5. **All Tauri commands must be `async`**
-6. **TypeScript types** must mirror Rust structs exactly (see `src/lib/types/git.ts`)
+6. **TypeScript types** must mirror Rust structs exactly (see `src/lib/types/git/<area>.ts`)
 7. **Every Tauri command** gets a typed wrapper in `src/lib/api/<area>.ts` (re-exported by `src/lib/tauri.ts`) -- no direct `invoke()` elsewhere
 
 ## Key Files to Understand First
@@ -34,7 +34,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
 | `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
 | `src-tauri/src/commands/git_config.rs` | Read/write global `~/.gitconfig` values, detect LFS |
-| `src/lib/types/git.ts` | All shared TypeScript interfaces |
+| `src/lib/types/git.ts` | Re-exports the shared IPC types from `src/lib/types/git/<area>.ts` (common, repo, graph, branches, diff, stash, settings, history, workspace); import from `types/git` |
 | `src/lib/tauri.ts` | Re-exports the typed `invoke()` wrappers from `src/lib/api/<area>.ts` (repo, graph, branches, diff, stash, settings, github, history, workspace, hosting); import as `import * as tauri from "…/lib/tauri"` |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
 | `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
@@ -65,7 +65,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 2. If it's a write, add a function to `src-tauri/src/git/writer.rs`
 3. Create the `#[tauri::command]` handler in the appropriate `src-tauri/src/commands/*.rs`
 4. Register it in `src-tauri/src/lib.rs` `invoke_handler`
-5. Add the TypeScript interface to `src/lib/types/git.ts`
+5. Add the TypeScript interface to the matching `src/lib/types/git/<area>.ts`
 6. Add the typed wrapper to the matching `src/lib/api/<area>.ts` (new area: add a module and an `export *` line in `src/lib/tauri.ts`)
 7. Use the wrapper from Svelte components -- never call `invoke()` directly
 
@@ -73,7 +73,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 
 1. Add the field to `AppSettings` in `src-tauri/src/commands/settings.rs` (with `#[serde(default)]`)
 2. Update the `Default` impl
-3. Add the field to `AppSettings` in `src/lib/types/git.ts`
+3. Add the field to `AppSettings` in `src/lib/types/git/settings.ts`
 4. Update defaults in `src/lib/stores/settings.ts`
 5. Add UI control in the appropriate `src/components/settings/*.svelte` section
 6. If the setting needs a CSS variable, apply it in `applyVisualSettings()` in `settings.ts`
