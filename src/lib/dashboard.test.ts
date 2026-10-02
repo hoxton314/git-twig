@@ -48,3 +48,15 @@ describe("dashboard", () => {
     expect(fetchAge(0, 7200_000)).toBe("2 h ago");
   });
 });
+
+import { isSyncing } from "./stores/operations";
+
+describe("sync collision check", () => {
+  it("sees fetches and pulls already running in a repository", () => {
+    const op = (repoPath: string, kind: string) => ({ id: 1, repoPath, kind, label: "", startedAt: 0, background: false });
+    expect(isSyncing([op("/a", "fetch")], "/a")).toBe(true);
+    expect(isSyncing([op("/a", "pull")], "/a")).toBe(true);
+    expect(isSyncing([op("/a", "push")], "/a")).toBe(false);
+    expect(isSyncing([op("/b", "fetch")], "/a")).toBe(false);
+  });
+});

@@ -93,3 +93,8 @@ export async function trackOperation<T>(
     end();
   }
 }
+
+/** A fetch or pull is already running in `repoPath` (so another would collide on ref locks). */
+export function isSyncing(ops: RunningOperation[], repoPath: string): boolean {
+  return ops.some((op) => op.repoPath === repoPath && (op.kind === "fetch" || op.kind === "pull"));
+}

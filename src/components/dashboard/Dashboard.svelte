@@ -9,7 +9,8 @@
   import Modal from "../shared/Modal.svelte";
   import { dashboardScope, dashboardPaths, fetchAge, runPool } from "../../lib/dashboard";
   import { repoHistory } from "../../lib/stores/repoHistory";
-  import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
+  import { openRepos, addRepo, activeRepoPath, updateRepo } from "../../lib/stores/repos";
+  import { trackOperation, operations, isSyncing } from "../../lib/stores/operations";
   import { currentView } from "../../lib/stores/ui";
   import { refreshAll } from "../../lib/stores/graph";
   import { toast, toastError } from "../../lib/stores/toasts";
@@ -63,7 +64,10 @@
     } catch {
       // Keep the old row; the outcome already says what happened.
     }
-    if ($openRepos.has(path) && $activeRepoPath === path) refreshAll(path);
+    if (!$openRepos.has(path)) return;
+    // Open tabs: the visible one reloads fully; others update their badge.
+    if ($activeRepoPath === path) refreshAll(path);
+    else tauri.getRepoInfo(path).then(updateRepo).catch(() => {});
   }
 
   function firstLine(text: string): string {
@@ -71,9 +75,21 @@
   }
 
   async function runOne(kind: "fetch" | "pull", path: string) {
+    if (isSyncing($operations, path)) {
+      outcome = { ...outcome, [path]: { ok: true, text: "Already syncing; skipped" } };
+      return;
+    }
     busy = { ...busy, [path]: true };
     try {
-      const res = kind === "fetch" ? await tauri.dashboardFetch(path) : await tauri.dashboardPull(path);
+      // Tracked like any fetch/pull: the status bar shows it, auto-fetch
+      // waits for it, and the last-fetch time is recorded.
+      const res = await trackOperation(
+        path,
+        kind,
+        kind === "fetch" ? "Fetching (dashboard)…" : "Pulling (dashboard)…",
+        () => (kind === "fetch" ? tauri.dashboardFetch(path) : tauri.dashboardPull(path)),
+        { background: true },
+      );
       outcome = {
         ...outcome,
         [path]: res.success
@@ -92,7 +108,7 @@
     if (running) return;
     const targets = rows
       .filter((r) => !r.error)
-      .filter((r) => kind === "fetch" || (r.upstream && !r.detached && r.behind > 0))
+      .filter((r) => kind === "fetch" || pullable(r))
       .map((r) => r.path);
     if (targets.length === 0) {
       toast("info", kind === "fetch" ? "No repositories to fetch." : "Nothing to pull: no repository is behind its upstream.");
@@ -132,7 +148,12 @@
     $dashboardScope = null;
   }
 
-  const behindCount = $derived(rows.filter((r) => !r.error && r.upstream && !r.detached && r.behind > 0).length);
+  /** Behind and not ahead: a fast-forward can update it (diverged ones can't). */
+  function pullable(r: RepoStatusRow): boolean {
+    return !r.error && !!r.upstream && !r.detached && r.behind > 0 && r.ahead === 0;
+  }
+
+  const behindCount = $derived(rows.filter(pullable).length);
 </script>
 
 <Modal open={!!scope} {title} onclose={close} width="min(980px, 95vw)">
@@ -181,6 +202,7 @@
                   {:else if r.ahead === 0 && r.behind === 0}
                     <span class="muted" title="In sync with {r.upstream}">✓</span>
                   {:else}
+                    {#if r.ahead > 0 && r.behind > 0}<span class="diverged" title="Diverged from {r.upstream}: Pull all only fast-forwards, so merge or rebase in the repository">diverged</span>{/if}
                     {#if r.ahead > 0}<span class="ahead" title="{r.ahead} to push"><ArrowUp size={11} />{r.ahead}</span>{/if}
                     {#if r.behind > 0}<span class="behind" title="{r.behind} to pull"><ArrowDown size={11} />{r.behind}</span>{/if}
                   {/if}
@@ -250,6 +272,7 @@
   .ahead, .behind { display: inline-flex; align-items: center; gap: 1px; font-family: var(--font-mono); }
   .ahead { color: var(--color-diff-add-text); }
   .behind { color: var(--color-accent); }
+  .diverged { color: var(--color-lane-2); font-size: 11px; }
   .status { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
   .bad { color: var(--color-diff-del-text); }
   :global(.dash .spinner) { animation: spin 1s linear infinite; }
