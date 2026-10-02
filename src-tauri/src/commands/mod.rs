@@ -10,3 +10,8 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// File history & blame, stash extras, submodules, worktrees
+pub mod file_views;
+pub mod stash_extra;
+pub mod submodules;
+pub mod worktrees;

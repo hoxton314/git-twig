@@ -77,6 +77,27 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // File history & blame
+            commands::file_views::get_file_history,
+            commands::file_views::get_file_diff_at_commit,
+            commands::file_views::get_blame,
+            commands::file_views::list_tracked_files,
+            // Stash extras
+            commands::stash_extra::stash_list_detailed,
+            commands::stash_extra::stash_show,
+            commands::stash_extra::stash_act,
+            commands::stash_extra::stash_rename,
+            commands::stash_extra::stash_branch,
+            commands::stash_extra::stash_push_ext,
+            // Submodules
+            commands::submodules::list_submodules,
+            commands::submodules::submodule_update,
+            commands::submodules::submodule_sync,
+            // Worktrees
+            commands::worktrees::list_worktrees,
+            commands::worktrees::worktree_add,
+            commands::worktrees::worktree_remove,
+            commands::worktrees::worktree_prune,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

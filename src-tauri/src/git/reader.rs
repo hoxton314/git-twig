@@ -23,7 +23,7 @@ fn short_oid(oid: Oid) -> String {
 ///
 /// `Oid::from_str` zero-pads short input instead of expanding it, so an
 /// abbreviated hash would look up a non-existent object.
-fn resolve_commit<'r>(repo: &'r Repository, oid_str: &str) -> Result<Commit<'r>, TwigError> {
+pub(crate) fn resolve_commit<'r>(repo: &'r Repository, oid_str: &str) -> Result<Commit<'r>, TwigError> {
     if !oid_str.is_empty() && oid_str.len() <= 64 && oid_str.bytes().all(|b| b.is_ascii_hexdigit())
     {
         if oid_str.len() >= 40 {
@@ -549,7 +549,7 @@ fn literal_pathspec(opts: &mut DiffOptions, path: &str) {
 }
 
 /// Pair up deleted/added files into renames (like `git diff -M`).
-fn detect_renames(diff: &mut Diff) -> Result<(), TwigError> {
+pub(crate) fn detect_renames(diff: &mut Diff) -> Result<(), TwigError> {
     let mut find = DiffFindOptions::new();
     find.renames(true);
     diff.find_similar(Some(&mut find))?;
@@ -778,7 +778,7 @@ fn tree_blob(
     }
 }
 
-fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
+pub(crate) fn parse_diff(diff: &Diff) -> Result<Vec<DiffFile>, TwigError> {
     let mut files: Vec<DiffFile> = Vec::new();
 
     let num_deltas = diff.deltas().len();
