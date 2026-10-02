@@ -39,9 +39,6 @@ const env = {
   XDG_DATA_HOME: xdg.data,
   XDG_CONFIG_HOME: xdg.config,
   XDG_CACHE_HOME: xdg.cache,
-  // Without its own runtime dir, a keyring daemon activated on the private
-  // bus can find and use the developer's real one.
-  XDG_RUNTIME_DIR: xdg.runtime,
   GIT_CONFIG_GLOBAL: gitconfig,
   GIT_CONFIG_NOSYSTEM: "1",
   // Software rendering under Xvfb: otherwise screenshots can show a stale frame.
@@ -84,6 +81,10 @@ const hasDbusRunSession = (() => {
   }
 })();
 if (!hasDbusRunSession) console.warn("dbus-run-session not found; using the shared session bus");
+// With a private bus also use a private runtime dir: otherwise a keyring
+// daemon activated on that bus finds and uses the developer's real one.
+// (Without one, keep the real runtime dir: zbus may locate the shared bus there.)
+if (hasDbusRunSession) env.XDG_RUNTIME_DIR = xdg.runtime;
 const [cmd, ...cmdArgs] = hasDbusRunSession
   ? ["dbus-run-session", "--", driverBin, "--port", String(port)]
   : [driverBin, "--port", String(port)];
