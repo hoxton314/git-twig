@@ -3,6 +3,7 @@
   import * as tauri from "../../lib/tauri";
   import type { GitConfig, SigningKey } from "../../lib/types/git";
   import { toast } from "../../lib/stores/toasts";
+  import { clearSignatureCache } from "../../lib/stores/signatures";
 
   let userName = $state("");
   let userEmail = $state("");
@@ -107,6 +108,8 @@
         lfs_installed: lfsInstalled,
       };
       await tauri.setGitConfig(config);
+      // Signing / trust settings may have changed: re-verify graph badges.
+      clearSignatureCache();
     } catch (e) {
       saveError = String(e);
       console.error("Failed to save git config:", e);

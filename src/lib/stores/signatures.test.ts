@@ -4,12 +4,12 @@ import { get } from "svelte/store";
 const tauri = vi.hoisted(() => ({ commitSignatures: vi.fn() }));
 vi.mock("../tauri", () => tauri);
 
-const { signatureFor, clearSignatureCache } = await import("./signatures");
+const { signatureFor, clearSignatureCache, resetSignaturesForTests } = await import("./signatures");
 const wait = () => new Promise((r) => setTimeout(r, 60));
 
 beforeEach(() => {
   tauri.commitSignatures.mockReset();
-  clearSignatureCache();
+  resetSignaturesForTests();
 });
 
 describe("signatureFor", () => {
@@ -29,8 +29,8 @@ describe("signatureFor", () => {
     expect(tauri.commitSignatures).toHaveBeenCalledTimes(1); // cached, incl. unsigned
   });
 
-  it("keeps repositories apart and survives backend errors", async () => {
-    tauri.commitSignatures.mockRejectedValueOnce(new Error("no git"));
+  it("keeps repositories apart; a failed batch is retried, not cached", async () => {
+    tauri.commitSignatures.mockRejectedValueOnce(new Error("repo not open yet"));
     tauri.commitSignatures.mockResolvedValueOnce([{ oid: "a", status: "bad", signer: null, key: null }]);
     const one = signatureFor("/one", "a");
     const two = signatureFor("/two", "a");
@@ -38,6 +38,24 @@ describe("signatureFor", () => {
     expect(tauri.commitSignatures).toHaveBeenCalledTimes(2);
     expect(get(one)).toBeNull();
     expect(get(two)?.status).toBe("bad");
+    // The row renders again later: asked again, now succeeding.
+    tauri.commitSignatures.mockResolvedValueOnce([{ oid: "a", status: "good", signer: null, key: null }]);
+    const again = signatureFor("/one", "a");
+    await wait();
+    expect(tauri.commitSignatures).toHaveBeenCalledTimes(3);
+    expect(get(again)?.status).toBe("good");
+  });
+
+  it("clearSignatureCache makes rows re-verify (e.g. after trust changes)", async () => {
+    tauri.commitSignatures.mockResolvedValueOnce([{ oid: "a", status: "unknown_key", signer: null, key: null }]);
+    const row = signatureFor("/r", "a");
+    await wait();
+    expect(get(row)?.status).toBe("unknown_key");
+    tauri.commitSignatures.mockResolvedValueOnce([{ oid: "a", status: "good", signer: null, key: null }]);
+    clearSignatureCache();
+    await wait();
+    // The same (still mounted) row store updates without re-rendering.
+    expect(get(row)?.status).toBe("good");
   });
 
   it("does nothing without a repository", async () => {

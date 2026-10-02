@@ -31,13 +31,16 @@ async function flush() {
     const oids = [...set];
     for (let i = 0; i < oids.length; i += MAX_BATCH) {
       const chunk = oids.slice(i, i + MAX_BATCH);
-      let found: SignatureInfo[] = [];
+      let found: SignatureInfo[];
       try {
         found = await tauri.commitSignatures(repo, chunk);
       } catch {
-        // Verification unavailable: show nothing rather than retrying forever.
+        // Possibly transient (repo not registered yet, git busy): cache
+        // nothing, so these rows ask again when they are rendered again.
+        for (const oid of chunk) requested.delete(key(repo, oid));
+        continue;
       }
-      const byOid = new Map(found.map((s) => [s.oid, s]));
+      const byOid = new Map((found ?? []).map((s) => [s.oid, s]));
       cache.update((m) => {
         const next = new Map(m);
         for (const oid of chunk) next.set(key(repo, oid), byOid.get(oid) ?? "unsigned");
@@ -66,8 +69,24 @@ export function signatureFor(repo: string | null, oid: string): Readable<Signatu
   });
 }
 
-/** Forget cached results (e.g. after the user changed trust settings). */
+/** Forget cached results (called after git config changes, e.g. trust settings). */
 export function clearSignatureCache() {
+  // Re-verify everything asked for so far: rows on screen keep their stores
+  // and update in place instead of losing their badge until re-rendered.
+  const again = [...requested];
+  requested.clear();
+  cache.set(new Map());
+  for (const k of again) {
+    const [repo, oid] = k.split("\u0000");
+    if (repo && oid) request(repo, oid);
+  }
+}
+
+/** Test helper: drop all state without re-verifying anything. */
+export function resetSignaturesForTests() {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  queues.clear();
   requested.clear();
   cache.set(new Map());
 }

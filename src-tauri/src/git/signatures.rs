@@ -157,6 +157,11 @@ mod tests {
             assert!(ok, "git {args:?}");
         };
         git(&["init", "-q"]);
+        // Repo-local values beat a developer's global signing setup.
+        git(&["config", "commit.gpgsign", "false"]);
+        let empty_signers = dir.join("no_signers");
+        std::fs::write(&empty_signers, "").unwrap();
+        git(&["config", "gpg.ssh.allowedSignersFile", &empty_signers.to_string_lossy()]);
         git(&["config", "gpg.format", "ssh"]);
         git(&["config", "user.signingkey", &format!("{}.pub", key.display())]);
         git(&["commit", "-q", "--allow-empty", "-m", "unsigned"]);
@@ -170,7 +175,8 @@ mod tests {
 
         let res = verify(&repo_dir, &signed).await.unwrap();
         assert_eq!(res.len(), 1);
-        assert_eq!(res[0].status, "unknown_key", "no allowed signers yet: {res:?}");
+        // Signer not in allowed_signers: never "good", never shown as unsigned.
+        assert!(matches!(res[0].status.as_str(), "unknown_key" | "untrusted"), "no allowed signer yet: {res:?}");
 
         git(&["config", "gpg.ssh.allowedSignersFile", &allowed.to_string_lossy()]);
         let res = verify(&repo_dir, &signed).await.unwrap();
