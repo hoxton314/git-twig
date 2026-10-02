@@ -180,3 +180,85 @@ export const LANE_COLORS = [
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
 }
+
+// ── File history & blame ─────────────────────────────────────────────
+
+export interface FileHistoryEntry {
+  commit: CommitInfo;
+  /** Path of the file in this commit. */
+  path: string;
+  /** Previous path when this commit renamed the file. */
+  old_path: string | null;
+  status: "added" | "modified" | "deleted" | "renamed";
+}
+
+export interface FileHistoryPage {
+  entries: FileHistoryEntry[];
+  has_more: boolean;
+}
+
+export interface BlameHunk {
+  oid: string;
+  short_oid: string;
+  author_name: string;
+  author_email: string;
+  timestamp: number;
+  summary: string;
+  /** 1-based first line in the blamed file. */
+  start_line: number;
+  line_count: number;
+  orig_path: string;
+  orig_start_line: number;
+  is_boundary: boolean;
+  has_parent: boolean;
+}
+
+export interface BlameResult {
+  path: string;
+  rev_oid: string;
+  rev_short: string;
+  lines: string[];
+  hunks: BlameHunk[];
+}
+
+// ── Stash extras ─────────────────────────────────────────────────────
+
+export interface StashDetail {
+  index: number;
+  reference: string;
+  oid: string;
+  message: string;
+  timestamp: string;
+  has_untracked: boolean;
+}
+
+export interface StashDiff {
+  tracked: DiffFile[];
+  untracked: DiffFile[];
+}
+
+// ── Submodules ───────────────────────────────────────────────────────
+
+export interface SubmoduleInfo {
+  name: string;
+  path: string;
+  abs_path: string;
+  url: string | null;
+  branch: string | null;
+  head_oid: string | null;
+  workdir_oid: string | null;
+  status: "uninitialized" | "out_of_date" | "dirty" | "up_to_date";
+}
+
+// ── Worktrees ────────────────────────────────────────────────────────
+
+export interface WorktreeInfo {
+  name: string | null;
+  path: string;
+  is_main: boolean;
+  is_current: boolean;
+  branch: string | null;
+  head_short: string | null;
+  is_locked: boolean;
+  is_prunable: boolean;
+}

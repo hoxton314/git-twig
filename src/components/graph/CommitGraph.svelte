@@ -13,6 +13,7 @@
   import CommitRow from "./CommitRow.svelte";
   import GraphCanvas from "./GraphCanvas.svelte";
   import { Loader2, Pencil } from "lucide-svelte";
+  import { revealCommit } from "../../lib/stores/fileviews";
 
   const repoPath = $derived($activeRepoPath);
   const graph = $derived($commitGraph);
@@ -159,6 +160,18 @@
       scrollTop = 0;
       if (containerEl) containerEl.scrollTop = 0;
       loadGraph(path);
+    }
+  });
+
+  // File history / blame "Show in graph": scroll the requested commit into view.
+  $effect(() => {
+    const oid = $revealCommit;
+    if (!oid || !graph) return;
+    const idx = graph.entries.findIndex((en) => en.commit.oid === oid);
+    $revealCommit = null;
+    if (idx >= 0 && containerEl) {
+      const offset = hasWip ? ROW_HEIGHT : 0;
+      containerEl.scrollTop = Math.max(0, offset + idx * ROW_HEIGHT - containerEl.clientHeight / 3);
     }
   });
 </script>

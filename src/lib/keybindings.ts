@@ -33,6 +33,14 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // File history & blame, stash extras, submodules, worktrees
+  { id: "file_history",      label: "File history…",            category: "History",    defaultShortcut: "" },
+  { id: "blame_file",        label: "Blame…",                   category: "History",    defaultShortcut: "" },
+  { id: "stash_files",       label: "Stash selected files…",    category: "Git",        defaultShortcut: "" },
+  { id: "submodules_update", label: "Update submodules (init, recursive)", category: "Git", defaultShortcut: "" },
+  { id: "submodules_sync",   label: "Sync submodule URLs",      category: "Git",        defaultShortcut: "" },
+  { id: "worktree_add",      label: "Add worktree…",            category: "Git",        defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
