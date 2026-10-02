@@ -329,6 +329,11 @@ pub struct BranchInfo {
     pub short_oid: String,
     pub last_commit_summary: String,
     pub last_commit_timestamp: i64,
+    // Branch list / remotes
+    /// Remote name for remote-tracking branches (may itself contain `/`).
+    pub remote_name: Option<String>,
+    /// Branch name without the remote prefix (equals `name` for local branches).
+    pub short_name: String,
 }
 
 pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
@@ -352,6 +357,15 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
             // break the whole branch list.
             let Ok(commit) = repo.find_commit(oid) else {
                 continue;
+            };
+
+            // Resolve the remote from the ref name via the configured remotes
+            // instead of splitting at the first `/`, which breaks for remote
+            // names that contain a slash.
+            let (remote_name, short_name) = if is_remote {
+                super::remotes::remote_parts(repo, branch.get().name(), &name)
+            } else {
+                (None, name.clone())
             };
 
             let (upstream, ahead, behind) = if is_remote {
@@ -383,6 +397,8 @@ pub fn read_branches(repo: &Repository) -> Result<Vec<BranchInfo>, TwigError> {
                 short_oid: short_oid(oid),
                 last_commit_summary: commit.summary().unwrap_or("").to_string(),
                 last_commit_timestamp: commit.time().seconds(),
+                remote_name,
+                short_name,
             });
         }
     }

@@ -16,3 +16,6 @@ pub mod tags;
 // Staging panel: commit helpers & file actions
 pub mod commit_tools;
 pub mod file_ops;
+// Branch list / remotes
+pub mod branch_ops;
+pub mod remotes;

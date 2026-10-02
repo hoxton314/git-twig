@@ -2,6 +2,7 @@
   import { sidebarOpen, sidebarWidth } from "../../lib/stores/ui";
   import BranchList from "../branches/BranchList.svelte";
   import TagList from "../tags/TagList.svelte";
+  import BranchActionsHost from "../branches/BranchActionsHost.svelte";
 
   const isOpen = $derived($sidebarOpen);
   const width = $derived($sidebarWidth);
@@ -13,6 +14,8 @@
     <TagList />
   </aside>
 {/if}
+<!-- Branch list / remotes: global actions + remotes dialog, mounted even when the sidebar is hidden -->
+<BranchActionsHost />
 
 <style>
   .sidebar {

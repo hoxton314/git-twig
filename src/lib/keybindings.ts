@@ -53,6 +53,11 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "commit_add_coauthor",    label: "Add co-author to commit",        category: "Staging", defaultShortcut: "" },
   { id: "commit_insert_template", label: "Insert commit message template", category: "Staging", defaultShortcut: "" },
   { id: "commit_message_history", label: "Recent commit messages",         category: "Staging", defaultShortcut: "" },
+  // Branch list / remotes
+  { id: "remotes_manage",        label: "Manage remotes…",        category: "Git",        defaultShortcut: "" },
+  { id: "branch_create",         label: "Create branch…",         category: "Git",        defaultShortcut: "" },
+  { id: "branch_rename_current", label: "Rename current branch…", category: "Git",        defaultShortcut: "" },
+  { id: "branch_filter",         label: "Filter branches",        category: "Navigation", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
