@@ -61,8 +61,17 @@
   const unresolved = $derived(
     conflictIdx.filter((i) => (segments[i] as ConflictSegment).resolution === null).length,
   );
+  /** Why the versions can't be shown as editable text, if they can't. */
+  const noTextReason = $derived.by(() => {
+    if (!versions) return null;
+    if (versions.is_symlink) return "Symbolic link";
+    if (versions.is_binary) return "Binary file";
+    if (versions.not_utf8) return "Not UTF-8 text";
+    if (versions.too_large) return "File too large to display";
+    return null;
+  });
   const canEditResult = $derived(
-    versions !== null && !versions.is_binary && !versions.too_large && versions.merged !== null,
+    versions !== null && noTextReason === null && versions.merged !== null,
   );
 
   let loadReq = 0;
@@ -306,9 +315,9 @@
         <div class="notice error">{loadError}</div>
       {:else if versions}
         {#if tab === "result"}
-          {#if versions.is_binary || versions.too_large}
+          {#if noTextReason}
             <div class="notice">
-              {versions.is_binary ? "Binary file" : "File too large to display"} — choose a side or use the merge tool.
+              {noTextReason} — choose a side or use the merge tool.
             </div>
           {:else if versions.merged === null}
             <div class="notice">
@@ -377,8 +386,8 @@
               {/each}
             </div>
           {/if}
-        {:else if versions.is_binary || versions.too_large}
-          <div class="notice">{versions.is_binary ? "Binary file" : "File too large to display"}.</div>
+        {:else if noTextReason}
+          <div class="notice">{noTextReason}.</div>
         {:else if sideText === null}
           <div class="notice">The file does not exist in this version.</div>
         {:else}

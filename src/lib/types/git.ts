@@ -363,6 +363,10 @@ export interface ConflictVersions {
   merged: string | null;
   is_binary: boolean;
   too_large: boolean;
+  /** Some version is not UTF-8; no text is sent (editing would corrupt it). */
+  not_utf8: boolean;
+  /** The path is a symbolic link on some side. */
+  is_symlink: boolean;
 }
 
 export interface RebaseCommit {

@@ -123,6 +123,12 @@ pub struct ConflictVersions {
     pub merged: Option<String>,
     pub is_binary: bool,
     pub too_large: bool,
+    /// Some version is not valid UTF-8. Text is withheld: editing a lossy
+    /// decode and saving it would corrupt every non-UTF-8 byte.
+    pub not_utf8: bool,
+    /// The path is a symbolic link on some side; only taking a side makes
+    /// sense.
+    pub is_symlink: bool,
 }
 
 // ── Reads ────────────────────────────────────────────────────────────
@@ -327,16 +333,29 @@ pub fn read_operation_state(repo: &Repository) -> Result<RepoOperationState, Twi
 
 const MAX_VERSION_BYTES: usize = 2 * 1024 * 1024;
 
-fn decode(bytes: Vec<u8>, binary: &mut bool, too_large: &mut bool) -> Option<String> {
+#[derive(Default)]
+struct DecodeFlags {
+    binary: bool,
+    too_large: bool,
+    not_utf8: bool,
+}
+
+fn decode(bytes: Vec<u8>, flags: &mut DecodeFlags) -> Option<String> {
     if bytes.len() > MAX_VERSION_BYTES {
-        *too_large = true;
+        flags.too_large = true;
         return None;
     }
     if bytes.iter().take(8000).any(|&b| b == 0) {
-        *binary = true;
+        flags.binary = true;
         return None;
     }
-    Some(String::from_utf8_lossy(&bytes).to_string())
+    match String::from_utf8(bytes) {
+        Ok(s) => Some(s),
+        Err(_) => {
+            flags.not_utf8 = true;
+            None
+        }
+    }
 }
 
 /// Read base/ours/theirs from index stages 1-3 plus the working-tree file.
@@ -349,29 +368,41 @@ pub fn read_conflict_versions(
     let mut index = repo.index()?;
     index.read(false)?;
 
-    let mut is_binary = false;
-    let mut too_large = false;
+    let mut flags = DecodeFlags::default();
+    let mut is_symlink = false;
     let mut stage = |n: i32| -> Result<Option<String>, TwigError> {
         match index.get_path(rel, n) {
             Some(entry) => {
+                is_symlink |= entry.mode == u32::from(git2::FileMode::Link);
                 let blob = repo.find_blob(entry.id)?;
-                Ok(decode(blob.content().to_vec(), &mut is_binary, &mut too_large))
+                Ok(decode(blob.content().to_vec(), &mut flags))
             }
             None => Ok(None),
         }
     };
-    let base = stage(1)?;
-    let ours = stage(2)?;
-    let theirs = stage(3)?;
+    let mut base = stage(1)?;
+    let mut ours = stage(2)?;
+    let mut theirs = stage(3)?;
 
     let workdir = repo
         .workdir()
         .ok_or_else(|| TwigError::Git(git2::Error::from_str("bare repository")))?;
-    let merged = match std::fs::read(workdir.join(rel)) {
-        Ok(data) => decode(data, &mut is_binary, &mut too_large),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(TwigError::Io(e)),
+    let full = workdir.join(rel);
+    is_symlink |= std::fs::symlink_metadata(&full).is_ok_and(|m| m.file_type().is_symlink());
+    let mut merged = if is_symlink {
+        None
+    } else {
+        match std::fs::read(&full) {
+            Ok(data) => decode(data, &mut flags),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(TwigError::Io(e)),
+        }
     };
+    if flags.not_utf8 || is_symlink {
+        // Never hand out a partial set: the editor would treat a missing
+        // side as "deleted".
+        (base, ours, theirs, merged) = (None, None, None, None);
+    }
 
     Ok(ConflictVersions {
         path: file_path.to_string(),
@@ -379,8 +410,10 @@ pub fn read_conflict_versions(
         ours,
         theirs,
         merged,
-        is_binary,
-        too_large,
+        is_binary: flags.binary,
+        too_large: flags.too_large,
+        not_utf8: flags.not_utf8,
+        is_symlink,
     })
 }
 
@@ -527,6 +560,17 @@ pub fn write_worktree_file(
     content: &str,
 ) -> Result<(), TwigError> {
     validate_rel_path(file_path)?;
+    // Never write through a symlink (the file itself or a parent directory
+    // inside the repo): it could point outside the working tree.
+    let mut cur = repo_path.to_path_buf();
+    for comp in Path::new(file_path).components() {
+        cur.push(comp);
+        if std::fs::symlink_metadata(&cur).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(TwigError::InvalidArgument(format!(
+                "'{file_path}' goes through a symbolic link; resolve it by taking a side"
+            )));
+        }
+    }
     let full: PathBuf = repo_path.join(file_path);
     std::fs::write(full, content)?;
     Ok(())
@@ -653,6 +697,83 @@ mod tests {
         git_ok(&dir, &["rm", "-q", "gone.txt"]).await;
         git_ok(&dir, &["commit", "-q", "-am", "main change"]).await;
         dir
+    }
+
+    /// Conflict between two Latin-1 edits of one file.
+    async fn latin1_conflict(name: &str) -> PathBuf {
+        let dir = conflicted_repo(name).await;
+        std::fs::write(dir.join("l1.txt"), b"caf\xe9\n").unwrap();
+        git_ok(&dir, &["add", "."]).await;
+        git_ok(&dir, &["commit", "-q", "-m", "latin1"]).await;
+        git_ok(&dir, &["checkout", "-q", "-b", "l1side"]).await;
+        std::fs::write(dir.join("l1.txt"), b"caf\xe9 side\n").unwrap();
+        git_ok(&dir, &["commit", "-q", "-am", "side"]).await;
+        git_ok(&dir, &["checkout", "-q", "main"]).await;
+        std::fs::write(dir.join("l1.txt"), b"caf\xe9 main\n").unwrap();
+        git_ok(&dir, &["commit", "-q", "-am", "main"]).await;
+        let out = run_git(&dir, &["merge", "--no-edit", "l1side"]).await.unwrap();
+        assert!(!out.success);
+        dir
+    }
+
+    #[tokio::test]
+    async fn non_utf8_versions_are_not_offered_as_text() {
+        let dir = latin1_conflict("latin1").await;
+        let repo = Repository::open(&dir).unwrap();
+        let v = read_conflict_versions(&repo, "l1.txt").unwrap();
+        assert!(v.not_utf8, "lossy text would corrupt the file when saved");
+        assert!(v.merged.is_none() && v.ours.is_none() && v.theirs.is_none());
+        // Taking a side keeps the bytes intact.
+        let out = take_side(&dir, &[("l1.txt".into(), true)], "theirs").await.unwrap();
+        assert!(out.success, "{}", out.stderr);
+        assert_eq!(std::fs::read(dir.join("l1.txt")).unwrap(), b"caf\xe9 side\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writes_never_follow_symlinks() {
+        let dir = conflicted_repo("symlink").await;
+        let outside = dir.with_extension("outside");
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("target.txt"), "keep\n").unwrap();
+        std::os::unix::fs::symlink(outside.join("target.txt"), dir.join("link.txt")).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.join("linkdir")).unwrap();
+
+        assert!(write_worktree_file(&dir, "link.txt", "pwned\n").is_err());
+        assert!(write_worktree_file(&dir, "linkdir/target.txt", "pwned\n").is_err());
+        assert_eq!(std::fs::read_to_string(outside.join("target.txt")).unwrap(), "keep\n");
+        // Regular files (including new ones in real subdirectories) still work.
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        write_worktree_file(&dir, "sub/new.txt", "ok\n").unwrap();
+        write_worktree_file(&dir, "f.txt", "ok\n").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("f.txt")).unwrap(), "ok\n");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn symlink_conflict_is_flagged() {
+        let dir = conflicted_repo("symconf").await;
+        std::os::unix::fs::symlink("a", dir.join("ln")).unwrap();
+        git_ok(&dir, &["add", "."]).await;
+        git_ok(&dir, &["commit", "-q", "-m", "ln"]).await;
+        git_ok(&dir, &["checkout", "-q", "-b", "lnside"]).await;
+        std::fs::remove_file(dir.join("ln")).unwrap();
+        std::os::unix::fs::symlink("b", dir.join("ln")).unwrap();
+        git_ok(&dir, &["commit", "-q", "-am", "b"]).await;
+        git_ok(&dir, &["checkout", "-q", "main"]).await;
+        std::fs::remove_file(dir.join("ln")).unwrap();
+        std::os::unix::fs::symlink("c", dir.join("ln")).unwrap();
+        git_ok(&dir, &["commit", "-q", "-am", "c"]).await;
+        let out = run_git(&dir, &["merge", "--no-edit", "lnside"]).await.unwrap();
+        assert!(!out.success);
+        let repo = Repository::open(&dir).unwrap();
+        let v = read_conflict_versions(&repo, "ln").unwrap();
+        assert!(v.is_symlink);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
