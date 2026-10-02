@@ -17,7 +17,7 @@ use crate::git::writer::{self, run_git, safe_ref};
 use crate::github::{self, GitHubPullRequest, GitHubUser, RepoListPage};
 use crate::hosting::config::{self, base_host_and_prefix, HostingConfig};
 use crate::hosting::gitea::Gitea;
-use crate::hosting::github_api::{self, DeviceFlowStart, PollOutcome, GITHUB_OAUTH_CLIENT_ID};
+use crate::hosting::github_api::{self, github_oauth_client_id, DeviceFlowStart, PollOutcome};
 use crate::hosting::gitlab::GitLab;
 use crate::hosting::net_auth::with_network_auth;
 use crate::hosting::remote::{hosted_remotes, HostedRemote, ProviderKind};
@@ -176,7 +176,7 @@ pub struct HostingInfo {
 pub async fn hosting_info(app: tauri::AppHandle) -> Result<HostingInfo, TwigError> {
     let cfg = config::load(&app);
     Ok(HostingInfo {
-        github_oauth_available: !GITHUB_OAUTH_CLIENT_ID.is_empty() && cfg.github.is_dotcom(),
+        github_oauth_available: !github_oauth_client_id().is_empty() && cfg.github.is_dotcom(),
         github_host: cfg.github.host,
         github_api_base: cfg.github.api_base,
         gitlab_base: cfg.gitlab_base,
@@ -489,7 +489,7 @@ static NEXT_FLOW: AtomicU64 = AtomicU64::new(1);
 /// the user code and verification URL to show.
 #[tauri::command]
 pub async fn github_device_start(app: tauri::AppHandle) -> Result<DeviceFlowStart, TwigError> {
-    if GITHUB_OAUTH_CLIENT_ID.is_empty() {
+    if github_oauth_client_id().is_empty() {
         return Err(TwigError::GitHub("Sign in with GitHub is not configured in this build.".into()));
     }
     let ep = endpoint(&app);
