@@ -72,3 +72,22 @@ export interface CloneProgress {
   op_id: number;
   line: string;
 }
+
+/** A row of the repository dashboard. */
+export interface RepoStatusRow {
+  path: string;
+  name: string;
+  /** Current branch, or a short id when detached; null when unborn. */
+  branch: string | null;
+  detached: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  /** Uncommitted changes (tracked + untracked), capped at 1000. */
+  changes: number;
+  changes_capped: boolean;
+  /** Unix seconds of the last fetch, if ever. */
+  last_fetch: number | null;
+  /** Why the repository couldn't be read. */
+  error: string | null;
+}

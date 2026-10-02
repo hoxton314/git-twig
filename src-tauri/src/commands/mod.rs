@@ -30,6 +30,7 @@ pub mod patches;
 pub mod bisect;
 pub mod grep;
 pub mod lfs;
+pub mod dashboard;
 // File history & blame, stash extras, submodules, worktrees
 pub mod file_views;
 pub mod stash_extra;

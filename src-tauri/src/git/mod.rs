@@ -23,6 +23,7 @@ pub mod bisect;
 pub mod grep;
 pub mod pickaxe;
 pub mod lfs;
+pub mod dashboard;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

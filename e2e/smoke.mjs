@@ -354,6 +354,21 @@ try {
     await session.type(box, "\uE007"); // Enter
     await session.waitFor(".tab .tab-name", { pred: (t) => t.includes("extra-proj"), timeout: 30_000 });
   });
+
+  await step("the dashboard shows every open repository and fetches them all", async () => {
+    await session.click(await session.find('button[aria-label="Home"]'));
+    await session.click(await session.findByText(".groups .link-btn", "Dashboard"));
+    await session.waitFor(".dash tbody tr", { pred: (t) => ["repo", "cloned", "extra-proj"].every((n) => t.some((x) => x.includes(n))) });
+    // The clone tracks origin; the others have no upstream.
+    const rows = await session.texts(".dash tbody tr");
+    const cloned = rows.find((x) => x.includes("cloned")) ?? "";
+    if (!cloned.includes("main") || !cloned.includes("✓")) throw new Error(`unexpected clone row: ${JSON.stringify(cloned)}`);
+    await session.click(await session.findByText(".dash .btn", "Fetch all"));
+    await session.waitFor(".dash td.status", { pred: (t) => t.filter((x) => x === "Fetched").length >= 3, timeout: 60_000 });
+    await session.execute(
+      "document.querySelector('[role=dialog]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));",
+    );
+  });
 } catch (err) {
   failed = true;
   console.log("FAILED");
