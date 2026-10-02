@@ -35,6 +35,12 @@
     revertAction,
   } from "../../lib/commitActions";
   import { pushTagAction } from "../../lib/tagActions";
+  import {
+    applyPatchAction,
+    patchFileName,
+    savePatchesAction,
+    saveWorkingPatchAction,
+  } from "../../lib/patchActions";
   import { openRebaseDialog, openInteractiveRebase } from "../../lib/stores/operation";
   import type { CommitInfo } from "../../lib/types/git";
 
@@ -100,6 +106,11 @@
       { label: "Copy SHA", action: () => copyText(c.oid, "SHA") },
       { label: "Copy short SHA", action: () => copyText(c.short_oid, "short SHA") },
       { label: "Copy message", action: () => copyText(fullMessage(c), "commit message") },
+      {
+        label: "Save as patch…",
+        disabled: c.parent_oids.length > 1,
+        action: () => savePatchesAction(path, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) }),
+      },
       { separator: true },
       { label: "Undo history…", shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
     ];
@@ -124,6 +135,16 @@
     if (pair) {
       items.push(
         { label: "Copy compared range (older..newer)", action: () => copyText(`${pair.from}..${pair.to}`, "range") },
+        { separator: true },
+      );
+    }
+    if (path) {
+      items.push(
+        { label: `Save ${oids.length} commits as one patch file…`, action: () => savePatchesAction(path, oids) },
+        {
+          label: `Save ${oids.length} commits as patch files…`,
+          action: () => savePatchesAction(path, oids, { folder: true }),
+        },
         { separator: true },
       );
     }
@@ -214,6 +235,20 @@
           else copyText(c.oid, "SHA");
         }),
       ),
+      onAction(
+        "save_patch_selected",
+        withSelected((p, c) => {
+          const oids = $selectedCommits;
+          if (oids.length > 1) savePatchesAction(p, oids);
+          else savePatchesAction(p, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) });
+        }),
+      ),
+      onAction("save_working_patch", () => {
+        if ($activeRepoPath) saveWorkingPatchAction($activeRepoPath);
+      }),
+      onAction("apply_patch", () => {
+        if ($activeRepoPath) applyPatchAction($activeRepoPath);
+      }),
       onAction("push_all_tags", () => {
         if ($activeRepoPath) pushTagAction($activeRepoPath);
       }),

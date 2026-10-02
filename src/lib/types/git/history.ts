@@ -117,6 +117,27 @@ export interface RebaseCommit {
   already_upstream: boolean;
 }
 
+/** Summary of a patch file before applying it. */
+export interface PatchInfo {
+  /** "mbox" (format-patch, applied with git am) or "diff". */
+  kind: "mbox" | "diff";
+  /** Commit subjects in an mbox, in order. */
+  commits: string[];
+  /** `git apply --stat` summary. */
+  stat: string;
+  /** Plain diffs: whether it applies cleanly (null for mbox). */
+  applies_cleanly: boolean | null;
+  check_error: string | null;
+}
+
+export interface ApplyPatchResult {
+  success: boolean;
+  message: string;
+  mode: "am" | "apply" | "apply-3way";
+  /** git am stopped (banner), or a three-way apply left conflicts. */
+  conflicted: boolean;
+}
+
 /** A validated "squash these commits" plan. */
 export interface SquashPlan {
   count: number;

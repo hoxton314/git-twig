@@ -26,6 +26,7 @@ pub mod remotes;
 // Conflict resolution & history rewriting (rebase, force push)
 pub mod conflicts;
 pub mod history;
+pub mod patches;
 // File history & blame, stash extras, submodules, worktrees
 pub mod file_views;
 pub mod stash_extra;

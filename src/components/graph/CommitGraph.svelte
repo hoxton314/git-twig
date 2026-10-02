@@ -46,6 +46,8 @@
   } from "./graphLayout";
   import { Loader2, Pencil } from "lucide-svelte";
   import CommitContextMenu from "./CommitContextMenu.svelte";
+  import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
+  import { applyPatchAction, saveWorkingPatchAction } from "../../lib/patchActions";
   import { openCommitMenu, revealRequest } from "../../lib/stores/commitUi";
   import { revealCommit } from "../../lib/stores/fileviews";
   import { EMPTY_SELECTION, extendTo, primaryAfterToggle, toggle } from "../../lib/graphSelection";
@@ -216,6 +218,22 @@
     }
     // WebKit doesn't focus buttons on click; focus the list so arrow keys work.
     containerEl?.focus({ preventScroll: true });
+  }
+
+  let wipMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
+
+  function openWipMenu(e: MouseEvent) {
+    e.preventDefault();
+    const path = repoPath;
+    if (!path) return;
+    wipMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: "Save changes as patch…", action: () => saveWorkingPatchAction(path) },
+        { label: "Apply patch file…", action: () => applyPatchAction(path) },
+      ],
+    };
   }
 
   function selectWip() {
@@ -658,6 +676,10 @@
 
 <CommitContextMenu />
 
+{#if wipMenu}
+  <ContextMenu x={wipMenu.x} y={wipMenu.y} items={wipMenu.items} onclose={() => (wipMenu = null)} />
+{/if}
+
 {#snippet wipRow()}
     {#if hasWip}
       <button
@@ -665,6 +687,7 @@
         class:selected={wipSelected}
         style="height: {ROW_HEIGHT}px;"
         onclick={selectWip}
+        oncontextmenu={openWipMenu}
       >
         <div class="wip-icon">
           <Pencil size={12} />
