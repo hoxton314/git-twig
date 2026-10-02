@@ -40,6 +40,7 @@
   /** OIDs in the order they were loaded, to detect "nothing changed". */
   let originalOrder = $state<string[]>([]);
   let mergesSkipped = $state(0);
+  let ontoNewBase = $state(false);
   let loading = $state(false);
   let loadError = $state<string | null>(null);
   let loadedFor = $state<string | null>(null);
@@ -81,9 +82,16 @@
     loadError = null;
     try {
       const list = await tauri.listRebaseCommits(path, b);
-      rows = list.commits.map((c) => ({ commit: c, action: "pick", message: "" }));
+      // Like `git rebase`, leave out changes the new base already has (they
+      // would pick as empty and pause the rebase); the user can still pick them.
+      rows = list.commits.map((c) => ({
+        commit: c,
+        action: c.already_upstream ? "drop" : "pick",
+        message: "",
+      }));
       originalOrder = list.commits.map((c) => c.oid);
       mergesSkipped = list.merges_skipped;
+      ontoNewBase = list.onto_new_base;
       loadedFor = b ?? "--root";
       if (list.commits.length === 0) loadError = `No commits between ${b ?? "root"} and ${headName}.`;
     } catch (err) {
@@ -195,8 +203,10 @@
   });
 
   const changed = $derived(
-    rows.some((r, i) => r.action !== "pick" || r.commit.oid !== originalOrder[i]),
+    ontoNewBase || rows.some((r, i) => r.action !== "pick" || r.commit.oid !== originalOrder[i]),
   );
+
+  const upstreamCount = $derived(rows.filter((r) => r.commit.already_upstream).length);
 
   const summary = $derived.by(() => {
     const count = (a: RebaseAction) => rows.filter((r) => r.action === a).length;
@@ -273,6 +283,12 @@
     {#if busyOp}
       <div class="warn"><AlertTriangle size={13} /> A {operationLabel($operationState?.kind ?? "")} is in progress. Finish or abort it first.</div>
     {/if}
+    {#if upstreamCount > 0}
+      <div class="warn">
+        <AlertTriangle size={13} /> {upstreamCount} commit{upstreamCount !== 1 ? "s are" : " is"} already in {base.trim()} and
+        {upstreamCount !== 1 ? "are" : "is"} set to drop.
+      </div>
+    {/if}
     {#if mergesSkipped > 0}
       <div class="warn">
         <AlertTriangle size={13} /> {mergesSkipped} merge commit{mergesSkipped !== 1 ? "s" : ""} in range will be flattened (merges are not preserved).
@@ -331,6 +347,9 @@
               </select>
               <span class="oid">{row.commit.short_oid}</span>
               <span class="summary" title={row.commit.message}>{row.commit.summary}</span>
+              {#if row.commit.already_upstream}
+                <span class="upstream-badge" title="The new base already contains this change">in base</span>
+              {/if}
               <span class="author">{row.commit.author_name}</span>
               <span class="moves">
                 <button class="icon-btn" onclick={() => move(i, i - 1)} disabled={i === 0} aria-label="Move up" title="Move up (Alt+↑)">
@@ -570,6 +589,15 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .upstream-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
   }
 
   .author {
