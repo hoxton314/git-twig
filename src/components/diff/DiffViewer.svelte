@@ -19,7 +19,7 @@
   import { onAction } from "../../lib/keybindings";
   import { ensureLanguage, isLanguageReady, languageForPath } from "../../lib/diff/highlight";
   import * as tauri from "../../lib/tauri";
-  import DiffHunk from "./DiffHunk.svelte";
+  import DiffHunk, { WINDOWED_HUNK_MIN_ROWS } from "./DiffHunk.svelte";
   import ImageDiff from "./ImageDiff.svelte";
   import AudioPreview from "./AudioPreview.svelte";
   import {
@@ -65,8 +65,25 @@
   const syntaxOn = $derived($settings.syntax_highlighting ?? true);
   const showWhitespace = $derived($settings.show_whitespace_changes);
 
-  // Huge diffs render fine: DiffHunk windows large hunks, and search is
-  // counted from data through this registry instead of the DOM.
+  // Large hunks are windowed by DiffHunk; small ones render in full. A file
+  // with more than this many rows in small (unwindowed) hunks — a lockfile
+  // or bundle with changes all over — is collapsed behind "Show anyway".
+  const UNWINDOWED_ROWS_LIMIT = 3000;
+  /** Rows a file would render in full (lines in hunks that aren't windowed). */
+  function unwindowedRows(f: DiffFile): number {
+    let n = 0;
+    for (const h of f.hunks) if (h.lines.length <= WINDOWED_HUNK_MIN_ROWS) n += h.lines.length;
+    return n;
+  }
+  // Large files the user explicitly asked to render.
+  let forceShown = $state<Set<string>>(new Set());
+  function showLarge(f: DiffFile) {
+    const next = new Set(forceShown);
+    next.add(fileKey(f));
+    forceShown = next;
+  }
+
+  // Search is counted from data through this registry instead of the DOM.
   const searchRegistry = new DiffSearchRegistry();
   setContext(DIFF_SEARCH_CONTEXT, searchRegistry);
   const searchVersion = searchRegistry.version;
@@ -116,6 +133,7 @@
     void diff;
     blobGen++;
     imageBlobs = {};
+    forceShown = new Set();
     contexts = {};
   });
 
@@ -897,6 +915,11 @@
                   {:else}
                     No content changes
                   {/if}
+                </div>
+              {:else if unwindowedRows(file) > UNWINDOWED_ROWS_LIMIT && !forceShown.has(fileKey(file))}
+                <div class="binary-notice">
+                  Large diff ({unwindowedRows(file).toLocaleString()} lines in {file.hunks.length.toLocaleString()} hunks) hidden
+                  <button class="show-large-btn" onclick={() => showLarge(file)}>Show anyway</button>
                 </div>
               {:else}
                 {@const lang = fileLanguage(file)}

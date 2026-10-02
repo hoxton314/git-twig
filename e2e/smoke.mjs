@@ -54,9 +54,15 @@ writeFileSync(join(repo, "README.md"), "hello\n");
 // A 20k-line file whose every line changes: a 40k-row diff (windowing test).
 const BIG_LINES = 20_000;
 writeFileSync(join(repo, "big.txt"), Array.from({ length: BIG_LINES }, (_, i) => `line ${i}\n`).join(""));
-git("add", "README.md", "big.txt");
+// Every 10th line changes: ~2000 small hunks, too many rows to render unwindowed.
+writeFileSync(join(repo, "scattered.txt"), Array.from({ length: BIG_LINES }, (_, i) => `row ${i}\n`).join(""));
+git("add", "README.md", "big.txt", "scattered.txt");
 git("commit", "-q", "-m", "initial commit");
 writeFileSync(join(repo, "notes.txt"), "from the e2e test\n");
+writeFileSync(
+  join(repo, "scattered.txt"),
+  Array.from({ length: BIG_LINES }, (_, i) => (i % 10 === 0 ? `ROW ${i}\n` : `row ${i}\n`)).join(""),
+);
 writeFileSync(
   join(repo, "big.txt"),
   Array.from({ length: BIG_LINES }, (_, i) => `LINE ${i}\n`).join("") + "needle-at-the-end\n",
@@ -164,7 +170,7 @@ try {
     }
     // Only the pre-modified big.txt (used by the next step) is left.
     const status = git("status", "--porcelain").replace(/\n$/, "");
-    if (status !== " M big.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
+    if (status !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
   });
 
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
@@ -183,6 +189,15 @@ try {
     await session.waitFor(".search-hit.search-active", { pred: (t) => t.some((x) => x.includes("needle")), timeout: 20_000 });
     const after = await session.execute("return document.querySelectorAll('.diff-files tr.line').length;");
     if (!(after < 1500)) throw new Error(`window grew to ${after} rows after jumping to the match`);
+  });
+
+  await step("a file with thousands of small hunks is collapsed behind Show anyway", async () => {
+    const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("scattered.txt")) });
+    const texts = await session.texts(".file-item");
+    await session.click(rows[texts.findIndex((t) => t.includes("scattered.txt"))]);
+    await session.waitFor(".binary-notice", { pred: (t) => t.some((x) => x.includes("Large diff")), timeout: 30_000 });
+    const domRows = await session.execute("return document.querySelectorAll('.diff-files tr.line').length;");
+    if (domRows !== 0) throw new Error(`collapsed diff still rendered ${domRows} rows`);
   });
 
   await step("clone from URL opens the clone in a new tab", async () => {

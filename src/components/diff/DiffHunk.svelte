@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** Hunks with more display rows than this render windowed. */
+  export const WINDOWED_HUNK_MIN_ROWS = 300;
+</script>
+
 <script lang="ts">
   import type {
     DiffHunk as DiffHunkType,
@@ -227,7 +232,7 @@
   // ── Windowed rendering ─────────────────────────────────────────────
   // Large hunks render only the rows near the viewport of the nearest
   // scrolling ancestor; spacer rows keep the scroll height right.
-  const WINDOW_MIN_ROWS = 300;
+  const WINDOW_MIN_ROWS = WINDOWED_HUNK_MIN_ROWS;
   const OVERSCAN = 60;
   const displayCount = $derived(mode === "unified" ? rows.length : splitPairs.length);
   const windowed = $derived(displayCount > WINDOW_MIN_ROWS);
@@ -235,6 +240,8 @@
   /** Measured (average) row height; 0 until measured. */
   let rowPx = $state(0);
   let tbodyEl = $state<HTMLElement | null>(null);
+  let topSpacer = $state<HTMLElement | null>(null);
+  let bottomSpacer = $state<HTMLElement | null>(null);
   let scrollEl: HTMLElement | null = null;
   const range = $derived(windowed ? { start: Math.min(win.start, displayCount), end: Math.min(win.end, displayCount) } : { start: 0, end: displayCount });
 
@@ -266,7 +273,7 @@
   }
 
   $effect(() => {
-    void displayCount;
+    void [displayCount, tbodyEl, topSpacer, bottomSpacer];
     if (!windowed || !rootEl) return;
     scrollEl = scrollParent(rootEl);
     if (!scrollEl) {
@@ -281,17 +288,33 @@
     el.addEventListener("scroll", schedule, { passive: true });
     const ro = new ResizeObserver(schedule);
     ro.observe(el);
+    // The hunk can move without the container scrolling (a file above
+    // collapses, context above expands): a spacer or the table entering or
+    // leaving the viewport signals that the window is stale.
+    const io = new IntersectionObserver(schedule, { root: el, rootMargin: "200px 0px" });
+    for (const target of [tbodyEl, topSpacer, bottomSpacer]) if (target) io.observe(target);
     schedule();
     return () => {
       el.removeEventListener("scroll", schedule);
       ro.disconnect();
+      io.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
   });
 
+  // A different layout invalidates the measured height.
+  $effect(() => {
+    void [wrap, mode];
+    untrack(() => (rowPx = 0));
+  });
+
   // Measure rendered rows (average, so wrapped lines are accounted for).
+  // The top spacer is `start × rowPx`, so a new estimate is compensated in
+  // scrollTop: the content under the viewport stays where it is (WebKit has
+  // no scroll anchoring to do this for us).
   $effect(() => {
     void range;
+    void [wrap, mode];
     if (!windowed || !tbodyEl) return;
     const body = tbodyEl;
     tick().then(() => {
@@ -300,7 +323,12 @@
       let total = 0;
       rendered.forEach((r) => (total += r.offsetHeight));
       const avg = total / rendered.length;
-      if (avg > 0 && Math.abs(avg - rowPx) > 0.5) rowPx = avg;
+      const before = rowHeight();
+      if (avg > 0 && Math.abs(avg - before) > 0.5) {
+        const start = untrack(() => range.start);
+        rowPx = avg;
+        if (scrollEl && start > 0) scrollEl.scrollTop += start * (avg - before);
+      }
     });
   });
 
@@ -417,7 +445,7 @@
     {#if mode === "unified"}
       <table class="unified-table">
         <tbody bind:this={tbodyEl}>
-          {#if range.start > 0}<tr class="spacer" aria-hidden="true"><td colspan="4" style:height="{range.start * rowHeight()}px"></td></tr>{/if}
+          <tr class="spacer" aria-hidden="true" bind:this={topSpacer}><td colspan="4" style:height="{range.start * rowHeight()}px"></td></tr>
           {#each rows.slice(range.start, range.end) as line, k (range.start + k)}
             {@const i = range.start + k}
             <tr
@@ -432,13 +460,13 @@
               <td class="content">{@render text(i, "u")}</td>
             </tr>
           {/each}
-          {#if range.end < displayCount}<tr class="spacer" aria-hidden="true"><td colspan="4" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>{/if}
+          <tr class="spacer" aria-hidden="true" bind:this={bottomSpacer}><td colspan="4" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>
         </tbody>
       </table>
     {:else}
       <table class="split-table">
         <tbody bind:this={tbodyEl}>
-          {#if range.start > 0}<tr class="spacer" aria-hidden="true"><td colspan="5" style:height="{range.start * rowHeight()}px"></td></tr>{/if}
+          <tr class="spacer" aria-hidden="true" bind:this={topSpacer}><td colspan="5" style:height="{range.start * rowHeight()}px"></td></tr>
           {#each splitPairs.slice(range.start, range.end) as pair, k (range.start + k)}
             {@const o = pair.oldRow}
             {@const n = pair.newRow}
@@ -461,7 +489,7 @@
               >{#if n !== null}{@render text(n, "n")}{/if}</td>
             </tr>
           {/each}
-          {#if range.end < displayCount}<tr class="spacer" aria-hidden="true"><td colspan="5" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>{/if}
+          <tr class="spacer" aria-hidden="true" bind:this={bottomSpacer}><td colspan="5" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>
         </tbody>
       </table>
     {/if}
