@@ -35,7 +35,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/commands/launch.rs` | "Open in terminal / editor": `terminal_command` / `editor_command` settings (or platform defaults), split by `split_command` and spawned without a shell; `find_program` does PATH lookup |
 | `src-tauri/src/git/create.rs` | `git init` (folder created if missing) and `git clone` from any URL with streamed progress; commands `init_repository` / `clone_repository` in `commands/repo.rs` (`register_repo` opens the result as a tab) |
 | `src/components/layout/NewRepoDialog.svelte` | Clone-from-URL / initialize dialogs, opened via the `newRepoDialog` store (`src/lib/newRepo.ts`) |
-| `src-tauri/src/git/graph.rs` | Commit graph: paginated walk + lane assignment (`LaneState`), full-history search, locate ref/commit row |
+| `src-tauri/src/git/graph.rs` | Commit graph: paginated walk + lane assignment (`LaneState`), full-history search, locate ref/commit row. The topological order is cached per (repo, tips signature) with lane checkpoints every 2000 rows and an oid→row index, so pages, search and locate don't re-walk history; any ref change rebuilds it. Timings: `src-tauri/src/git/bench.rs` (`TWIG_BENCH_REPO=… cargo test --release bench_large_repo -- --ignored --nocapture`) |
 | `src-tauri/src/git/writer.rs` | CLI-based writes: checkout, commit, push, pull, stage |
 | `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
 | `src-tauri/src/commands/git_config.rs` | Read/write global `~/.gitconfig` values, detect LFS |

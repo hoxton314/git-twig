@@ -5,7 +5,9 @@
 //! the `index` of a commit reported by search/locate is its row in the graph.
 
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use git2::{Commit, Oid, Repository, Revwalk, Sort};
 use serde::{Deserialize, Serialize};
@@ -62,6 +64,12 @@ fn graph_walk<'r>(
         }
         tips.sort();
         tips.hash(&mut hasher);
+    }
+
+    // History can change without any ref moving: `fetch --deepen` /
+    // `--unshallow` rewrites `shallow`, and grafts rewrite parents.
+    for file in ["shallow", "info/grafts"] {
+        std::fs::read(repo.path().join(file)).ok().hash(&mut hasher);
     }
 
     // HEAD too, for a detached HEAD (and as the only tip in current-branch mode).
@@ -156,7 +164,7 @@ pub(crate) struct LaneRow {
 /// reached it sits on the *lowest* lane waiting for it and the other lanes
 /// merge into its node (`merge_ins`), so the mainline never drifts right
 /// after a fork.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct LaneState {
     lanes: Vec<Option<Oid>>,
     max_lanes: usize,
@@ -240,13 +248,170 @@ impl LaneState {
     }
 }
 
+// ── Order cache ──────────────────────────────────────────────────────
+//
+// Topological order needs the whole history walked before the first row, so
+// walking per call made every page, search and locate cost O(history).
+// The order is computed once per (repository, tips signature) and kept with
+// lane-state checkpoints, so a page resumes lane assignment from the nearest
+// checkpoint instead of from row 0. Any ref change alters the tips signature
+// and therefore the key, as do changes to `shallow` and `info/grafts`, so a
+// cached order never describes stale history.
+
+/// A lane-state snapshot is kept every this many rows (small in tests so
+/// the resume-from-checkpoint path is exercised).
+const CHECKPOINT_EVERY: usize = if cfg!(test) { 5 } else { 2000 };
+/// Repositories whose order is kept (a kernel-sized order is ~26 MB).
+const MAX_CACHED_REPOS: usize = 4;
+
+struct OrderCache {
+    key: String,
+    order: Arc<Vec<Oid>>,
+    /// oid → row, built on first use (locate).
+    index: Arc<OnceLock<HashMap<Oid, usize>>>,
+    /// Lane state *before* row `k`, for `k` multiples of CHECKPOINT_EVERY.
+    checkpoints: BTreeMap<usize, LaneState>,
+}
+
+static CACHES: Mutex<Vec<OrderCache>> = Mutex::new(Vec::new());
+
+fn cache_key(repo: &Repository, tips: &str) -> String {
+    format!("{}\u{0}{tips}", repo.path().display())
+}
+
+/// Graph order (and its tips signature) for `opts`, from the cache when the
+/// tips are unchanged.
+fn graph_order(repo: &Repository, opts: &GraphOptions) -> Result<(Arc<Vec<Oid>>, String, String), TwigError> {
+    let (walk, tips) = graph_walk(repo, opts)?;
+    let key = cache_key(repo, &tips);
+    if let Ok(mut caches) = CACHES.lock() {
+        if let Some(pos) = caches.iter().position(|c| c.key == key) {
+            // Most recently used first.
+            let hit = caches.remove(pos);
+            let order = hit.order.clone();
+            caches.insert(0, hit);
+            return Ok((order, tips, key));
+        }
+    }
+    let order: Vec<Oid> = walk.collect::<Result<_, _>>()?;
+    let order = Arc::new(order);
+    if let Ok(mut caches) = CACHES.lock() {
+        // Drop older orders of the same repository and the least recent ones.
+        let prefix = format!("{}\u{0}", repo.path().display());
+        caches.retain(|c| !c.key.starts_with(&prefix));
+        caches.insert(
+            0,
+            OrderCache {
+                key: key.clone(),
+                order: order.clone(),
+                index: Arc::new(OnceLock::new()),
+                checkpoints: BTreeMap::new(),
+            },
+        );
+        caches.truncate(MAX_CACHED_REPOS);
+    }
+    Ok((order, tips, key))
+}
+
+/// The nearest checkpoint at or before `row` (row 0 with a fresh state).
+fn checkpoint_before(key: &str, row: usize) -> (usize, LaneState) {
+    let Ok(caches) = CACHES.lock() else {
+        return (0, LaneState::default());
+    };
+    caches
+        .iter()
+        .find(|c| c.key == key)
+        .and_then(|c| c.checkpoints.range(..=row).next_back().map(|(k, s)| (*k, s.clone())))
+        .unwrap_or((0, LaneState::default()))
+}
+
+fn store_checkpoints(key: &str, new: Vec<(usize, LaneState)>) {
+    if new.is_empty() {
+        return;
+    }
+    if let Ok(mut caches) = CACHES.lock() {
+        if let Some(c) = caches.iter_mut().find(|c| c.key == key) {
+            c.checkpoints.extend(new);
+        }
+    }
+}
+
+/// Row of `oid` in the cached order (builds the index on first use).
+fn row_of(key: &str, order: &[Oid], oid: Oid) -> Option<usize> {
+    let index = CACHES.lock().ok().and_then(|c| c.iter().find(|c| c.key == key).map(|c| c.index.clone()));
+    match index {
+        Some(index) => index
+            .get_or_init(|| order.iter().enumerate().map(|(i, o)| (*o, i)).collect())
+            .get(&oid)
+            .copied(),
+        None => order.iter().position(|o| *o == oid),
+    }
+}
+
 // ── Paginated graph ──────────────────────────────────────────────────
 
 /// Read rows `[skip, skip + limit)` of the commit graph.
 ///
-/// Lanes are computed from the first commit on every call, so rows from
-/// different pages line up as long as `tips` in the responses match.
+/// Lanes are computed in graph order from the nearest cached checkpoint, so
+/// rows from different pages line up as long as `tips` in the responses
+/// match.
 pub fn read_commit_graph_page(
+    repo: &Repository,
+    skip: usize,
+    limit: usize,
+    opts: &GraphOptions,
+) -> Result<CommitGraph, TwigError> {
+    let limit = limit.max(1);
+    let (order, tips, key) = graph_order(repo, opts)?;
+    let end = skip.saturating_add(limit).min(order.len());
+    let (from, mut state) = checkpoint_before(&key, skip);
+    let mut entries: Vec<GraphEntry> = Vec::with_capacity(end.saturating_sub(skip).min(10_000));
+    let mut new_checkpoints = Vec::new();
+
+    for (i, &oid) in order.iter().enumerate().take(end).skip(from) {
+        if i % CHECKPOINT_EVERY == 0 && i > from {
+            new_checkpoints.push((i, state.clone()));
+        }
+        let commit = repo.find_commit(oid)?;
+        let parents: Vec<Oid> = commit.parent_ids().collect();
+        let row = state.step(oid, &parents);
+        if i >= skip {
+            entries.push(GraphEntry {
+                commit: commit_info(&commit),
+                lane: row.lane,
+                has_incoming: row.has_incoming,
+                rails: row.rails,
+                parent_lanes: row.parent_lanes,
+                merge_ins: row.merge_ins,
+            });
+        }
+    }
+    store_checkpoints(&key, new_checkpoints);
+    let has_more = end < order.len();
+
+    let mut refs = build_refs_map(repo)?;
+    if opts.hide_remotes {
+        refs.retain(|_, labels| {
+            labels.retain(|l| l.ref_type != "remote");
+            !labels.is_empty()
+        });
+    }
+
+    Ok(CommitGraph {
+        entries,
+        total_lanes: state.max_lanes(),
+        refs,
+        unpushed_oids: compute_unpushed_oids(repo),
+        offset: skip,
+        has_more,
+        tips,
+    })
+}
+
+/// The pre-cache implementation (walk + lanes from row 0), kept as the
+/// ground truth for tests.
+#[cfg(test)]
+pub(crate) fn read_commit_graph_page_uncached(
     repo: &Repository,
     skip: usize,
     limit: usize,
@@ -355,12 +520,12 @@ pub fn search_commits(
     opts: &GraphOptions,
     max_results: usize,
 ) -> Result<CommitSearchResult, TwigError> {
-    let (walk, tips) = graph_walk(repo, opts)?;
     let matcher = Matcher::new(query);
     let mut matches = Vec::new();
     let mut truncated = false;
     let mut scanned = 0;
     if matcher.needle.is_empty() {
+        let (_, tips) = graph_walk(repo, opts)?;
         return Ok(CommitSearchResult {
             matches,
             truncated,
@@ -368,9 +533,9 @@ pub fn search_commits(
             tips,
         });
     }
+    let (order, tips, _) = graph_order(repo, opts)?;
 
-    for (index, oid) in walk.enumerate() {
-        let oid = oid?;
+    for (index, &oid) in order.iter().enumerate() {
         scanned = index + 1;
         let commit = repo.find_commit(oid)?;
         if matcher.matches(&commit) {
@@ -420,14 +585,8 @@ pub fn locate_commit(
         .and_then(|o| o.peel_to_commit())
         .map_err(|_| TwigError::InvalidArgument(format!("'{rev}' does not name a commit")))?
         .id();
-    let (walk, tips) = graph_walk(repo, opts)?;
-    let mut index = None;
-    for (i, oid) in walk.enumerate() {
-        if oid? == target {
-            index = Some(i);
-            break;
-        }
-    }
+    let (order, tips, key) = graph_order(repo, opts)?;
+    let index = row_of(&key, &order, target);
     Ok(LocatedCommit {
         oid: target.to_string(),
         index,
@@ -673,6 +832,98 @@ mod tests {
         assert_eq!(tags[0].commit_summary.as_deref(), Some(subject));
         assert_eq!(tags[0].message.as_deref(), Some("release notes"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The cached order + checkpoints give exactly the rows of the original
+    /// walk-from-row-0 implementation, for any page size and request order,
+    /// and a new commit (tips change) is picked up.
+    #[test]
+    fn cached_pages_match_uncached_walk() {
+        let dir = temp_repo("cache-eq");
+        for i in 0..30 {
+            commit(&dir, &format!("base {i}"));
+        }
+        for b in 0..4 {
+            git(&dir, &["checkout", "-q", "-b", &format!("f{b}"), &format!("main~{}", 5 * b)]);
+            for i in 0..(7 + b) {
+                commit(&dir, &format!("f{b} {i}"));
+            }
+            git(&dir, &["checkout", "-q", "main"]);
+            if b % 2 == 0 {
+                git(&dir, &["merge", "-q", "--no-ff", "-m", &format!("merge f{b}"), &format!("f{b}")]);
+            }
+        }
+        git(&dir, &["merge", "-q", "--no-ff", "-m", "octopus", "f1", "f3"]);
+        let repo = Repository::open(&dir).unwrap();
+        let opts = GraphOptions::default();
+
+        let check = |repo: &Repository| {
+            let truth = read_commit_graph_page_uncached(repo, 0, 10_000, &opts).unwrap();
+            let n = truth.entries.len();
+            for page in [1usize, 3, 7, 50] {
+                // Request pages back to front so later rows are served before
+                // their checkpoints exist, then front to back.
+                let starts: Vec<usize> = (0..n).step_by(page).collect();
+                for &skip in starts.iter().rev().chain(starts.iter()) {
+                    let got = read_commit_graph_page(repo, skip, page, &opts).unwrap();
+                    let want = read_commit_graph_page_uncached(repo, skip, page, &opts).unwrap();
+                    assert_eq!(got.tips, want.tips);
+                    assert_eq!(got.has_more, want.has_more, "skip {skip} page {page}");
+                    assert_eq!(got.total_lanes, want.total_lanes, "skip {skip} page {page}");
+                    assert_eq!(got.entries.len(), want.entries.len());
+                    for (a, b) in got.entries.iter().zip(&want.entries) {
+                        assert_eq!(a.commit.oid, b.commit.oid);
+                        assert_eq!((a.lane, a.has_incoming), (b.lane, b.has_incoming));
+                        assert_eq!(a.rails, b.rails);
+                        assert_eq!(a.parent_lanes, b.parent_lanes);
+                        assert_eq!(a.merge_ins, b.merge_ins);
+                    }
+                }
+            }
+            n
+        };
+        let before = check(&repo);
+        // New commit: tips change, so the cache must not serve the old order.
+        commit(&dir, "after cache");
+        let after = check(&repo);
+        assert_eq!(after, before + 1);
+        let top = read_commit_graph_page(&repo, 0, 1, &opts).unwrap();
+        assert_eq!(top.entries[0].commit.summary, "after cache");
+        // Search and locate use the same cached order.
+        let res = search_commits(&repo, "f2 3", &opts, 10).unwrap();
+        let full = read_commit_graph_page_uncached(&repo, 0, 10_000, &opts).unwrap();
+        for m in &res.matches {
+            assert_eq!(full.entries[m.index].commit.oid, m.commit.oid);
+        }
+        let loc = locate_commit(&repo, "f3", &opts).unwrap();
+        assert_eq!(full.entries[loc.index.unwrap()].commit.oid, loc.oid);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Deepening a shallow clone changes history without moving any ref:
+    /// the cache must notice.
+    #[test]
+    fn deepening_a_shallow_clone_invalidates_the_cache() {
+        let src = temp_repo("shallow-src");
+        for i in 0..10 {
+            commit(&src, &format!("c{i}"));
+        }
+        let clone = src.with_extension("clone");
+        let _ = std::fs::remove_dir_all(&clone);
+        let url = format!("file://{}", src.display());
+        git(&src, &["clone", "-q", "--depth", "3", &url, &clone.to_string_lossy()]);
+        let repo = Repository::open(&clone).unwrap();
+        let opts = GraphOptions::default();
+        let before = read_commit_graph_page(&repo, 0, 100, &opts).unwrap();
+        assert_eq!(before.entries.len(), 3);
+        git(&clone, &["fetch", "-q", "--unshallow"]);
+        // Twig opens a fresh handle per read (libgit2 caches shallow info).
+        let repo = Repository::open(&clone).unwrap();
+        let after = read_commit_graph_page(&repo, 0, 100, &opts).unwrap();
+        assert_eq!(after.entries.len(), 10, "stale cached order after --unshallow");
+        assert_ne!(after.tips, before.tips);
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&clone);
     }
 
     #[test]
