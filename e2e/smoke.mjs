@@ -184,6 +184,32 @@ try {
     if (status !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
   });
 
+  await step("Ctrl-clicking a second commit compares the two", async () => {
+    await session.click(await session.findByText(".commit-row", "add notes from e2e"));
+    await session.waitFor(".diff-title .oid");
+    // WebDriver's element click carries no modifiers; dispatch a Ctrl-click.
+    const older = await session.findByText(".commit-row", "initial commit");
+    await session.execute(
+      "arguments[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));",
+      [{ "element-6066-11e4-a52e-4f735466cecf": older }],
+    );
+    await session.waitFor(".diff-title", { pred: (t) => t.some((x) => x.includes("Comparing")) });
+    const selected = await session.execute("return document.querySelectorAll('.commit-row.selected').length;");
+    if (selected !== 2) throw new Error(`expected 2 selected rows, found ${selected}`);
+    await session.waitFor(".diff-files", { pred: (t) => t.some((x) => x.includes("notes.txt")) });
+    // Escape clears the whole selection.
+    await session.execute(
+      "document.querySelector('.commit-graph')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));",
+    );
+    const end = Date.now() + 5_000;
+    let left = -1;
+    while (Date.now() < end && left !== 0) {
+      left = await session.execute("return document.querySelectorAll('.commit-row.selected').length;");
+      if (left !== 0) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (left !== 0) throw new Error(`Escape left ${left} rows selected`);
+  });
+
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
     const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("big.txt")) });
     const texts = await session.texts(".file-item");

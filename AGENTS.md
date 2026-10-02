@@ -43,6 +43,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/tauri.ts` | Re-exports the typed `invoke()` wrappers from `src/lib/api/<area>.ts` (repo, graph, branches, diff, stash, settings, github, history, workspace, hosting); import as `import * as tauri from "…/lib/tauri"` |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
 | `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
+| `src/lib/graphSelection.ts` | Graph multi-selection (Ctrl/Shift-click ranges) and the two-commit compare pair; stores `commitSelection` / `selectedCommits` in `graph.ts` |
 | `src/lib/stores/clock.ts` | Shared minute clock (`now`) for relative dates |
 | `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |

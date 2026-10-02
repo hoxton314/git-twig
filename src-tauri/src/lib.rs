@@ -48,6 +48,7 @@ pub fn run() {
             commands::branches::fetch_all,
             // Diffs
             commands::diff::get_commit_diff,
+            commands::diff::get_compare_diff,
             commands::diff::get_working_diff,
             commands::diff::get_file_blob,
             // Staging & working directory

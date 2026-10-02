@@ -1,4 +1,4 @@
-import { writable, get } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type {
   CommitGraph,
   BranchInfo,
@@ -11,6 +11,7 @@ import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
 import { settings } from "./settings";
 import { toastError } from "./toasts";
+import { EMPTY_SELECTION, effectiveSelection, pruneSelection, type Selection } from "../graphSelection";
 
 /** Graph page size ("commits per page" setting). */
 export function graphPageSize(): number {
@@ -49,6 +50,14 @@ export const branches = writable<BranchInfo[]>([]);
 
 /** The currently selected commit OID (for showing its diff). */
 export const selectedCommitOid = writable<string | null>(null);
+
+/** Extra graph selection (Ctrl/Shift-click); see `graphSelection.ts`. */
+export const commitSelection = writable<Selection>(EMPTY_SELECTION);
+
+/** The selected commits in graph order (one, or several when multi-selecting). */
+export const selectedCommits = derived([commitSelection, selectedCommitOid], ([sel, primary]) =>
+  effectiveSelection(sel, primary),
+);
 
 /** Diff files for the selected commit. */
 export const selectedDiff = writable<DiffFile[]>([]);
@@ -90,6 +99,7 @@ activeRepoPath.subscribe((p) => {
   graphLoading.set(p !== null);
   branches.set([]);
   selectedCommitOid.set(null);
+  commitSelection.set(EMPTY_SELECTION);
   selectedDiff.set([]);
   selectedWorkingFile.set(null);
   workingFileDiff.set([]);
@@ -190,6 +200,16 @@ export async function refreshStatus(path?: string) {
   }
 }
 
+/** Install a reloaded graph, dropping selected commits it no longer has. */
+function setReloadedGraph(graph: CommitGraph) {
+  const old = get(commitGraph);
+  if (old) {
+    const oids = (g: CommitGraph) => g.entries.map((e) => e.commit.oid);
+    commitSelection.update((sel) => pruneSelection(sel, oids(old), oids(graph)));
+  }
+  commitGraph.set(graph);
+}
+
 /**
  * Load only the commit graph for `path` (used when switching repos or view
  * options). Fetches at least `minCount` rows and keeps rows already paged in.
@@ -199,7 +219,7 @@ export async function loadGraph(path: string, minCount = 0) {
   graphLoading.set(true);
   try {
     const graph = await tauri.getCommitGraph(path, reloadCount(minCount), 0, graphOptions());
-    if (gen === refreshGen && stillActive(path)) commitGraph.set(graph);
+    if (gen === refreshGen && stillActive(path)) setReloadedGraph(graph);
   } catch (err) {
     console.error("Failed to load commit graph:", err);
     if (gen === refreshGen && stillActive(path)) commitGraph.set(null);
@@ -228,7 +248,7 @@ export async function refreshAll(path?: string) {
     // Discard if the user switched repos (or a newer refresh started)
     // while this was in flight.
     if (gen !== refreshGen || !stillActive(p)) return;
-    commitGraph.set(graph);
+    setReloadedGraph(graph);
     branches.set(branchList);
     updateRepo(info);
     workingStatus.set(status);

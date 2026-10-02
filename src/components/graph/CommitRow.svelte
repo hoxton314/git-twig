@@ -10,7 +10,7 @@
     isSelected: boolean;
     isUnpushed: boolean;
     refs: RefLabel[];
-    onSelect: () => void;
+    onSelect: (e: MouseEvent) => void;
     /** Column visibility (widths come from CSS vars set by CommitGraph). */
     showAuthor?: boolean;
     showSha?: boolean;
@@ -90,6 +90,10 @@
   aria-pressed={isSelected}
   tabindex="-1"
   onclick={onSelect}
+  onmousedown={(e) => {
+    // Shift-click extends the selection; don't let it select text too.
+    if (e.shiftKey) e.preventDefault();
+  }}
   {oncontextmenu}
 >
   <img

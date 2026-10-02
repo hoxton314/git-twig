@@ -21,6 +21,23 @@ pub async fn get_commit_diff(
         .await
 }
 
+/// Diff between two commits (`from` → `to`), for comparing graph selections.
+#[tauri::command]
+pub async fn get_compare_diff(
+    state: State<'_, AppState>,
+    path: String,
+    from: String,
+    to: String,
+    options: Option<reader::DiffReadOptions>,
+) -> Result<Vec<DiffFile>, TwigError> {
+    let options = options.unwrap_or_default();
+    state
+        .read_repo(&path, move |repo| {
+            reader::read_compare_diff_with(repo, &from, &to, &options)
+        })
+        .await
+}
+
 /// Get raw file content as base64 from a given source (workdir, index, head, or commit OID).
 /// Returns null if the file doesn't exist in that source.
 /// Largest blob `get_file_blob` will return for image/audio previews.
