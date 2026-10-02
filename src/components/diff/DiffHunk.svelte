@@ -6,6 +6,9 @@
   } from "../../lib/types/git";
   import { highlightLines, isLanguageReady, type SyntaxToken } from "../../lib/diff/highlight";
   import { wordDiff, findMatches, buildSegments, type Range, type Segment } from "../../lib/diff/inline";
+  import { getContext, tick, untrack } from "svelte";
+  import { readable } from "svelte/store";
+  import { DIFF_SEARCH_CONTEXT, type DiffSearchRegistry } from "../../lib/diff/searchRegistry";
 
   interface Props {
     hunk: DiffHunkType;
@@ -141,9 +144,12 @@
 
   // ── Syntax highlighting ────────────────────────────────────────────
   // Each side is highlighted as one block so multi-line constructs work.
+  // Skipped for huge hunks: highlighting is the costly part and the window
+  // only shows a few hundred rows anyway.
+  const SYNTAX_MAX_ROWS = 5000;
   const syntax = $derived.by((): (SyntaxToken[] | null)[] => {
     const out: (SyntaxToken[] | null)[] = rows.map(() => null);
-    if (!language || !isLanguageReady(language)) return out;
+    if (!language || !isLanguageReady(language) || rows.length > SYNTAX_MAX_ROWS) return out;
     const oldIdx: number[] = [];
     const newIdx: number[] = [];
     rows.forEach((r, i) => {
@@ -174,11 +180,148 @@
     return out;
   });
 
-  const segments = $derived<Segment[][]>(
-    rows.map((r, i) =>
-      buildSegments(r.content, syntax[i], changedRanges[i], findMatches(r.content, search)),
-    ),
-  );
+  // Segments are built on demand for rendered rows only (a fresh cache per
+  // input change; mutating it doesn't need reactivity).
+  const segCache = $derived.by(() => {
+    void [rows, syntax, changedRanges, search];
+    return new Map<number, Segment[]>();
+  });
+  function seg(i: number): Segment[] {
+    let out = segCache.get(i);
+    if (!out) {
+      const r = rows[i];
+      out = buildSegments(r.content, syntax[i], changedRanges[i], findMatches(r.content, search));
+      segCache.set(i, out);
+    }
+    return out;
+  }
+
+  // ── Search (counted from data; see searchRegistry.ts) ───────────────
+  const registry = getContext<DiffSearchRegistry | undefined>(DIFF_SEARCH_CONTEXT);
+  const activeMatch = registry ? registry.active : readable<string | null>(null);
+  const matchIds = $derived.by((): string[] => {
+    if (!search) return [];
+    const ids: string[] = [];
+    const add = (ri: number, side: string) => {
+      const n = findMatches(rows[ri].content, search).length;
+      for (let m = 0; m < n; m++) ids.push(`${matchPrefix}:${ri}:${side}:${m}`);
+    };
+    if (mode === "unified") rows.forEach((_, i) => add(i, "u"));
+    else
+      for (const p of splitPairs) {
+        if (p.oldRow !== null) add(p.oldRow, "o");
+        if (p.newRow !== null) add(p.newRow, "n");
+      }
+    return ids;
+  });
+
+  let rootEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!registry || !rootEl) return;
+    const el = rootEl;
+    const key = matchPrefix;
+    registry.register(key, el, matchIds);
+    return () => registry.unregister(key, el);
+  });
+
+  // ── Windowed rendering ─────────────────────────────────────────────
+  // Large hunks render only the rows near the viewport of the nearest
+  // scrolling ancestor; spacer rows keep the scroll height right.
+  const WINDOW_MIN_ROWS = 300;
+  const OVERSCAN = 60;
+  const displayCount = $derived(mode === "unified" ? rows.length : splitPairs.length);
+  const windowed = $derived(displayCount > WINDOW_MIN_ROWS);
+  let win = $state({ start: 0, end: 2 * OVERSCAN });
+  /** Measured (average) row height; 0 until measured. */
+  let rowPx = $state(0);
+  let tbodyEl = $state<HTMLElement | null>(null);
+  let scrollEl: HTMLElement | null = null;
+  const range = $derived(windowed ? { start: Math.min(win.start, displayCount), end: Math.min(win.end, displayCount) } : { start: 0, end: displayCount });
+
+  function scrollParent(el: HTMLElement): HTMLElement | null {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const oy = getComputedStyle(p).overflowY;
+      if (oy === "auto" || oy === "scroll") return p;
+    }
+    return null;
+  }
+
+  function rowHeight(): number {
+    if (rowPx > 0) return rowPx;
+    const fs = rootEl ? parseFloat(getComputedStyle(rootEl).fontSize) : 13;
+    return (fs || 13) * 1.5;
+  }
+
+  function updateWindow() {
+    if (!windowed || !tbodyEl || !scrollEl) return;
+    const rh = rowHeight();
+    const sr = scrollEl.getBoundingClientRect();
+    const tr = tbodyEl.getBoundingClientRect();
+    const above = sr.top - tr.top; // px of this table above the viewport top
+    let start = Math.max(0, Math.floor(above / rh) - OVERSCAN);
+    let end = Math.ceil((above + sr.height) / rh) + OVERSCAN;
+    start = Math.min(start, displayCount);
+    end = Math.max(Math.min(end, displayCount), Math.min(start + 1, displayCount));
+    if (start !== win.start || end !== win.end) win = { start, end };
+  }
+
+  $effect(() => {
+    void displayCount;
+    if (!windowed || !rootEl) return;
+    scrollEl = scrollParent(rootEl);
+    if (!scrollEl) {
+      win = { start: 0, end: displayCount };
+      return;
+    }
+    const el = scrollEl;
+    let raf = 0;
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; updateWindow(); });
+    };
+    el.addEventListener("scroll", schedule, { passive: true });
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    schedule();
+    return () => {
+      el.removeEventListener("scroll", schedule);
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  });
+
+  // Measure rendered rows (average, so wrapped lines are accounted for).
+  $effect(() => {
+    void range;
+    if (!windowed || !tbodyEl) return;
+    const body = tbodyEl;
+    tick().then(() => {
+      const rendered = body.querySelectorAll<HTMLElement>("tr.line");
+      if (rendered.length === 0) return;
+      let total = 0;
+      rendered.forEach((r) => (total += r.offsetHeight));
+      const avg = total / rendered.length;
+      if (avg > 0 && Math.abs(avg - rowPx) > 0.5) rowPx = avg;
+    });
+  });
+
+  // The active search match lives in this hunk: bring its row into the
+  // window, then into view. Runs only when the active match changes.
+  $effect(() => {
+    const id = $activeMatch;
+    if (!id || !id.startsWith(matchPrefix + ":")) return;
+    const ri = Number(id.slice(matchPrefix.length + 1).split(":")[0]);
+    untrack(() => {
+      const di = mode === "unified" ? ri : splitPairs.findIndex((p) => p.oldRow === ri || p.newRow === ri);
+      if (windowed && scrollEl && tbodyEl && (di < range.start || di >= range.end)) {
+        const offset = tbodyEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
+        scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop + offset + di * rowHeight() - scrollEl.clientHeight / 2);
+        updateWindow();
+      }
+    });
+    tick().then(() =>
+      rootEl?.querySelector(`[data-m="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+    );
+  });
 
   // ── Line selection ─────────────────────────────────────────────────
   let selected = $state<Set<number>>(new Set());
@@ -223,10 +366,11 @@
     }
   }
 
-  function segClass(s: Segment): string {
+  function segClass(s: Segment, id: string | undefined): string {
     let c = s.cls;
     if (s.changed) c += " wd-changed";
     if (s.match >= 0) c += " search-hit";
+    if (id && id === $activeMatch) c += " search-active";
     return c;
   }
 
@@ -236,11 +380,11 @@
 
 {#snippet eol()}<span class="no-eol" title="No newline at end of file">&#8856;</span>{/snippet}
 
-{#snippet text(ri: number, side: string)}{#each segments[ri] as s, si (si)}{#if s.cls || s.changed || s.match >= 0}<span class={segClass(s)} data-m={s.match >= 0 ? `${matchPrefix}:${ri}:${side}:${s.match}` : undefined} data-match-start={s.matchStart ? "" : undefined}>{s.text}</span>{:else}{s.text}{/if}{/each}{#if rows[ri].noEol}{@render eol()}{/if}{/snippet}
+{#snippet text(ri: number, side: string)}{#each seg(ri) as s, si (si)}{#if s.cls || s.changed || s.match >= 0}{@const mid = s.match >= 0 ? `${matchPrefix}:${ri}:${side}:${s.match}` : undefined}<span class={segClass(s, mid)} data-m={mid} data-match-start={s.matchStart ? "" : undefined}>{s.text}</span>{:else}{s.text}{/if}{/each}{#if rows[ri].noEol}{@render eol()}{/if}{/snippet}
 
 {#snippet lineno(ri: number, n: number | null)}{#if selectable && isChange(rows[ri])}<button class="ln-btn" class:on={selected.has(ri)} aria-pressed={selected.has(ri)} title="Select line (Shift+click for a range)" onclick={(e) => toggleRow(ri, e)}>{n ?? ""}</button>{:else}{n ?? ""}{/if}{/snippet}
 
-<div class="hunk" class:wrap class:syn={!!language} class:hunk-anchor={showHeader} style:tab-size={tabSize}>
+<div class="hunk" class:wrap class:syn={!!language} class:hunk-anchor={showHeader} style:tab-size={tabSize} bind:this={rootEl}>
   {#if showHeader}
     <div class="hunk-header">
       <span class="hunk-header-text">{hunk.header.trim()}</span>
@@ -272,8 +416,10 @@
   <div class="hunk-scroll">
     {#if mode === "unified"}
       <table class="unified-table">
-        <tbody>
-          {#each rows as line, i (i)}
+        <tbody bind:this={tbodyEl}>
+          {#if range.start > 0}<tr class="spacer" aria-hidden="true"><td colspan="4" style:height="{range.start * rowHeight()}px"></td></tr>{/if}
+          {#each rows.slice(range.start, range.end) as line, k (range.start + k)}
+            {@const i = range.start + k}
             <tr
               class="line"
               class:line-add={line.origin === "+"}
@@ -286,12 +432,14 @@
               <td class="content">{@render text(i, "u")}</td>
             </tr>
           {/each}
+          {#if range.end < displayCount}<tr class="spacer" aria-hidden="true"><td colspan="4" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>{/if}
         </tbody>
       </table>
     {:else}
       <table class="split-table">
-        <tbody>
-          {#each splitPairs as pair, i (i)}
+        <tbody bind:this={tbodyEl}>
+          {#if range.start > 0}<tr class="spacer" aria-hidden="true"><td colspan="5" style:height="{range.start * rowHeight()}px"></td></tr>{/if}
+          {#each splitPairs.slice(range.start, range.end) as pair, k (range.start + k)}
             {@const o = pair.oldRow}
             {@const n = pair.newRow}
             {@const ctx = o !== null && o === n}
@@ -313,6 +461,7 @@
               >{#if n !== null}{@render text(n, "n")}{/if}</td>
             </tr>
           {/each}
+          {#if range.end < displayCount}<tr class="spacer" aria-hidden="true"><td colspan="5" style:height="{(displayCount - range.end) * rowHeight()}px"></td></tr>{/if}
         </tbody>
       </table>
     {/if}
@@ -442,6 +591,11 @@
   }
 
   tr.line {
+    border: none;
+  }
+
+  tr.spacer td {
+    padding: 0;
     border: none;
   }
 

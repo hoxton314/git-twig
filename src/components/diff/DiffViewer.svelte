@@ -1,6 +1,7 @@
 <script lang="ts">
   import { searchResult } from "../../lib/stores/graphSearch";
-  import { onMount, tick } from "svelte";
+  import { onMount, setContext, tick } from "svelte";
+  import { DiffSearchRegistry, DIFF_SEARCH_CONTEXT } from "../../lib/diff/searchRegistry";
   import { ask } from "@tauri-apps/plugin-dialog";
   import {
     selectedCommitOid,
@@ -64,9 +65,11 @@
   const syntaxOn = $derived($settings.syntax_highlighting ?? true);
   const showWhitespace = $derived($settings.show_whitespace_changes);
 
-  // Files with more diff lines than this are collapsed behind a "show anyway"
-  // button so a huge generated/minified file can't freeze the UI.
-  const LARGE_DIFF_LINES = 2000;
+  // Huge diffs render fine: DiffHunk windows large hunks, and search is
+  // counted from data through this registry instead of the DOM.
+  const searchRegistry = new DiffSearchRegistry();
+  setContext(DIFF_SEARCH_CONTEXT, searchRegistry);
+  const searchVersion = searchRegistry.version;
 
   // Show working file diff when a working file is selected or WIP row clicked, otherwise commit diff
   const isWipMode = $derived(commitOid === "__wip__");
@@ -80,9 +83,6 @@
   );
 
   let expandedFiles = $state<Set<string>>(new Set());
-
-  // Large files the user explicitly asked to render.
-  let forceShown = $state<Set<string>>(new Set());
 
   // Image blob cache: fileKey -> { old, new, loading }
   let imageBlobs = $state<Record<string, { old: string | null; new: string | null; loading: boolean }>>({});
@@ -116,7 +116,6 @@
     void diff;
     blobGen++;
     imageBlobs = {};
-    forceShown = new Set();
     contexts = {};
   });
 
@@ -166,18 +165,6 @@
     } finally {
       if (req === diffRequest) $diffLoading = false;
     }
-  }
-
-  function lineCount(f: DiffFile): number {
-    let n = 0;
-    for (const h of f.hunks) n += h.lines.length;
-    return n;
-  }
-
-  function showLarge(f: DiffFile) {
-    const next = new Set(forceShown);
-    next.add(fileKey(f));
-    forceShown = next;
   }
 
   function displayPath(f: DiffFile): string {
@@ -649,30 +636,15 @@
     }
   }
 
-  // After every render that can change matches, recount and mark the active one.
+  // Count matches from every registered hunk (in document order) and
+  // publish the active one; its hunk highlights it and scrolls it into view.
   $effect(() => {
-    void [searchQuery, diff, expandedFiles, viewMode, contexts, forceShown, langVersion, activeMatch];
-    const container = filesEl;
-    tick().then(() => {
-      if (!container) return;
-      for (const el of container.querySelectorAll(".search-active")) el.classList.remove("search-active");
-      if (!searchQuery) {
-        matchCount = 0;
-        return;
-      }
-      const starts = Array.from(container.querySelectorAll<HTMLElement>("[data-match-start]"));
-      matchCount = starts.length;
-      if (starts.length === 0) return;
-      if (activeMatch >= starts.length) activeMatch = 0;
-      const first = starts[activeMatch];
-      const id = first.dataset.m;
-      if (id) {
-        for (const el of container.querySelectorAll<HTMLElement>(`[data-m="${CSS.escape(id)}"]`)) {
-          el.classList.add("search-active");
-        }
-      }
-      first.scrollIntoView({ block: "nearest", inline: "nearest" });
-    });
+    void $searchVersion;
+    const ids = searchQuery ? searchRegistry.orderedIds() : [];
+    matchCount = ids.length;
+    const idx = activeMatch < ids.length ? activeMatch : 0;
+    if (idx !== activeMatch) activeMatch = idx;
+    searchRegistry.active.set(ids[idx] ?? null);
   });
 
   function onRootKeydown(e: KeyboardEvent) {
@@ -861,7 +833,6 @@
            same path can legitimately appear twice. -->
       {#each diff as file, fi (`${fi}:${fileKey(file)}`)}
         {@const expanded = expandedFiles.has(fileKey(file))}
-        {@const lines = lineCount(file)}
         <div class="file-section">
           <button
             class="file-header"
@@ -926,11 +897,6 @@
                   {:else}
                     No content changes
                   {/if}
-                </div>
-              {:else if lines > LARGE_DIFF_LINES && !forceShown.has(fileKey(file))}
-                <div class="binary-notice">
-                  Large diff ({lines.toLocaleString()} lines) hidden
-                  <button class="show-large-btn" onclick={() => showLarge(file)}>Show anyway</button>
                 </div>
               {:else}
                 {@const lang = fileLanguage(file)}
