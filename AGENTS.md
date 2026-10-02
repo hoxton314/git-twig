@@ -116,6 +116,10 @@ Rust-only check:
 cd src-tauri && cargo check
 ```
 
+CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `npm run check`,
+`npm run build`, `cargo clippy --all-targets -- -D warnings` and `cargo test` on ubuntu-22.04. Keep
+all four green locally before pushing. Releases are built separately by `release.yml` on `v*` tags.
+
 ## Coding Conventions
 
 ### Rust

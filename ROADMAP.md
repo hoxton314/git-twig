@@ -9,11 +9,11 @@ Order within a release is rough priority.
 
 ## v0.3.x — Stabilize
 
-- Hands-on QA pass over every 0.3 feature; fix what breaks. Highest risk: interactive rebase,
+- [ ] Hands-on QA pass over every 0.3 feature; fix what breaks. Highest risk: interactive rebase,
   line staging, conflict resolution, history pagination.
-- Verify hosting integrations against live services: pull requests, CI status, GitLab, Gitea.
-- CI on every push and pull request (type check, clippy, tests). Today checks only run on release tags.
-- Settle open decisions: whether whitespace-only changes are hidden by default; register the
+- [ ] Verify hosting integrations against live services: pull requests, CI status, GitLab, Gitea.
+- [x] CI on every push and pull request (type check, build, clippy, tests) via `.github/workflows/ci.yml`.
+- [ ] Settle open decisions: whether whitespace-only changes are hidden by default; register the
   OAuth app (`GITHUB_OAUTH_CLIENT_ID`) to enable "Sign in with GitHub".
 
 ## v0.4 — Foundations and everyday gaps
