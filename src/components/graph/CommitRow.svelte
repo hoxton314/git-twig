@@ -8,9 +8,10 @@
     isUnpushed: boolean;
     refs: RefLabel[];
     onSelect: () => void;
+    oncontextmenu?: (e: MouseEvent) => void;
   }
 
-  let { entry, isSelected, isUnpushed, refs, onSelect }: Props = $props();
+  let { entry, isSelected, isUnpushed, refs, onSelect, oncontextmenu }: Props = $props();
 
   const commit = $derived(entry.commit);
   const gravatarUrl = $derived(
@@ -49,6 +50,7 @@
   aria-pressed={isSelected}
   tabindex="-1"
   onclick={onSelect}
+  {oncontextmenu}
 >
   <img
     class="avatar"

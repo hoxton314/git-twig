@@ -10,3 +10,6 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Commit context menu, undo history (reflog), tags
+pub mod commit_ops;
+pub mod tags;

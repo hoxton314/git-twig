@@ -33,6 +33,16 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // Commit context menu, undo history, tags
+  { id: "commit_context_menu",  label: "Open commit context menu",          category: "Commit", defaultShortcut: "Shift+F10" },
+  { id: "branch_from_selected", label: "Create branch at selected commit…", category: "Commit", defaultShortcut: "" },
+  { id: "create_tag",           label: "Create tag at selected commit…",    category: "Commit", defaultShortcut: "" },
+  { id: "cherry_pick_selected", label: "Cherry-pick selected commit",       category: "Commit", defaultShortcut: "" },
+  { id: "revert_selected",      label: "Revert selected commit",            category: "Commit", defaultShortcut: "" },
+  { id: "copy_commit_sha",      label: "Copy selected commit SHA",          category: "Commit", defaultShortcut: "" },
+  { id: "show_undo_history",    label: "Undo history (reflog)…",            category: "Git",    defaultShortcut: "Ctrl+Shift+H" },
+  { id: "push_all_tags",        label: "Push all tags",                     category: "Git",    defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

@@ -7,6 +7,7 @@
   import StagingArea from "../staging/StagingArea.svelte";
   import HomeScreen from "./HomeScreen.svelte";
   import Toaster from "../shared/Toaster.svelte";
+  import UndoHistory from "../reflog/UndoHistory.svelte";
   import SettingsScreen from "../settings/SettingsScreen.svelte";
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
@@ -273,6 +274,7 @@
   {/if}
 
   <Toaster />
+  <UndoHistory />
 </div>
 
 <style>
