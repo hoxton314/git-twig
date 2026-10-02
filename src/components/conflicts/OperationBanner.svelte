@@ -21,7 +21,10 @@
     skipOperation,
     openConflictResolver,
     refreshOperation,
+    bisectState,
   } from "../../lib/stores/operation";
+  import { bisectProgress, markBisect } from "../../lib/bisectActions";
+  import { revealCommit } from "../../lib/stores/commitUi";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { refreshAll } from "../../lib/stores/graph";
   import { settings } from "../../lib/stores/settings";
@@ -34,6 +37,7 @@
   const conflicts = $derived(st?.conflicts ?? []);
   const active = $derived(st !== null && (st.kind !== "none" || conflicts.length > 0));
   const inOperation = $derived(st !== null && st.kind !== "none");
+  const bisect = $derived(st?.kind === "bisect" ? $bisectState : null);
 
   let expanded = $state(true);
   let fileBusy = $state<string | null>(null);
@@ -42,6 +46,7 @@
   const title = $derived.by(() => {
     if (!st) return "";
     if (st.kind === "none") return "Unresolved conflicts";
+    if (st.kind === "bisect" && bisect) return `Bisecting — ${bisectProgress(bisect)}`;
     const name = operationLabel(st.kind);
     if (st.kind === "rebase") {
       const branch = st.head_name ? ` ${st.head_name}` : "";
@@ -54,6 +59,10 @@
 
   const detail = $derived.by(() => {
     if (!st) return "";
+    if (bisect) {
+      if (bisect.first_bad) return `${bisect.first_bad.slice(0, 7)} ${bisect.first_bad_subject ?? ""} is the first ${bisect.term_bad} commit`;
+      if (bisect.current) return `Testing ${bisect.current.slice(0, 7)} ${bisect.current_subject ?? ""}`;
+    }
     if (st.kind === "rebase" && st.stopped_for_edit) {
       return `Stopped to edit ${st.current_commit?.slice(0, 7) ?? ""} ${st.current_subject ?? ""}. Amend or commit changes, then continue.`;
     }
@@ -160,6 +169,23 @@
         {#if busy}
           <span class="op-busy"><Loader2 size={13} class="spinner" /> {busy}…</span>
         {/if}
+        {#if bisect}
+          {#if bisect.first_bad}
+            <button class="op-btn primary" onclick={() => bisect.first_bad && revealCommit(bisect.first_bad)} title="Select it in the graph">
+              Show commit
+            </button>
+          {:else}
+            <button class="op-btn" onclick={() => markBisect("good")} disabled={!!busy} title="The commit being tested is {bisect.term_good} (git bisect {bisect.term_good})">
+              <CheckCircle2 size={12} /> {bisect.term_good === "good" ? "Good" : bisect.term_good}
+            </button>
+            <button class="op-btn" onclick={() => markBisect("bad")} disabled={!!busy} title="The commit being tested is {bisect.term_bad} (git bisect {bisect.term_bad})">
+              <AlertTriangle size={12} /> {bisect.term_bad === "bad" ? "Bad" : bisect.term_bad}
+            </button>
+            <button class="op-btn" onclick={() => markBisect("skip")} disabled={!!busy} title="Can't test this commit (git bisect skip)">
+              <SkipForward size={12} /> Skip
+            </button>
+          {/if}
+        {/if}
         {#if inOperation}
           {#if st.kind !== "bisect"}
             <button
@@ -176,8 +202,13 @@
               <SkipForward size={12} /> Skip
             </button>
           {/if}
-          <button class="op-btn danger" onclick={abortOperation} disabled={!!busy} title="Abort and restore the previous state">
-            <X size={12} /> Abort
+          <button
+            class="op-btn danger"
+            onclick={abortOperation}
+            disabled={!!busy}
+            title={st.kind === "bisect" ? "End the bisect and go back to where it started (git bisect reset)" : "Abort and restore the previous state"}
+          >
+            <X size={12} /> {st.kind === "bisect" ? "Reset" : "Abort"}
           </button>
         {/if}
       </div>

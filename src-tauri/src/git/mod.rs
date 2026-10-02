@@ -19,6 +19,7 @@ pub mod conflicts;
 pub mod history;
 pub mod squash;
 pub mod patches;
+pub mod bisect;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

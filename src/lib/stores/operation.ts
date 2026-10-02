@@ -8,7 +8,7 @@
  */
 import { writable, get } from "svelte/store";
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { RepoOperationState } from "../types/git";
+import type { BisectInfo, RepoOperationState } from "../types/git";
 import * as tauri from "../tauri";
 import { activeRepoPath } from "./repos";
 import { workingStatus, refreshAll } from "./graph";
@@ -17,6 +17,9 @@ import { toast, toastError } from "./toasts";
 
 /** Operation state of the active repo (`null` until loaded). */
 export const operationState = writable<RepoOperationState | null>(null);
+
+/** Bisect progress while `operationState.kind === "bisect"` (else null). */
+export const bisectState = writable<BisectInfo | null>(null);
 
 /** Set while a continue/abort/skip/rebase/push is running. */
 export const operationBusy = writable<string | null>(null);
@@ -29,14 +32,22 @@ export async function refreshOperation(path?: string) {
   const gen = ++opGen;
   if (!p) {
     operationState.set(null);
+    bisectState.set(null);
     return;
   }
   try {
     const st = await tauri.getOperationState(p);
-    if (gen === opGen && get(activeRepoPath) === p) operationState.set(st);
+    const bisect = st.kind === "bisect" ? await tauri.getBisectState(p).catch(() => null) : null;
+    if (gen === opGen && get(activeRepoPath) === p) {
+      operationState.set(st);
+      bisectState.set(bisect);
+    }
   } catch (err) {
     console.error("Failed to load operation state:", err);
-    if (gen === opGen && get(activeRepoPath) === p) operationState.set(null);
+    if (gen === opGen && get(activeRepoPath) === p) {
+      operationState.set(null);
+      bisectState.set(null);
+    }
   }
 }
 
@@ -155,6 +166,14 @@ export function continueOperation(message: string | null): Promise<boolean> {
 export async function abortOperation(): Promise<boolean> {
   const st = get(operationState);
   if (!st || st.kind === "none") return false;
+  if (st.kind === "bisect") {
+    const ok = await confirmDestructive(
+      "End the bisect? HEAD goes back to where it was when the bisect started.",
+      "Reset Bisect",
+    );
+    if (!ok) return false;
+    return runOp("Reset bisect", tauri.bisectReset, "Bisect ended");
+  }
   const name = operationLabel(st.kind).toLowerCase();
   const ok = await confirmDestructive(
     `Abort the ${name}? Your branch returns to its state before the ${name} started and any conflict resolutions are lost.`,

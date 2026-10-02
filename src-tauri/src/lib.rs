@@ -144,6 +144,10 @@ pub fn run() {
             commands::patches::save_working_patch,
             commands::patches::inspect_patch,
             commands::patches::apply_patch,
+            commands::bisect::get_bisect_state,
+            commands::bisect::bisect_start,
+            commands::bisect::bisect_mark,
+            commands::bisect::bisect_reset,
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,

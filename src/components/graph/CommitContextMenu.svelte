@@ -35,6 +35,8 @@
     revertAction,
   } from "../../lib/commitActions";
   import { pushTagAction } from "../../lib/tagActions";
+  import { markBisect, startBisect } from "../../lib/bisectActions";
+  import { abortOperation, bisectState, operationState } from "../../lib/stores/operation";
   import {
     applyPatchAction,
     patchFileName,
@@ -112,8 +114,28 @@
         action: () => savePatchesAction(path, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) }),
       },
       { separator: true },
+      ...bisectItems(c),
+      { separator: true },
       { label: "Apply patch file…", action: () => applyPatchAction(path) },
       { label: "Undo history…", shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
+    ];
+  }
+
+  /** Bisect entries for one commit: start from it, or mark it. */
+  function bisectItems(c: CommitInfo): MenuItem[] {
+    const b = $bisectState;
+    if ($operationState?.kind === "bisect" && b) {
+      if (b.first_bad) return [];
+      return [
+        { label: `Bisect: mark as ${b.term_good}`, action: () => markBisect("good", c.oid) },
+        { label: `Bisect: mark as ${b.term_bad}`, action: () => markBisect("bad", c.oid) },
+        { label: "Bisect: skip", action: () => markBisect("skip", c.oid) },
+      ];
+    }
+    if ($operationState && $operationState.kind !== "none") return [];
+    return [
+      { label: "Start bisect: this commit is bad", action: () => startBisect(c.oid, null) },
+      { label: "Start bisect: this commit is good", action: () => startBisect(null, c.oid) },
     ];
   }
 
@@ -132,6 +154,12 @@
         { label: `Squash ${oids.length} commits…`, action: () => squashTarget.set([...oids]) },
         { separator: true },
       );
+    }
+    if (pair && $operationState?.kind === "none") {
+      items.push({
+        label: `Start bisect: ${pair.to.slice(0, 7)} bad, ${pair.from.slice(0, 7)} good`,
+        action: () => startBisect(pair.to, pair.from),
+      });
     }
     if (pair) {
       items.push(
@@ -249,6 +277,13 @@
       }),
       onAction("apply_patch", () => {
         if ($activeRepoPath) applyPatchAction($activeRepoPath);
+      }),
+      onAction("bisect_start", withSelected((_, c) => startBisect(c.oid, null))),
+      onAction("bisect_good", () => markBisect("good")),
+      onAction("bisect_bad", () => markBisect("bad")),
+      onAction("bisect_skip", () => markBisect("skip")),
+      onAction("bisect_reset", () => {
+        if ($operationState?.kind === "bisect") abortOperation();
       }),
       onAction("push_all_tags", () => {
         if ($activeRepoPath) pushTagAction($activeRepoPath);
