@@ -323,6 +323,16 @@ export function setGitConfig(config: GitConfig): Promise<void> {
 
 // ── GitHub ───────────────────────────────────────────────────────────
 
+/** Store the token in the OS keyring; `null` removes it. */
+export function githubSetToken(token: string | null): Promise<void> {
+  return invoke<void>("github_set_token", { token });
+}
+
+/** Whether a token is configured (the token itself never reaches the UI). */
+export function githubHasToken(): Promise<boolean> {
+  return invoke<boolean>("github_has_token");
+}
+
 export function githubValidateToken(): Promise<GitHubUser> {
   return invoke<GitHubUser>("github_validate_token");
 }

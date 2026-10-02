@@ -35,6 +35,9 @@ pub enum TwigError {
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
 
+    #[error("OS keyring error: {0}")]
+    Keyring(String),
+
     #[error("Background task failed: {0}")]
     Task(String),
 }

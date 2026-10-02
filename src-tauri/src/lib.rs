@@ -1,4 +1,5 @@
 mod commands;
+mod credentials;
 mod error;
 mod git;
 mod github;
@@ -65,6 +66,8 @@ pub fn run() {
             commands::stash::stash_drop,
             // GitHub
             commands::github::github_validate_token,
+            commands::github::github_set_token,
+            commands::github::github_has_token,
             commands::github::github_list_repos,
             commands::github::github_clone_repo,
             commands::github::github_create_repo,

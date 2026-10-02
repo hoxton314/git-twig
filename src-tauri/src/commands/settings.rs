@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
+use crate::credentials;
 use crate::error::TwigError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,8 +55,11 @@ pub struct AppSettings {
     pub keybinding_overrides: HashMap<String, String>,
 
     // ── GitHub ──────────────────────────────────────────────────────
-    #[serde(default)]
-    pub github_token: Option<String>,
+    /// Plaintext token from settings files written before the token moved
+    /// to the OS keyring. Read only for migration; never serialized, so it
+    /// is neither sent to the webview nor written back to disk.
+    #[serde(default, rename = "github_token", skip_serializing)]
+    pub legacy_github_token: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -106,7 +110,7 @@ impl Default for AppSettings {
             external_diff_tool: None,
             external_merge_tool: None,
             keybinding_overrides: HashMap::new(),
-            github_token: None,
+            legacy_github_token: None,
         }
     }
 }
@@ -189,13 +193,35 @@ pub async fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TwigErr
         return Ok(AppSettings::default());
     }
     let json = fs::read_to_string(&file)?;
-    match serde_json::from_str::<AppSettings>(&json) {
-        Ok(settings) => Ok(settings),
+    let mut settings = match serde_json::from_str::<AppSettings>(&json) {
+        Ok(settings) => settings,
         Err(e) => {
             quarantine_corrupt(&file, &e);
-            Ok(AppSettings::default())
+            return Ok(AppSettings::default());
+        }
+    };
+
+    // One-time move of a plaintext token into the OS keyring. On failure the
+    // file is left untouched (and `save_settings` keeps the token) so it is
+    // not lost; `github::get_token` falls back to it.
+    if let Some(token) = settings.legacy_github_token.take().filter(|t| !t.is_empty()) {
+        match credentials::set_github_token(Some(token)).await {
+            Ok(()) => write_atomic(&file, &serde_json::to_string_pretty(&settings)?, true)?,
+            Err(e) => log::warn!("could not migrate GitHub token to the OS keyring: {e}"),
         }
     }
+    Ok(settings)
+}
+
+/// The not-yet-migrated plaintext token in `settings.json`, if any.
+pub(crate) fn read_legacy_token(app: &tauri::AppHandle) -> Option<String> {
+    let json = fs::read_to_string(settings_file(app).ok()?).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&json).ok()?;
+    value
+        .get("github_token")?
+        .as_str()
+        .filter(|t| !t.is_empty())
+        .map(String::from)
 }
 
 #[tauri::command]
@@ -204,8 +230,13 @@ pub async fn save_settings(
     settings: AppSettings,
 ) -> Result<(), TwigError> {
     let file = settings_file(&app)?;
-    let json = serde_json::to_string_pretty(&settings)?;
-    // settings.json holds the GitHub PAT, so keep it owner-only.
+    let mut value = serde_json::to_value(&settings)?;
+    // Keep an unmigrated legacy token rather than silently dropping it.
+    if let (Some(token), Some(obj)) = (read_legacy_token(&app), value.as_object_mut()) {
+        obj.insert("github_token".into(), token.into());
+    }
+    let json = serde_json::to_string_pretty(&value)?;
+    // Owner-only: older files may still hold a plaintext token.
     write_atomic(&file, &json, true)?;
     Ok(())
 }

@@ -141,6 +141,10 @@ Lane colors:       #7aa2f7, #9ece6a, #e0af68, #f7768e, #bb9af7, #2ac3de
 
 `main.rs` detects NVIDIA GPUs at runtime via `/proc/driver/nvidia` and configures WebKitGTK accordingly. On NVIDIA, `WEBKIT_DISABLE_DMABUF_RENDERER=1` is set before GTK init. On all Wayland GPUs, `GDK_GL=gles` is set. This is intentional -- do not remove it.
 
+### Auto-updater
+
+`createUpdaterArtifacts` is on, so release builds emit `.sig` files and tauri-action publishes `latest.json` (`linux-x86_64-deb`, `linux-x86_64-rpm`, `darwin-*`, `windows-x86_64`). The `verify-updater-json` CI job fails the release if a platform is missing. `UpdateChecker.svelte` only checks when `updater_supported` (`commands/updater.rs`) says the running binary is owned by the package type it was bundled as -- the AUR `twig-bin` package reuses the `.deb` binary but must update through pacman, and dev builds have no bundle type. The release stays a draft until published manually; `releases/latest/download/latest.json` only resolves after that.
+
 ### LFS
 
 LFS pointer files in diffs are detected by checking for `version https://git-lfs.github.com/spec/` in the diff content. They display as "LFS object -- [size]" instead of raw pointer text. All LFS operations go through the system git CLI.
@@ -152,6 +156,7 @@ Settings are stored separately from session state:
 - **Session** (`session.json`): ephemeral layout state -- open repos, active tab, panel sizes. Managed by `src/lib/stores/repos.ts`.
 - **Settings** (`settings.json`): durable user preferences -- UI options, diff preferences, keybinding overrides. Managed by `src/lib/stores/settings.ts`.
 - **Git config** (`~/.gitconfig`): identity, pull strategy, signing. Read/written via `git config --global` CLI commands in `src-tauri/src/commands/git_config.rs`.
+- **Secrets** (OS keyring): the GitHub token lives in Secret Service / Keychain / Credential Manager via `src-tauri/src/credentials.rs`, never in `settings.json` and never sent to the webview (the UI only calls `github_set_token` / `github_has_token`). A plaintext `github_token` left in an old `settings.json` is migrated on `load_settings`.
 
 Both JSON files live in Tauri's `app_data_dir`. Settings auto-persist with a 300ms debounce on any change.
 
@@ -181,7 +186,7 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 
 ## V2 TODO
 
-- Authentication / credential manager
+- Authentication / credential manager (GitHub token is in the OS keyring; fetch/push over HTTPS still rely on the system git credential helper)
 - ~~GitHub API integration~~ ✓ (clone from GitHub, create repo, create PR via PAT in Settings > GitHub)
 - SSH key management
 - Conflict resolution UI
@@ -192,3 +197,7 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 - Interactive rebase UI
 - File history view
 - Submodule support
+
+## Known Issues (deferred)
+
+- **Commit graph mainline drifts right after a fork.** In `compute_lanes` (`src-tauri/src/git/reader.rs`), when two children share a parent, the parent keeps whichever lane claimed it first, so after a fork the main line can move right and stay there. The fix is to collapse the parent into the lowest-index lane, but the frontend can't draw that yet: `GraphCanvas.svelte` only renders straight `rails` and `parent_lanes` edges, with no "lane merges into another lane" segment. Needs a new segment type in the `CommitGraph` IPC struct (Rust + `types/git.ts`) and matching drawing in `GraphCanvas.svelte`.

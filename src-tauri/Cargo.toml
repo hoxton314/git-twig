@@ -29,6 +29,10 @@ log = "0.4"
 md5 = "0.7"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 openssl = { version = "0.10", features = ["vendored"] }
+# OS credential store for the GitHub token. zbus-based Secret Service on Linux
+# (pure Rust, no libdbus needed at build time), Keychain on macOS,
+# Credential Manager on Windows.
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"

@@ -1,41 +1,35 @@
 <script lang="ts">
   import { Check, AlertCircle, Loader2 } from "lucide-svelte";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
-  import { settings, updateSettings, flushSettings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
   import type { GitHubUser } from "../../lib/types/github";
   import { onMount } from "svelte";
 
   let tokenInput = $state("");
+  // The token lives in the OS keyring and is never sent to the UI; we only
+  // know whether one is stored.
+  let hasToken = $state(false);
   let status = $state<"idle" | "loading" | "connected" | "error">("idle");
   let user = $state<GitHubUser | null>(null);
   let errorMsg = $state("");
 
-  const s = $derived($settings);
-
-  onMount(() => {
-    tokenInput = s.github_token ?? "";
-    if (tokenInput) {
-      validateToken();
+  onMount(async () => {
+    try {
+      hasToken = await tauri.githubHasToken();
+    } catch (err) {
+      status = "error";
+      errorMsg = String(err);
+      return;
     }
+    if (hasToken) validateStoredToken();
   });
 
   let validationSeq = 0;
 
-  async function validateToken() {
-    if (!tokenInput.trim()) {
-      status = "idle";
-      user = null;
-      errorMsg = "";
-      return;
-    }
+  async function validateStoredToken() {
     const seq = ++validationSeq;
     status = "loading";
     try {
-      // Save first, and flush the debounced write: the backend reads the
-      // token from settings.json, so it must be on disk before validating.
-      updateSettings({ github_token: tokenInput.trim() });
-      await flushSettings();
       const u = await tauri.githubValidateToken();
       if (seq !== validationSeq) return; // superseded by a newer save/clear
       user = u;
@@ -49,21 +43,39 @@
     }
   }
 
-  function handleSave() {
-    if (!tokenInput.trim()) {
-      handleClear();
+  async function handleSave() {
+    const token = tokenInput.trim();
+    if (!token) return;
+    const seq = ++validationSeq;
+    status = "loading";
+    try {
+      await tauri.githubSetToken(token);
+    } catch (err) {
+      if (seq !== validationSeq) return;
+      status = "error";
+      errorMsg = String(err);
+      user = null;
       return;
     }
-    validateToken();
+    if (seq !== validationSeq) return;
+    hasToken = true;
+    tokenInput = "";
+    await validateStoredToken();
   }
 
-  function handleClear() {
+  async function handleClear() {
     validationSeq++;
     tokenInput = "";
-    updateSettings({ github_token: null });
-    status = "idle";
-    user = null;
-    errorMsg = "";
+    try {
+      await tauri.githubSetToken(null);
+      hasToken = false;
+      status = "idle";
+      user = null;
+      errorMsg = "";
+    } catch (err) {
+      status = "error";
+      errorMsg = String(err);
+    }
   }
 </script>
 
@@ -79,7 +91,7 @@
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span class="link" role="link" tabindex="0" onclick={() => openUrl("https://github.com/settings/tokens")} onkeydown={(e) => e.key === "Enter" && openUrl("https://github.com/settings/tokens")}>github.com/settings/tokens</span>
-          with <code>repo</code> scope
+          with <code>repo</code> scope. Stored in your system keyring.
         </span>
       </div>
       <div class="setting-control token-control">
@@ -89,12 +101,12 @@
           autocomplete="off"
           spellcheck="false"
           aria-label="GitHub personal access token"
-          placeholder="ghp_..."
+          placeholder={hasToken ? "Saved in system keyring — paste to replace" : "ghp_..."}
           bind:value={tokenInput}
           onkeydown={(e) => e.key === "Enter" && handleSave()}
         />
-        <button class="btn-secondary" onclick={handleSave}>Save</button>
-        {#if s.github_token}
+        <button class="btn-secondary" onclick={handleSave} disabled={!tokenInput.trim()}>Save</button>
+        {#if hasToken}
           <button class="btn-ghost" onclick={handleClear}>Clear</button>
         {/if}
       </div>
@@ -241,8 +253,13 @@
     transition: border-color 0.1s;
   }
 
-  .btn-secondary:hover {
+  .btn-secondary:hover:not(:disabled) {
     border-color: var(--color-accent);
+  }
+
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .btn-ghost {

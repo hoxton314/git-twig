@@ -1,39 +1,47 @@
-use std::fs;
 use std::path::PathBuf;
 
 use base64::Engine;
 use git2::Repository;
-use tauri::{Manager, State};
+use tauri::State;
 use tokio::process::Command;
 
 use crate::commands::repo::{build_repo_info, RepoInfo};
-use crate::commands::settings::AppSettings;
+use crate::commands::settings::read_legacy_token;
+use crate::credentials;
 use crate::error::TwigError;
 use crate::github::{self, GitHubPullRequest, GitHubRemoteInfo, GitHubRepo, GitHubUser, RepoListPage};
 use crate::state::{AppState, OpenRepo};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-fn get_token(app: &tauri::AppHandle) -> Result<String, TwigError> {
-    let file = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| TwigError::Config(e.to_string()))?
-        .join("settings.json");
-
-    if !file.exists() {
-        return Err(TwigError::GitHub(
-            "No GitHub token configured. Set one in Settings > GitHub.".into(),
-        ));
+async fn get_token(app: &tauri::AppHandle) -> Result<String, TwigError> {
+    let stored = credentials::get_github_token().await;
+    if let Ok(Some(token)) = stored {
+        return Ok(token);
     }
-    let json = fs::read_to_string(&file)?;
-    let settings: AppSettings = serde_json::from_str(&json)?;
-    match settings.github_token {
-        Some(t) if !t.is_empty() => Ok(t),
+    // Fall back to a token not yet migrated out of settings.json
+    // (e.g. the keyring was unavailable at startup).
+    if let Some(token) = read_legacy_token(app) {
+        return Ok(token);
+    }
+    match stored {
+        Err(e) => Err(e),
         _ => Err(TwigError::GitHub(
             "No GitHub token configured. Set one in Settings > GitHub.".into(),
         )),
     }
+}
+
+/// Store (or with `None`/empty, remove) the GitHub token in the OS keyring.
+#[tauri::command]
+pub async fn github_set_token(token: Option<String>) -> Result<(), TwigError> {
+    credentials::set_github_token(token.map(|t| t.trim().to_string())).await
+}
+
+/// Whether a GitHub token is configured. The token itself never leaves Rust.
+#[tauri::command]
+pub async fn github_has_token(app: tauri::AppHandle) -> Result<bool, TwigError> {
+    Ok(get_token(&app).await.is_ok())
 }
 
 fn build_client() -> Result<reqwest::Client, TwigError> {
@@ -49,7 +57,7 @@ fn build_client() -> Result<reqwest::Client, TwigError> {
 
 #[tauri::command]
 pub async fn github_validate_token(app: tauri::AppHandle) -> Result<GitHubUser, TwigError> {
-    let token = get_token(&app)?;
+    let token = get_token(&app).await?;
     let client = build_client()?;
     github::validate_token(&client, &token).await
 }
@@ -61,7 +69,7 @@ pub async fn github_list_repos(
     per_page: u32,
     sort: String,
 ) -> Result<RepoListPage, TwigError> {
-    let token = get_token(&app)?;
+    let token = get_token(&app).await?;
     let client = build_client()?;
     github::list_repos(&client, &token, page, per_page, &sort).await
 }
@@ -99,7 +107,7 @@ pub async fn github_clone_repo(
     // GIT_CONFIG_* env vars so it is neither visible in the process list nor
     // persisted into the clone's .git/config remote URL.
     if clone_url.to_ascii_lowercase().starts_with("https://github.com/") {
-        if let Ok(token) = get_token(&app) {
+        if let Ok(token) = get_token(&app).await {
             let basic = base64::engine::general_purpose::STANDARD
                 .encode(format!("x-access-token:{token}"));
             cmd.env("GIT_CONFIG_COUNT", "1")
@@ -140,7 +148,7 @@ pub async fn github_create_repo(
     private: bool,
     auto_init: bool,
 ) -> Result<GitHubRepo, TwigError> {
-    let token = get_token(&app)?;
+    let token = get_token(&app).await?;
     let client = build_client()?;
     github::create_repo(
         &client,
@@ -199,7 +207,7 @@ pub async fn github_create_pull_request(
     head: String,
     base: String,
 ) -> Result<GitHubPullRequest, TwigError> {
-    let token = get_token(&app)?;
+    let token = get_token(&app).await?;
     let client = build_client()?;
     github::create_pull_request(&client, &token, &owner, &repo, &title, &body, &head, &base).await
 }
@@ -210,7 +218,7 @@ pub async fn github_list_branches(
     owner: String,
     repo: String,
 ) -> Result<Vec<String>, TwigError> {
-    let token = get_token(&app)?;
+    let token = get_token(&app).await?;
     let client = build_client()?;
     github::list_branches(&client, &token, &owner, &repo).await
 }
