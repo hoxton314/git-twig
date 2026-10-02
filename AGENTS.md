@@ -48,6 +48,11 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/components/github/CreateRepoOnGitHub.svelte` | Create new GitHub repository dialog |
 | `src/components/github/CreatePullRequest.svelte` | Create pull request dialog |
 | `src/components/settings/GitHubSettings.svelte` | GitHub PAT configuration in settings |
+| `src-tauri/src/hosting/` | Hosting integrations: `config` (GitHub/GHE/GitLab/Gitea endpoints from settings), `remote` (provider-aware remote URL parsing), `net_auth` (keyring token for HTTPS fetch/pull/push), `github_api`/`gitlab`/`gitea` (PRs, CI, device flow), `patch` (unified diff → hunks) |
+| `src-tauri/src/commands/hosting.rs` | Provider-agnostic `hosting_*` commands (PR list/detail/files/checkout/create, CI status, GitLab/Gitea tokens) + GitHub device flow |
+| `src/components/github/PullRequestsPanel.svelte` | Pull/merge request browser (opened via `prPanelOpen` store / `open_pull_requests` action) |
+| `src/components/github/CiBadge.svelte` | Drop-in CI badge: `<CiBadge sha={oid} />` (backed by `src/lib/stores/ci.ts` `ciStatusFor(sha)`) |
+| `src/lib/markdown.ts` | Safe Markdown renderer (escapes all HTML) for PR descriptions |
 
 ## Adding a New Feature
 
@@ -163,7 +168,7 @@ Settings are stored separately from session state:
 - **Session** (`session.json`): ephemeral layout state -- open repos, active tab, panel sizes. Managed by `src/lib/stores/repos.ts`.
 - **Settings** (`settings.json`): durable user preferences -- UI options, diff preferences, keybinding overrides. Managed by `src/lib/stores/settings.ts`.
 - **Git config** (`~/.gitconfig`): identity, pull strategy, signing. Read/written via `git config --global` CLI commands in `src-tauri/src/commands/git_config.rs`.
-- **Secrets** (OS keyring): the GitHub token lives in Secret Service / Keychain / Credential Manager via `src-tauri/src/credentials.rs`, never in `settings.json` and never sent to the webview (the UI only calls `github_set_token` / `github_has_token`). A plaintext `github_token` left in an old `settings.json` is migrated on `load_settings`.
+- **Secrets** (OS keyring): the GitHub token lives in Secret Service / Keychain / Credential Manager via `src-tauri/src/credentials.rs`, never in `settings.json` and never sent to the webview (the UI only calls `github_set_token` / `github_has_token`). A plaintext `github_token` left in an old `settings.json` is migrated on `load_settings`. GitLab/Gitea tokens use keyring accounts `gitlab-token:<host>` / `gitea-token:<host>`. Network git commands that should authenticate wrap their `writer::*` call in `with_network_auth(&app, &repo_path, ...)`; the token is passed as a host-scoped `http.https://<host>/.extraheader` through `GIT_CONFIG_*` env vars only.
 
 Both JSON files live in Tauri's `app_data_dir`. Settings auto-persist with a 300ms debounce on any change.
 
@@ -193,7 +198,7 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 
 ## V2 TODO
 
-- Authentication / credential manager (GitHub token is in the OS keyring; fetch/push over HTTPS still rely on the system git credential helper)
+- Authentication / credential manager (GitHub token is in the OS keyring and used for HTTPS fetch/pull/push to the GitHub host via `hosting::net_auth::with_network_auth`; other hosts still rely on the system git credential helper)
 - ~~GitHub API integration~~ ✓ (clone from GitHub, create repo, create PR via PAT in Settings > GitHub)
 - SSH key management
 - Conflict resolution UI

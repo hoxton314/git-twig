@@ -83,9 +83,38 @@ function splitRow(line: string): string[] {
   return l.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
 }
 
+/**
+ * Outside fenced code: drop HTML comments, and drop common layout-only HTML
+ * found in PR templates (keeping its content) instead of showing escaped
+ * tags. Nothing here is emitted as HTML — it only removes text.
+ */
+function stripLayoutHtml(src: string): string {
+  const parts = src.split(/(^\s{0,3}(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^\s{0,3}(?:`{3,}|~{3,})\s*$|(?![\s\S])))/m);
+  return parts
+    .map((part, idx) =>
+      idx % 2 === 1
+        ? part // fenced code block, untouched
+        : part
+            .replace(/<!--[\s\S]*?-->/g, "")
+            // Leave inline code spans alone (`<div>` in prose is common).
+            .split(/(`[^`\n]+`)/)
+            .map((seg, j) =>
+              j % 2 === 1
+                ? seg
+                : seg
+                    .replace(/<\/?(?:details|summary|div|p|center)\b[^>]*>/gi, "\n")
+                    .replace(/<br\s*\/?>/gi, "\n")
+                    .replace(/<\/?(?:span|sub|sup|kbd|b|i|em|strong|picture|source)\b[^>]*>/gi, "")
+                    .replace(/<img\b[^>]*>/gi, "[image]"),
+            )
+            .join(""),
+    )
+    .join("");
+}
+
 export function renderMarkdown(source: string): string {
   // HTML comments (PR templates are full of them) are dropped entirely.
-  const src = source.replace(/\r\n?/g, "\n").replace(/<!--[\s\S]*?-->/g, "");
+  const src = stripLayoutHtml(source.replace(/\r\n?/g, "\n"));
   const lines = src.split("\n");
   const out: string[] = [];
   let i = 0;
