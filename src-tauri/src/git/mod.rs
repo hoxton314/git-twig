@@ -20,6 +20,7 @@ pub mod history;
 pub mod squash;
 pub mod patches;
 pub mod bisect;
+pub mod grep;
 
 // Commit graph: pagination, search, locate
 pub mod graph;

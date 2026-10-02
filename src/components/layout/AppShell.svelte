@@ -12,6 +12,7 @@
   import OperationBanner from "../conflicts/OperationBanner.svelte";
   import OperationHost from "../conflicts/OperationHost.svelte";
   import FileViewHost from "../history/FileViewHost.svelte";
+  import CodeSearch from "../search/CodeSearch.svelte";
   import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
   import StatusBar from "./StatusBar.svelte";
   import CommandPalette from "./CommandPalette.svelte";
@@ -371,6 +372,7 @@
   <UndoHistory />
   <!-- File history & blame overlay; worktree/submodule actions -->
   <FileViewHost />
+  <CodeSearch />
   <RepoToolsHost />
   <PullRequestsPanel />
   <NewRepoDialog />

@@ -93,7 +93,7 @@
           {#if view.kind === "history"}
             <FileHistoryView {repoPath} path={view.path} />
           {:else}
-            <BlameView {repoPath} path={view.path} rev={view.rev} />
+            <BlameView {repoPath} path={view.path} rev={view.rev} line={view.line} />
           {/if}
         </div>
       </div>

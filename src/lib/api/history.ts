@@ -5,6 +5,8 @@ import type {
   CommandResult,
   ApplyPatchResult,
   BisectInfo,
+  GrepOptions,
+  GrepResult,
   CommitOpResult,
   PatchInfo,
   PickManyResult,
@@ -273,4 +275,11 @@ export function bisectMark(path: string, verdict: "good" | "bad" | "skip", rev?:
 
 export function bisectReset(path: string): Promise<CommandResult> {
   return invoke<CommandResult>("bisect_reset", { path });
+}
+
+// ── Code search ──────────────────────────────────────────────────────
+
+/** `git grep` over tracked files in the working tree, or `options.rev`. */
+export function searchCode(path: string, options: GrepOptions): Promise<GrepResult> {
+  return invoke<GrepResult>("search_code", { path, options });
 }

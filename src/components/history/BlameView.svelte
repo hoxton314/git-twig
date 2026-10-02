@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import * as tauri from "../../lib/tauri";
   import type { BlameHunk, BlameResult } from "../../lib/types/git";
   import { showFileHistory, showInGraph } from "../../lib/stores/fileviews";
@@ -13,9 +13,11 @@
     repoPath: string;
     path: string;
     rev?: string;
+    /** Line to scroll to and highlight once loaded (1-based). */
+    line?: number;
   }
 
-  let { repoPath, path, rev }: Props = $props();
+  let { repoPath, path, rev, line }: Props = $props();
 
   interface Frame {
     path: string;
@@ -66,6 +68,15 @@
       result = res;
       selectedOid = null;
       if (scrollEl) scrollEl.scrollTop = 0;
+      // Only the frame opened from outside targets a line.
+      if (line && stack.length === 1) {
+        await tick();
+        const el = scrollEl?.querySelector<HTMLElement>(`[data-line="${line}"]`);
+        if (el && scrollEl) {
+          const top = el.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+          scrollEl.scrollTop = top - scrollEl.clientHeight / 2;
+        }
+      }
     } catch (err) {
       if (id !== req) return;
       result = null;
@@ -260,7 +271,7 @@
           </div>
           <div class="lines">
             {#each lines(g) as l (l.n)}
-              <div class="line"><span class="ln">{l.n}</span><span class="text">{l.text}</span></div>
+              <div class="line" class:target={stack.length === 1 && l.n === line} data-line={l.n}><span class="ln">{l.n}</span><span class="text">{l.text}</span></div>
             {/each}
           </div>
         </div>
@@ -492,6 +503,10 @@
     display: flex;
     line-height: 20px;
     white-space: pre;
+  }
+
+  .line.target {
+    background: var(--color-search-active-bg);
   }
 
   .ln {

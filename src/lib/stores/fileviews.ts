@@ -16,7 +16,7 @@ import { toast } from "./toasts";
 
 export type FileView =
   | { kind: "history"; path: string }
-  | { kind: "blame"; path: string; rev?: string };
+  | { kind: "blame"; path: string; rev?: string; line?: number };
 
 /** The open file view, or `null` when closed. */
 export const fileView = writable<FileView | null>(null);
@@ -30,10 +30,10 @@ export function showFileHistory(path: string) {
   fileView.set({ kind: "history", path });
 }
 
-/** Show line blame of `path`, at `rev` (any revision; default HEAD). */
-export function showBlame(path: string, rev?: string) {
+/** Show line blame of `path`, at `rev` (any revision; default HEAD), optionally at `line`. */
+export function showBlame(path: string, rev?: string, line?: number) {
   filePickerFor.set(null);
-  fileView.set({ kind: "blame", path, rev });
+  fileView.set({ kind: "blame", path, rev, line });
 }
 
 export function closeFileView() {

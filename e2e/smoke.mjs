@@ -249,6 +249,30 @@ try {
     if (!existsSync(join(repo, "notes.txt"))) throw new Error("notes.txt lost in the squash");
   });
 
+  await step("code search finds text and opens blame at the line", async () => {
+    await session.execute(
+      "window.dispatchEvent(new KeyboardEvent('keydown', { key: 'G', code: 'KeyG', ctrlKey: true, shiftKey: true, bubbles: true }));",
+    );
+    const [box] = await session.waitFor('input[aria-label="Search code"]');
+    await session.type(box, "from the e2e");
+    await session.waitFor(".search .file-path", { pred: (t) => t.includes("notes.txt") });
+    await session.waitFor(".search mark", { pred: (t) => t.some((x) => x.toLowerCase() === "from the e2e") });
+    const match = await session.findByText(".search .match", "from the e2e test");
+    await session.click(match);
+    await session.waitFor(".line.target", { pred: (t) => t.some((x) => x.includes("from the e2e test")) });
+    // Close the blame view again (Escape on the dialog) before the next step.
+    await session.execute(
+      "(document.querySelector('[role=dialog]') ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));",
+    );
+    const end = Date.now() + 5_000;
+    while (Date.now() < end && (await session.execute("return document.querySelectorAll('.line.target').length;")) > 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if ((await session.execute("return document.querySelectorAll('.line.target').length;")) > 0) {
+      throw new Error("blame view did not close");
+    }
+  });
+
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
     const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("big.txt")) });
     const texts = await session.texts(".file-item");
