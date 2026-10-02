@@ -73,6 +73,16 @@ for (let i = 0; ; i++) {
   }
 }
 
+/** Poll a condition outside the app (e.g. the repo's real git state). */
+async function until(cond, what, timeout = 15_000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (cond()) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
 let session;
 let failed = false;
 const step = async (name, fn) => {
@@ -94,11 +104,7 @@ try {
     await session.click(row);
     const [stage] = await session.waitFor('.file-item.selected button[aria-label="Stage file"]');
     await session.click(stage);
-    await session.waitFor('button[aria-label="Unstage file"]', { timeout: 15_000 }).catch(async () => {
-      // Staged rows show their actions on selection too; the staged list is enough.
-      await session.waitFor(".file-item", { pred: () => git("diff", "--cached", "--name-only").includes("notes.txt") });
-    });
-    if (!git("diff", "--cached", "--name-only").includes("notes.txt")) throw new Error("notes.txt not staged");
+    await until(() => git("diff", "--cached", "--name-only").includes("notes.txt"), "notes.txt staged");
   });
 
   await step("commit creates a new commit", async () => {

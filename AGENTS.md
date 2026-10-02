@@ -109,6 +109,8 @@ npm run tauri build      # Production build
 npm run build            # Frontend only build
 npm run check            # TypeScript + Svelte type checking
 npm test                 # Frontend unit tests (Vitest, `src/**/*.test.ts`)
+npm run tauri build -- --debug --no-bundle && xvfb-run -a npm run test:e2e
+                         # E2E smoke tests (e2e/smoke.mjs; needs tauri-driver + WebKitWebDriver)
 ```
 
 Rust-only check:
@@ -134,6 +136,7 @@ all of them green locally before pushing. Releases are built separately by `rele
 
 ### Frontend
 
+- E2E: `e2e/smoke.mjs` drives the debug build through `tauri-driver` with a tiny W3C WebDriver client (`e2e/webdriver.mjs`, no WebdriverIO). It runs in throwaway XDG dirs, git config and repo, and opens the repo via a pre-written `session.json`. CI runs it in the `e2e` job (ubuntu-22.04, `webkit2gtk-driver`, Xvfb; failure screenshot + HTML are uploaded as artifacts). Select elements by existing `aria-label`s/classes; row actions only show on hover/selection, so click the row first. Arch's `webkit2gtk-4.1` ships no `WebKitWebDriver`, so locally it may only run in CI.
 - Unit tests: Vitest in the `node` environment, next to the code (`foo.ts` → `foo.test.ts`). Test pure logic and stores; mock `../tauri` with `vi.mock` (see `stores/graph.test.ts`) and stub `window`/`document` where needed (see `keybindings.test.ts`). UI behaviour belongs in the e2e smoke tests.
 
 - Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) -- no legacy `let` reactivity
