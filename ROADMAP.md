@@ -20,14 +20,14 @@ Order within a release is rough priority.
 
 ## v0.4 — Foundations and everyday gaps
 
-- `git init` and clone from any URL (currently clone only works from GitHub / GitLab / Gitea).
-- `twig [path]` command-line launcher that opens a tab in the already-running window.
-- Open repository in terminal / editor.
-- Commit signing end to end: GPG or SSH signing setup and a "verified" badge in the graph
+- [x] `git init` and clone from any URL (currently clone only works from GitHub / GitLab / Gitea).
+- [x] `twig [path]` command-line launcher that opens a tab in the already-running window.
+- [x] Open repository in terminal / editor.
+- [x] Commit signing end to end: GPG or SSH signing setup and a "verified" badge in the graph
   (covers SSH key management).
-- Large-repo performance: profile on a kernel-sized repo; true virtualization for huge diffs
+- [x] Large-repo performance: profile on a kernel-sized repo; true virtualization for huge diffs
   (today there is only a 2,000-line "show anyway" cutoff).
-- Code health: split `src/lib/tauri.ts` and `src/lib/types/git.ts` by area; add frontend unit
+- [x] Code health: split `src/lib/tauri.ts` and `src/lib/types/git.ts` by area; add frontend unit
   tests (Vitest) and end-to-end smoke tests against the real app.
 
 ## v0.5 — Power tools
