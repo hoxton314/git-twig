@@ -732,7 +732,12 @@ mod tests {
     #[tokio::test]
     async fn awkward_paths() {
         let dir = temp_repo("paths").await;
-        for name in ["with space.txt", "ünïcødé.txt", "trailing space ", "q\"uote.txt", "tab\there.txt", "-dash.txt"] {
+        let mut names = vec!["with space.txt", "ünïcødé.txt", "-dash.txt"];
+        if !cfg!(windows) {
+            // Not valid file names on Windows.
+            names.extend(["trailing space ", "q\"uote.txt", "tab\there.txt"]);
+        }
+        for name in names {
             commit_file(&dir, name, b"a\nb\n").await;
             std::fs::write(dir.join(name), b"a\nB\nc\n").unwrap();
             run_sel(&dir, DiffArea::Unstaged, HunkAction::Stage, name, &[('+', 3)]).await;
