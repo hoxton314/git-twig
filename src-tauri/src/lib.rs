@@ -73,6 +73,7 @@ pub fn run() {
             commands::github::github_list_branches,
             // Window
             commands::window::is_tiling_wm,
+            commands::updater::updater_supported,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

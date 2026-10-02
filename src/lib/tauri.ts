@@ -73,6 +73,11 @@ export function isTilingWm(): Promise<boolean> {
   return invoke<boolean>("is_tiling_wm");
 }
 
+/** False for installs the in-app updater must not touch (AUR, dev builds). */
+export function updaterSupported(): Promise<boolean> {
+  return invoke<boolean>("updater_supported");
+}
+
 // ── Commit graph ──────────────────────────────────────────────────────
 
 export function getCommitGraph(

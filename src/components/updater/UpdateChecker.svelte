@@ -3,6 +3,7 @@
   import { check, type Update } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { message } from '@tauri-apps/plugin-dialog';
+  import { updaterSupported } from '../../lib/tauri';
 
   let updateAvailable = $state(false);
   let updateVersion = $state('');
@@ -18,6 +19,8 @@
 
   onMount(async () => {
     try {
+      // AUR/system-package installs are updated by their package manager.
+      if (!(await updaterSupported())) return;
       const update = await check();
       if (update) {
         pendingUpdate = update;

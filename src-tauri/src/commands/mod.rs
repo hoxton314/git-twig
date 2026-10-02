@@ -8,4 +8,5 @@ pub mod session;
 pub mod settings;
 pub mod staging;
 pub mod stash;
+pub mod updater;
 pub mod window;

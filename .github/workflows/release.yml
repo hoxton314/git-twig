@@ -80,6 +80,24 @@ jobs:
           cp src-tauri/icons/icon.png twig.png
           gh release upload "$TAG" twig.desktop twig.png --clobber
 
+  # Each matrix job read-modify-writes latest.json on the release, so a
+  # near-simultaneous finish can drop a platform. Fail loudly if that happens
+  # (re-run the affected build job to regenerate the entry).
+  verify-updater-json:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check latest.json covers every platform
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -p latest.json
+          cat latest.json
+          for key in linux-x86_64-deb linux-x86_64-rpm darwin-aarch64 darwin-x86_64 windows-x86_64; do
+            jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
+              || { echo "::error::latest.json is missing updater platform '$key'"; exit 1; }
+          done
+
   update-aur:
     needs: build-and-release
     runs-on: ubuntu-latest
