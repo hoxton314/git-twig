@@ -38,7 +38,8 @@ pub struct AppSettings {
     pub diff_view_mode: String,
     #[serde(default = "default_tab_size")]
     pub tab_size: u32,
-    #[serde(default)]
+    /// Show whitespace-only changes in diffs (git's default); off means `diff -w`.
+    #[serde(default = "default_true")]
     pub show_whitespace_changes: bool,
     #[serde(default)]
     pub word_wrap_in_diffs: bool,
@@ -187,7 +188,7 @@ impl Default for AppSettings {
             diff_font_size: default_font_size(),
             diff_view_mode: default_diff_view(),
             tab_size: default_tab_size(),
-            show_whitespace_changes: false,
+            show_whitespace_changes: true,
             word_wrap_in_diffs: false,
             context_lines: default_context_lines(),
             external_diff_tool: None,
@@ -345,4 +346,29 @@ pub async fn save_settings(
     // Owner-only: older files may still hold a plaintext token.
     write_atomic(&file, &json, true)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_fields_take_the_documented_defaults() -> Result<(), serde_json::Error> {
+        let parsed: AppSettings = serde_json::from_str("{}")?;
+        let default = AppSettings::default();
+        assert!(parsed.show_whitespace_changes);
+        assert!(default.show_whitespace_changes);
+        assert_eq!(
+            serde_json::to_value(&parsed)?,
+            serde_json::to_value(&default)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn explicit_whitespace_choice_is_kept() -> Result<(), serde_json::Error> {
+        let parsed: AppSettings = serde_json::from_str(r#"{"show_whitespace_changes": false}"#)?;
+        assert!(!parsed.show_whitespace_changes);
+        Ok(())
+    }
 }

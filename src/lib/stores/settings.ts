@@ -16,7 +16,7 @@ const defaults: AppSettings = {
   diff_font_size: 13,
   diff_view_mode: "unified",
   tab_size: 4,
-  show_whitespace_changes: false,
+  show_whitespace_changes: true,
   word_wrap_in_diffs: false,
   context_lines: 3,
   external_diff_tool: null,
