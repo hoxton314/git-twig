@@ -374,6 +374,15 @@ try {
   await session?.close().catch(() => {});
   killDriver();
   // Keep the temp dir only when it holds failure evidence.
-  if (!failed) rmSync(tmp, { recursive: true, force: true });
+  if (!failed) {
+    // A document portal started on the private bus mounts a FUSE fs at
+    // <runtime>/doc until the bus exits; retry, and never fail a passed run
+    // over a leftover temp dir.
+    try {
+      rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    } catch (err) {
+      console.warn(`Could not remove ${tmp}: ${err.message}`);
+    }
+  }
 }
 process.exit(failed ? 1 : 0);
