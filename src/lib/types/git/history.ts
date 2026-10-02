@@ -117,6 +117,26 @@ export interface RebaseCommit {
   already_upstream: boolean;
 }
 
+/** A bisect in progress. */
+export interface BisectInfo {
+  /** "bad" unless custom terms were used (e.g. "new"). */
+  term_bad: string;
+  term_good: string;
+  bad: string | null;
+  good: string[];
+  skipped: string[];
+  /** HEAD: the commit being tested. */
+  current: string | null;
+  current_subject: string | null;
+  /** Candidates left (including the bad end), once both ends are known. */
+  remaining: number | null;
+  /** git's estimate of the steps left. */
+  steps: number | null;
+  /** Set once narrowed down to one commit. */
+  first_bad: string | null;
+  first_bad_subject: string | null;
+}
+
 /** Summary of a patch file before applying it. */
 export interface PatchInfo {
   /** "mbox" (format-patch, applied with git am) or "diff". */

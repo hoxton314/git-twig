@@ -22,6 +22,10 @@
     /** Search highlight state. */
     searchMatch?: "none" | "match" | "current";
     oncontextmenu?: (e: MouseEvent) => void;
+    /** Bisect mark ("first-bad" once found, "testing" for the commit under test). */
+    bisect?: "good" | "bad" | "skip" | "first-bad" | "testing" | null;
+    /** Display names for bisect's good / bad terms. */
+    bisectTerms?: { good: string; bad: string };
   }
 
   let {
@@ -38,7 +42,18 @@
     avatarSize = 20,
     searchMatch = "none",
     oncontextmenu,
+    bisect = null,
+    bisectTerms = { good: "good", bad: "bad" },
   }: Props = $props();
+
+  const bisectLabel = $derived(
+    bisect === "good" ? bisectTerms.good
+    : bisect === "bad" ? bisectTerms.bad
+    : bisect === "first-bad" ? `first ${bisectTerms.bad}`
+    : bisect === "testing" ? "testing"
+    : bisect === "skip" ? "skipped"
+    : "",
+  );
 
   const commit = $derived(entry.commit);
   const gravatarUrl = $derived(
@@ -111,6 +126,9 @@
         <span class="ref-pill ref-{ref.ref_type}" title={ref.name}>{ref.name}</span>
       {/each}
     </span>
+  {/if}
+  {#if bisect}
+    <span class="bisect-pill bisect-{bisect}" title="Bisect: {bisectLabel}">{bisectLabel}</span>
   {/if}
   <span class="summary" title={commit.summary}>{commit.summary}</span>
   <span class="spacer"></span>
@@ -225,6 +243,21 @@
     flex-shrink: 0;
     margin-left: 4px;
   }
+  .bisect-pill {
+    flex-shrink: 0;
+    margin-right: 6px;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+    font-size: 10px;
+    line-height: 15px;
+    text-transform: lowercase;
+  }
+  .bisect-good { color: var(--color-diff-add-text); }
+  .bisect-bad, .bisect-first-bad { color: var(--color-diff-del-text); }
+  .bisect-first-bad { background: var(--color-diff-del-bg); font-weight: 600; }
+  .bisect-skip { color: var(--color-text-muted); }
+  .bisect-testing { color: var(--color-accent); }
   .sig-good { color: var(--color-diff-add-text); }
   .sig-warn { color: var(--color-lane-2); }
   .sig-bad { color: var(--color-diff-del-text); }

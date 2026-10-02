@@ -4,6 +4,7 @@ import type {
   BlameResult,
   CommandResult,
   ApplyPatchResult,
+  BisectInfo,
   CommitOpResult,
   PatchInfo,
   PickManyResult,
@@ -252,4 +253,24 @@ export function inspectPatch(path: string, file: string): Promise<PatchInfo> {
 
 export function applyPatch(path: string, file: string): Promise<ApplyPatchResult> {
   return invoke<ApplyPatchResult>("apply_patch", { path, file });
+}
+
+// ── Bisect ────────────────────────────────────────────────────────────
+
+export function getBisectState(path: string): Promise<BisectInfo | null> {
+  return invoke<BisectInfo | null>("get_bisect_state", { path });
+}
+
+/** Start bisecting; either end may be given later with `bisectMark`. */
+export function bisectStart(path: string, bad: string | null, good: string | null): Promise<CommandResult> {
+  return invoke<CommandResult>("bisect_start", { path, bad, good });
+}
+
+/** Mark `rev` (default HEAD) as good, bad or skip. */
+export function bisectMark(path: string, verdict: "good" | "bad" | "skip", rev?: string): Promise<CommandResult> {
+  return invoke<CommandResult>("bisect_mark", { path, verdict, rev: rev ?? null });
+}
+
+export function bisectReset(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("bisect_reset", { path });
 }

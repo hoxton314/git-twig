@@ -48,6 +48,8 @@
   import CommitContextMenu from "./CommitContextMenu.svelte";
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
   import { applyPatchAction, saveWorkingPatchAction } from "../../lib/patchActions";
+  import { bisectMarks } from "../../lib/bisectActions";
+  import { bisectState } from "../../lib/stores/operation";
   import { openCommitMenu, revealRequest } from "../../lib/stores/commitUi";
   import { revealCommit } from "../../lib/stores/fileviews";
   import { EMPTY_SELECTION, extendTo, primaryAfterToggle, toggle } from "../../lib/graphSelection";
@@ -59,6 +61,15 @@
   const selected = $derived($selectedCommitOid);
   /** Every selected commit (several while multi-selecting). */
   const selectedSet = $derived(new Set($selectedCommits));
+  const bisectMarkMap = $derived(bisectMarks($bisectState));
+  const bisectTerms = $derived({ good: $bisectState?.term_good ?? "good", bad: $bisectState?.term_bad ?? "bad" });
+  function bisectFor(oid: string): "good" | "bad" | "skip" | "first-bad" | "testing" | null {
+    const b = $bisectState;
+    if (!b) return null;
+    if (b.first_bad === oid) return "first-bad";
+    const testing = !b.first_bad && b.bad && b.good.length > 0 && b.current === oid;
+    return bisectMarkMap.get(oid) ?? (testing ? "testing" : null);
+  }
   const status = $derived($workingStatus);
   const s = $derived($settings);
 
@@ -644,6 +655,8 @@
                 now={$now}
                 avatarSize={AVATAR}
                 searchMatch={matchState}
+                bisect={bisectFor(entry.commit.oid)}
+                {bisectTerms}
               />
             </div>
           {/each}

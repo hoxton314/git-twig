@@ -46,6 +46,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/graphSelection.ts` | Graph multi-selection (Ctrl/Shift-click ranges) and the two-commit compare pair; stores `commitSelection` / `selectedCommits` in `graph.ts` |
 | `src-tauri/src/git/squash.rs` | Squash a contiguous run of selected commits (validation + plan, run through the interactive rebase backend); UI in `graph/SquashDialog.svelte` |
 | `src-tauri/src/git/patches.rs` | Save commits / working changes as patch files (format-patch via `-o`, byte-exact) and apply them (`git am --3way` / `git apply` with a 3-way fallback); UI in `src/lib/patchActions.ts` |
+| `src-tauri/src/git/bisect.rs` | `git bisect` start/mark/reset and progress (marks, candidates left, first bad commit; custom terms); UI in the operation banner, commit menu and `src/lib/bisectActions.ts` |
 | `src/lib/stores/clock.ts` | Shared minute clock (`now`) for relative dates |
 | `src/lib/stores/settings.ts` | Settings store with auto-persist and CSS variable application |
 | `src/lib/keybindings.ts` | Global keybinding registry, shortcut parsing, action dispatch |

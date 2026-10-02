@@ -27,6 +27,7 @@ pub mod remotes;
 pub mod conflicts;
 pub mod history;
 pub mod patches;
+pub mod bisect;
 // File history & blame, stash extras, submodules, worktrees
 pub mod file_views;
 pub mod stash_extra;
