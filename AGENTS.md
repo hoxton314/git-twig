@@ -43,6 +43,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/tauri.ts` | Re-exports the typed `invoke()` wrappers from `src/lib/api/<area>.ts` (repo, graph, branches, diff, stash, settings, github, history, workspace, hosting); import as `import * as tauri from "…/lib/tauri"` |
 | `src/lib/repoSettings.ts` | Per-repository settings overrides: overridable keys, merge (`effectiveSettings`) and write routing; stores `globalSettings` / `repoOverrides` / derived `settings` in `stores/settings.ts`, saved to `repo_settings.json` |
 | `src/lib/repoGroups.ts` | Repository groups: pure list ops; stored as `groups` in `repo_history.json` (store actions in `stores/repoHistory.ts`, open-all in `groupActions.ts`, "Add to group" menu in `groupMenu.ts`, Home `GroupsSection.svelte`, + menu entries via `repoMenu.ts`) |
+| `src/lib/dashboard.ts` | Repository dashboard (group or all repos): scope, bounded-concurrency pool; panel `components/dashboard/Dashboard.svelte` (lazy); backend `git/dashboard.rs` (status of any validated working tree, fetch, `pull --ff-only`) |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
 | `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
 | `src/lib/graphSelection.ts` | Graph multi-selection (Ctrl/Shift-click ranges) and the two-commit compare pair; stores `commitSelection` / `selectedCommits` in `graph.ts` |

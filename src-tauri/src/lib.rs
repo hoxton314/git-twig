@@ -159,6 +159,9 @@ pub fn run() {
             commands::lfs::lfs_unlock,
             commands::lfs::lfs_fetch,
             commands::lfs::lfs_prune,
+            commands::dashboard::get_dashboard_status,
+            commands::dashboard::dashboard_fetch,
+            commands::dashboard::dashboard_pull,
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,

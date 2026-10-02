@@ -13,6 +13,7 @@
   import FileViewHost from "../history/FileViewHost.svelte";
   import CodeSearch from "../search/CodeSearch.svelte";
   import { lfsPanelOpen } from "../../lib/stores/lfs";
+  import { dashboardScope, openDashboard } from "../../lib/dashboard";
   import RepoToolsHost from "../worktrees/RepoToolsHost.svelte";
   import StatusBar from "./StatusBar.svelte";
   import CommandPalette from "./CommandPalette.svelte";
@@ -96,6 +97,7 @@
     // ── Keybinding action handlers ─────────────────────────────────
     const unsubs = [
       onAction("open_repo", openRepoWithDialog),
+      onAction("repo_dashboard", () => openDashboard(null)),
       onAction("lfs_manage", () => {
         if ($activeRepoPath) lfsPanelOpen.set(true);
       }),
@@ -380,6 +382,11 @@
   <FileViewHost />
   <CodeSearch />
   <!-- Rarely opened: loaded on first use to keep the main bundle small. -->
+  {#if $dashboardScope}
+    {#await import("../dashboard/Dashboard.svelte") then { default: Dashboard }}
+      <Dashboard />
+    {/await}
+  {/if}
   {#if $lfsPanelOpen}
     {#await import("../lfs/LfsPanel.svelte") then { default: LfsPanel }}
       <LfsPanel />

@@ -4,7 +4,7 @@ import { globalSettings, repoOverrides } from "./settings";
 import { effectiveSettings } from "../repoSettings";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
-import { trackOperation } from "./operations";
+import { trackOperation, operations, isSyncing } from "./operations";
 import { invalidateCi } from "./ci";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -48,6 +48,8 @@ async function tick() {
     for (const path of due) {
       // The tab may have been closed while an earlier fetch was running.
       if (!get(openRepos).has(path)) continue;
+      // A manual / dashboard fetch is running there: try again next tick.
+      if (isSyncing(get(operations), path)) continue;
       lastFetched.set(path, Date.now());
       try {
         // Failures are recorded in `lastFetch` and shown in the status bar

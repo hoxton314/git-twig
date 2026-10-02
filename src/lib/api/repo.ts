@@ -7,6 +7,8 @@ import type {
   RepoHistory,
   RepoInfo,
   RepoStatusSummary,
+  RepoStatusRow,
+  CommandResult,
   Session,
 } from "../types/git";
 
@@ -30,6 +32,21 @@ export function listOpenRepos(): Promise<string[]> {
 
 export function listReposInDir(dir: string): Promise<RepoInfo[]> {
   return invoke<RepoInfo[]>("list_repos_in_dir", { dir });
+}
+
+// ── Repository dashboard (any repo path, not only open tabs) ─────────
+
+export function getDashboardStatus(paths: string[]): Promise<RepoStatusRow[]> {
+  return invoke<RepoStatusRow[]>("get_dashboard_status", { paths });
+}
+
+export function dashboardFetch(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("dashboard_fetch", { path });
+}
+
+/** Fast-forward the current branch to its upstream (never merges). */
+export function dashboardPull(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("dashboard_pull", { path });
 }
 
 // ── Session persistence ───────────────────────────────────────────────

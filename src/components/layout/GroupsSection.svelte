@@ -1,7 +1,7 @@
 <script lang="ts">
   /** Home screen: repository groups (create, rename, delete, open all, remove repos). */
   import { tick } from "svelte";
-  import { FolderGit2, FolderOpen, Layers, Pencil, Plus, Trash2, X } from "lucide-svelte";
+  import { FolderGit2, FolderOpen, Layers, LayoutDashboard, Pencil, Plus, Trash2, X } from "lucide-svelte";
   import { ask } from "@tauri-apps/plugin-dialog";
   import { openRepos, activeRepoPath } from "../../lib/stores/repos";
   import {
@@ -15,6 +15,7 @@
     repoDisplayName,
   } from "../../lib/stores/repoHistory";
   import { openRepoGroup } from "../../lib/groupActions";
+  import { openDashboard } from "../../lib/dashboard";
   import { MAX_GROUP_NAME } from "../../lib/repoGroups";
   import { settings } from "../../lib/stores/settings";
 
@@ -62,7 +63,10 @@
 <section class="open-repos groups" aria-labelledby="groups-heading">
   <div class="section-header">
     <h2 class="section-title" id="groups-heading"><Layers size={13} /> Groups</h2>
-    <button class="link-btn" onclick={newGroup}><Plus size={12} /> New group</button>
+    <span class="header-actions">
+      <button class="link-btn" onclick={() => openDashboard(null)} title="Status of every known repository, with Fetch all / Pull all"><LayoutDashboard size={12} /> Dashboard</button>
+      <button class="link-btn" onclick={newGroup}><Plus size={12} /> New group</button>
+    </span>
   </div>
   {#if $repoGroups.length === 0}
     <p class="empty">Group repositories to open them together. Use “Add to group” on a repository or tab.</p>
@@ -92,6 +96,9 @@
           <span class="count">{g.paths.length} repo{g.paths.length === 1 ? "" : "s"}{openCount > 0 ? ` · ${openCount} open` : ""}</span>
         {/if}
         <span class="spacer"></span>
+        <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openDashboard(g.id)} title="Status of this group's repositories, with Fetch all / Pull all">
+          <LayoutDashboard size={12} /> Dashboard
+        </button>
         <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openRepoGroup(g.id)} title="Open every repository in this group as a tab">
           <FolderOpen size={12} /> Open all
         </button>
@@ -142,6 +149,7 @@
   .link-btn { padding: 0; border: none; background: transparent; color: var(--color-text-muted); font-size: 11px; cursor: pointer; }
   .link-btn:hover:not(:disabled) { color: var(--color-text-primary); }
   .groups { display: flex; flex-direction: column; gap: 8px; }
+  .header-actions { display: flex; gap: 12px; }
   .empty { margin: 0; font-size: 12px; color: var(--color-text-muted); }
   .group { border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); }
   .group-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
