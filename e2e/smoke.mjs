@@ -106,6 +106,18 @@ try {
   failed = true;
   console.log("FAILED");
   console.error(err);
+  // Leave evidence for CI artifacts / local debugging.
+  const out = process.env.TWIG_E2E_ARTIFACTS ?? join(tmp, "artifacts");
+  try {
+    mkdirSync(out, { recursive: true });
+    const png = await session?.screenshot();
+    if (png) writeFileSync(join(out, "failure.png"), Buffer.from(png, "base64"));
+    const html = await session?.execute("return document.documentElement.outerHTML;");
+    if (html) writeFileSync(join(out, "failure.html"), html);
+    console.error(`artifacts written to ${out}`);
+  } catch (e) {
+    console.error("could not capture artifacts:", e.message);
+  }
 } finally {
   await session?.close().catch(() => {});
   driver.kill();

@@ -27,6 +27,14 @@ export class Session {
     return v.map((e) => e[ELEMENT]);
   }
 
+  /** `textContent` of every match (WebDriver's visible text depends on layout). */
+  texts(css) {
+    return this.execute(
+      "return Array.from(document.querySelectorAll(arguments[0]), (e) => (e.textContent || '').trim());",
+      [css],
+    );
+  }
+
   /** Poll until `css` matches (and `pred(texts)` holds, if given). */
   async waitFor(css, { timeout = 30_000, pred } = {}) {
     const end = Date.now() + timeout;
@@ -36,7 +44,7 @@ export class Session {
         const els = await this.findAll(css);
         if (els.length > 0) {
           if (!pred) return els;
-          const texts = await Promise.all(els.map((e) => this.text(e)));
+          const texts = await this.texts(css);
           last = JSON.stringify(texts);
           if (pred(texts)) return els;
         }
@@ -62,6 +70,11 @@ export class Session {
 
   execute(script, args = []) {
     return this.cmd("POST", "/execute/sync", { script, args });
+  }
+
+  /** PNG screenshot (base64). */
+  screenshot() {
+    return this.cmd("GET", "/screenshot");
   }
 
   close() {
