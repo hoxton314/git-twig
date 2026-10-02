@@ -63,9 +63,6 @@ pub fn run() {
             // Stash
             commands::stash::stash_list,
             commands::stash::stash_push,
-            commands::stash::stash_pop,
-            commands::stash::stash_apply,
-            commands::stash::stash_drop,
             // GitHub
             commands::github::github_validate_token,
             commands::github::github_set_token,
