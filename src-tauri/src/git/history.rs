@@ -14,8 +14,8 @@ use crate::git::writer::{run_git, safe_ref, GitOutput};
 /// Upper bound on commits shown in the interactive rebase editor.
 const MAX_REBASE_COMMITS: usize = 1000;
 /// Upper bound on new-base commits compared by patch id (like
-/// `git rebase`'s cherry-pick detection) before giving up on the check.
-const MAX_UPSTREAM_SCAN: usize = 5000;
+/// `git rebase`'s cherry-pick detection); beyond it the check is skipped.
+const MAX_UPSTREAM_SCAN: usize = 2000;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RebaseCommit {
@@ -43,8 +43,10 @@ pub struct RebaseCommitList {
     pub onto_new_base: bool,
 }
 
-/// Patch id of a non-merge commit against its parent; `None` for merges and
-/// commits without changes.
+/// Patch id of a non-merge commit against its parent; `None` for merges,
+/// commits without changes, and commits touching binary files (libgit2's
+/// patch id ignores binary content, so any two edits of one binary file
+/// would match).
 fn patch_id(repo: &Repository, commit: &Commit) -> Result<Option<Oid>, TwigError> {
     if commit.parent_count() > 1 {
         return Ok(None);
@@ -56,6 +58,16 @@ fn patch_id(repo: &Repository, commit: &Commit) -> Result<Option<Oid>, TwigError
     let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit.tree()?), None)?;
     if diff.deltas().len() == 0 {
         return Ok(None);
+    }
+    for idx in 0..diff.deltas().len() {
+        // Loading the patch is what detects binary content.
+        let binary = match git2::Patch::from_diff(&diff, idx)? {
+            Some(patch) => patch.delta().flags().is_binary(),
+            None => true,
+        };
+        if binary {
+            return Ok(None);
+        }
     }
     Ok(Some(diff.patchid(None)?))
 }
@@ -70,12 +82,13 @@ fn upstream_patch_ids(
     let mut walk = repo.revwalk()?;
     walk.push(base)?;
     walk.hide(head)?;
+    let oids: Vec<Oid> = walk.take(MAX_UPSTREAM_SCAN + 1).collect::<Result<_, _>>()?;
+    if oids.len() > MAX_UPSTREAM_SCAN {
+        return Ok(None);
+    }
     let mut ids = HashSet::new();
-    for (n, oid) in walk.enumerate() {
-        if n >= MAX_UPSTREAM_SCAN {
-            return Ok(None);
-        }
-        if let Some(id) = patch_id(repo, &repo.find_commit(oid?)?)? {
+    for oid in oids {
+        if let Some(id) = patch_id(repo, &repo.find_commit(oid)?)? {
             ids.insert(id);
         }
     }
@@ -92,10 +105,21 @@ pub struct RebaseTodoItem {
     pub message: Option<String>,
 }
 
-/// List the commits `git rebase -i <base>` would offer (base..HEAD).
+/// List the commits `git rebase -i <base>` would offer (base..HEAD), marking
+/// those the new base already has.
 pub fn list_rebase_commits(
     repo: &Repository,
     base: Option<&str>,
+) -> Result<RebaseCommitList, TwigError> {
+    list_rebase_commits_opts(repo, base, true)
+}
+
+/// Like [`list_rebase_commits`]; `detect_upstream = false` skips the patch-id
+/// comparison (`already_upstream` is then always false).
+pub fn list_rebase_commits_opts(
+    repo: &Repository,
+    base: Option<&str>,
+    detect_upstream: bool,
 ) -> Result<RebaseCommitList, TwigError> {
     let head = repo
         .head()
@@ -125,7 +149,13 @@ pub fn list_rebase_commits(
         let base = Oid::from_str(base)?;
         if repo.merge_base(head.id(), base).ok() != Some(base) {
             onto_new_base = true;
-            upstream_ids = upstream_patch_ids(repo, head.id(), base)?;
+            if detect_upstream {
+                // Best effort: e.g. a partial clone may lack the blobs.
+                upstream_ids = upstream_patch_ids(repo, head.id(), base).unwrap_or_else(|e| {
+                    log::warn!("skipping already-upstream check: {e}");
+                    None
+                });
+            }
         }
     }
 
@@ -144,7 +174,7 @@ pub fn list_rebase_commits(
         }
         let already_upstream = match &upstream_ids {
             Some(ids) if !ids.is_empty() => {
-                patch_id(repo, &commit)?.is_some_and(|p| ids.contains(&p))
+                patch_id(repo, &commit).ok().flatten().is_some_and(|p| ids.contains(&p))
             }
             _ => false,
         };
@@ -663,7 +693,14 @@ mod tests {
             git_ok(&dir, &["commit", "-q", "-m", name]).await;
         }
         let picked = git_ok(&dir, &["rev-parse", "HEAD"]).await.trim().to_string();
+        std::fs::write(dir.join("logo.bin"), b"\0mine").unwrap();
+        git_ok(&dir, &["add", "."]).await;
+        git_ok(&dir, &["commit", "-q", "-m", "binary"]).await;
         git_ok(&dir, &["checkout", "-q", "main"]).await;
+        // A different edit of the same binary file must not match.
+        std::fs::write(dir.join("logo.bin"), b"\0theirs").unwrap();
+        git_ok(&dir, &["add", "."]).await;
+        git_ok(&dir, &["commit", "-q", "-m", "upstream binary"]).await;
         // Same change, independent commit; and a real cherry-pick.
         std::fs::write(dir.join("dup.txt"), "same\n").unwrap();
         git_ok(&dir, &["add", "."]).await;
@@ -676,10 +713,22 @@ mod tests {
         assert!(list.onto_new_base);
         let flags: Vec<(String, bool)> =
             list.commits.iter().map(|c| (c.summary.clone(), c.already_upstream)).collect();
-        assert_eq!(flags, vec![("dup".into(), true), ("own".into(), false), ("picked".into(), true)]);
+        assert_eq!(
+            flags,
+            vec![
+                ("dup".into(), true),
+                ("own".into(), false),
+                ("picked".into(), true),
+                ("binary".into(), false),
+            ]
+        );
+        // The start-time list skips the scan.
+        let quick = list_rebase_commits_opts(&repo, Some("main"), false).unwrap();
+        assert!(quick.onto_new_base);
+        assert!(quick.commits.iter().all(|c| !c.already_upstream));
 
         // Base is an ancestor: nothing to compare against.
-        let list = list_rebase_commits(&repo, Some("HEAD~2")).unwrap();
+        let list = list_rebase_commits(&repo, Some("HEAD~3")).unwrap();
         assert!(!list.onto_new_base);
         assert!(list.commits.iter().all(|c| !c.already_upstream));
         let list = list_rebase_commits(&repo, None).unwrap();

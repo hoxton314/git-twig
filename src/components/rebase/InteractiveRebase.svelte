@@ -206,7 +206,9 @@
     ontoNewBase || rows.some((r, i) => r.action !== "pick" || r.commit.oid !== originalOrder[i]),
   );
 
-  const upstreamCount = $derived(rows.filter((r) => r.commit.already_upstream).length);
+  const upstreamCount = $derived(
+    rows.filter((r) => r.commit.already_upstream && r.action === "drop").length,
+  );
 
   const summary = $derived.by(() => {
     const count = (a: RebaseAction) => rows.filter((r) => r.action === a).length;
@@ -285,7 +287,7 @@
     {/if}
     {#if upstreamCount > 0}
       <div class="warn">
-        <AlertTriangle size={13} /> {upstreamCount} commit{upstreamCount !== 1 ? "s are" : " is"} already in {base.trim()} and
+        <AlertTriangle size={13} /> {upstreamCount} commit{upstreamCount !== 1 ? "s are" : " is"} already in {loadedFor} and
         {upstreamCount !== 1 ? "are" : "is"} set to drop.
       </div>
     {/if}

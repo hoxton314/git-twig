@@ -66,7 +66,8 @@ pub async fn interactive_rebase(
         .read_repo(&path, move |repo| {
             Ok((
                 read_operation_state(repo)?.kind,
-                history::list_rebase_commits(repo, b.as_deref())?,
+                // Only the ids are compared; skip the patch-id scan.
+                history::list_rebase_commits_opts(repo, b.as_deref(), false)?,
                 repo.path().to_path_buf(),
             ))
         })
