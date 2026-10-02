@@ -1,4 +1,4 @@
-import { writable, get } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type {
   CommitGraph,
   BranchInfo,
@@ -11,6 +11,7 @@ import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
 import { settings } from "./settings";
 import { toastError } from "./toasts";
+import { EMPTY_SELECTION, effectiveSelection, type Selection } from "../graphSelection";
 
 /** Graph page size ("commits per page" setting). */
 export function graphPageSize(): number {
@@ -49,6 +50,14 @@ export const branches = writable<BranchInfo[]>([]);
 
 /** The currently selected commit OID (for showing its diff). */
 export const selectedCommitOid = writable<string | null>(null);
+
+/** Extra graph selection (Ctrl/Shift-click); see `graphSelection.ts`. */
+export const commitSelection = writable<Selection>(EMPTY_SELECTION);
+
+/** The selected commits in graph order (one, or several when multi-selecting). */
+export const selectedCommits = derived([commitSelection, selectedCommitOid], ([sel, primary]) =>
+  effectiveSelection(sel, primary),
+);
 
 /** Diff files for the selected commit. */
 export const selectedDiff = writable<DiffFile[]>([]);
@@ -90,6 +99,7 @@ activeRepoPath.subscribe((p) => {
   graphLoading.set(p !== null);
   branches.set([]);
   selectedCommitOid.set(null);
+  commitSelection.set(EMPTY_SELECTION);
   selectedDiff.set([]);
   selectedWorkingFile.set(null);
   workingFileDiff.set([]);

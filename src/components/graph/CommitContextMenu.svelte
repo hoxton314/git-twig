@@ -8,7 +8,14 @@
   import CreateBranchDialog from "./CreateBranchDialog.svelte";
   import CreateTagDialog from "../tags/CreateTagDialog.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
-  import { branches, commitGraph, selectedCommitOid } from "../../lib/stores/graph";
+  import {
+    branches,
+    commitGraph,
+    commitSelection,
+    selectedCommitOid,
+    selectedCommits,
+  } from "../../lib/stores/graph";
+  import { comparePair } from "../../lib/graphSelection";
   import {
     commitMenu,
     createBranchTarget,
@@ -94,6 +101,32 @@
     ];
   }
 
+  /** Menu for a right-click inside a multi-selection. */
+  function multiItemsFor(c: CommitInfo, oids: string[]): MenuItem[] {
+    const pair = comparePair(oids);
+    const shorts = oids.map((o) => findCommit(o)?.short_oid ?? o.slice(0, 7));
+    const items: MenuItem[] = [];
+    if (pair) {
+      items.push(
+        { label: "Copy compared range (older..newer)", action: () => copyText(`${pair.from}..${pair.to}`, "range") },
+        { separator: true },
+      );
+    }
+    items.push(
+      { label: `Copy ${oids.length} SHAs`, action: () => copyText(oids.join("\n"), "SHAs") },
+      { label: `Copy ${oids.length} short SHAs`, action: () => copyText(shorts.join("\n"), "short SHAs") },
+      { separator: true },
+      {
+        label: `Select only ${c.short_oid}`,
+        action: () => {
+          commitSelection.set({ oids: [], anchor: c.oid });
+          selectedCommitOid.set(c.oid);
+        },
+      },
+    );
+    return items;
+  }
+
   /** Open the menu for the selected commit, anchored to its row. */
   function openForSelected() {
     // Shift+F10 is global; other lists (files, branches) handle it for their
@@ -143,7 +176,14 @@
       ),
       onAction("cherry_pick_selected", withSelected((p, c) => cherryPickAction(p, c.oid))),
       onAction("revert_selected", withSelected((p, c) => revertAction(p, c.oid))),
-      onAction("copy_commit_sha", withSelected((_, c) => copyText(c.oid, "SHA"))),
+      onAction(
+        "copy_commit_sha",
+        withSelected((_, c) => {
+          const oids = $selectedCommits;
+          if (oids.length > 1) copyText(oids.join("\n"), "SHAs");
+          else copyText(c.oid, "SHA");
+        }),
+      ),
       onAction("push_all_tags", () => {
         if ($activeRepoPath) pushTagAction($activeRepoPath);
       }),
@@ -157,7 +197,14 @@
 </script>
 
 {#if menu && menuCommit}
-  <ContextMenu x={menu.x} y={menu.y} items={itemsFor(menuCommit)} onclose={() => commitMenu.set(null)} />
+  <ContextMenu
+    x={menu.x}
+    y={menu.y}
+    items={$selectedCommits.length > 1 && $selectedCommits.includes(menuCommit.oid)
+      ? multiItemsFor(menuCommit, $selectedCommits)
+      : itemsFor(menuCommit)}
+    onclose={() => commitMenu.set(null)}
+  />
 {/if}
 
 <CreateBranchDialog />

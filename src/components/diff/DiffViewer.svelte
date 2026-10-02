@@ -2,9 +2,11 @@
   import { searchResult } from "../../lib/stores/graphSearch";
   import { onMount, setContext, tick } from "svelte";
   import { DiffSearchRegistry, DIFF_SEARCH_CONTEXT } from "../../lib/diff/searchRegistry";
+  import { comparePair } from "../../lib/graphSelection";
   import { ask } from "@tauri-apps/plugin-dialog";
   import {
     selectedCommitOid,
+    selectedCommits,
     selectedDiff,
     diffLoading,
     selectedWorkingFile,
@@ -55,6 +57,9 @@
 
   const repoPath = $derived($activeRepoPath);
   const commitOid = $derived($selectedCommitOid);
+  /** Two commits selected in the graph: diff the older against the newer. */
+  const compare = $derived(comparePair($selectedCommits));
+  const multiCount = $derived($selectedCommits.length);
   const commitDiff = $derived($selectedDiff);
   const workingFile = $derived($selectedWorkingFile);
   const workingDiff = $derived($workingFileDiff);
@@ -114,7 +119,8 @@
   $effect(() => {
     const oid = commitOid;
     const path = repoPath;
-    const key = path && oid ? `${path} ${oid}` : null;
+    const pair = compare;
+    const key = path && oid ? `${path} ${pair ? `${pair.from}..${pair.to}` : oid}` : null;
     if (!oid || oid === "__wip__") {
       // Forget the last commit so re-selecting it later reloads and
       // re-expands instead of showing stale expansion state.
@@ -123,7 +129,7 @@
     }
     if (path && key !== lastLoaded) {
       lastLoaded = key;
-      loadDiff(path, oid);
+      loadDiff(path, oid, false, pair);
     }
   });
 
@@ -159,16 +165,23 @@
     if (isWorkingMode) {
       refreshStatus(path);
     } else if (commitOid) {
-      loadDiff(path, commitOid, true);
+      loadDiff(path, commitOid, true, compare);
     }
   });
 
-  async function loadDiff(path: string, oid: string, keepExpanded = false) {
+  async function loadDiff(
+    path: string,
+    oid: string,
+    keepExpanded = false,
+    pair: { from: string; to: string } | null = null,
+  ) {
     const req = ++diffRequest;
     $diffLoading = !keepExpanded;
     if (!keepExpanded) expandedFiles = new Set();
     try {
-      const result = await tauri.getCommitDiff(path, oid);
+      const result = pair
+        ? await tauri.getCompareDiff(path, pair.from, pair.to)
+        : await tauri.getCommitDiff(path, oid);
       // Drop the result if another commit/repo was selected while loading,
       // so a slow earlier request can't overwrite the current diff.
       if (req !== diffRequest || repoPath !== path) return;
@@ -267,6 +280,10 @@
           oldSource = f.status !== "added" ? "index" : null;
           newSource = f.status !== "deleted" ? "workdir" : null;
         }
+      } else if (compare) {
+        // Comparing two commits: old=older commit, new=newer commit
+        oldSource = f.status !== "added" ? compare.from : null;
+        newSource = f.status !== "deleted" ? compare.to : null;
       } else if (commitOid && commitOid !== "__wip__") {
         // Commit diff: old=parent, new=commit
         const parentOid = parentOidOf(commitOid);
@@ -421,6 +438,7 @@
   function newSideSource(): string | null {
     if (isWipMode) return null;
     if (isWorkingMode && workingFile) return workingFile.area === "staged" ? "index" : "workdir";
+    if (compare) return compare.to;
     if (commitOid && commitOid !== "__wip__") return commitOid;
     return null;
   }
@@ -760,9 +778,16 @@
       {:else if isWorkingMode && workingFile}
         <span class="label">{workingFile.area === "staged" ? "Staged" : "Unstaged"}</span>
         — {workingFile.path}
+      {:else if compare}
+        <span class="label">Comparing</span>
+        <span class="oid" title={`${compare.from} → ${compare.to}`}>{compare.from.slice(0, 7)}..{compare.to.slice(0, 7)}</span>
+        — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
       {:else if commitOid}
         <span class="oid">{commitOid?.slice(0, 7)}</span>
         — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
+        {#if multiCount > 2}
+          <span class="label" title="Select exactly two commits to compare them">· {multiCount} selected</span>
+        {/if}
       {/if}
     </span>
     <div class="view-toggle">

@@ -7,6 +7,8 @@
     graphLoading,
     graphLoadingMore,
     selectedCommitOid,
+    commitSelection,
+    selectedCommits,
     workingStatus,
     selectedWorkingFile,
     workingFileDiff,
@@ -46,12 +48,15 @@
   import CommitContextMenu from "./CommitContextMenu.svelte";
   import { openCommitMenu, revealRequest } from "../../lib/stores/commitUi";
   import { revealCommit } from "../../lib/stores/fileviews";
+  import { EMPTY_SELECTION, extendTo, primaryAfterToggle, toggle } from "../../lib/graphSelection";
 
   const repoPath = $derived($activeRepoPath);
   const graph = $derived($commitGraph);
   const loading = $derived($graphLoading);
   const loadingMore = $derived($graphLoadingMore);
   const selected = $derived($selectedCommitOid);
+  /** Every selected commit (several while multi-selecting). */
+  const selectedSet = $derived(new Set($selectedCommits));
   const status = $derived($workingStatus);
   const s = $derived($settings);
 
@@ -194,8 +199,21 @@
 
   // ── Selection ───────────────────────────────────────────────────────
 
-  function selectCommit(oid: string) {
-    $selectedCommitOid = selected === oid ? null : oid;
+  const rowOrder = () => entries.map((en) => en.commit.oid);
+
+  function selectCommit(oid: string, e?: MouseEvent) {
+    if (e && (e.ctrlKey || e.metaKey)) {
+      const next = toggle($commitSelection, selected, oid, rowOrder());
+      $commitSelection = next;
+      $selectedCommitOid = primaryAfterToggle(next, oid);
+    } else if (e?.shiftKey && selected && selected !== "__wip__") {
+      $commitSelection = extendTo($commitSelection, selected, oid, rowOrder());
+      $selectedCommitOid = oid;
+    } else {
+      // A plain click on one of several selected commits keeps just that one.
+      $commitSelection = { oids: [], anchor: oid };
+      $selectedCommitOid = selected === oid && selectedSet.size <= 1 ? null : oid;
+    }
     // WebKit doesn't focus buttons on click; focus the list so arrow keys work.
     containerEl?.focus({ preventScroll: true });
   }
@@ -417,13 +435,20 @@
         if (selected) {
           e.preventDefault();
           $selectedCommitOid = null;
+          $commitSelection = EMPTY_SELECTION;
         }
         return;
       default:
         return;
     }
     e.preventDefault();
-    $selectedCommitOid = entries[next].commit.oid;
+    const target = entries[next].commit.oid;
+    if (e.shiftKey && current >= 0) {
+      $commitSelection = extendTo($commitSelection, selected, target, rowOrder());
+    } else {
+      $commitSelection = { oids: [], anchor: target };
+    }
+    $selectedCommitOid = target;
     scrollRowIntoView(next);
   }
 
@@ -591,8 +616,8 @@
                 {entry}
                 {isUnpushed}
                 refs={entryRefs}
-                isSelected={selected === entry.commit.oid}
-                onSelect={() => selectCommit(entry.commit.oid)}
+                isSelected={selectedSet.has(entry.commit.oid)}
+                onSelect={(e) => selectCommit(entry.commit.oid, e)}
                 oncontextmenu={(e) => openCommitMenu(e, entry.commit.oid)}
                 showAuthor={cols.author}
                 showSha={cols.sha}

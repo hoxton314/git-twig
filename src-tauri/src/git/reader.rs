@@ -598,6 +598,22 @@ pub fn read_commit_diff_with(
     parse_diff(&diff)
 }
 
+/// Diff between two arbitrary commits (`from`'s tree → `to`'s tree), with
+/// rename detection: the graph's "compare" view.
+pub fn read_compare_diff_with(
+    repo: &Repository,
+    from: &str,
+    to: &str,
+    options: &DiffReadOptions,
+) -> Result<Vec<DiffFile>, TwigError> {
+    let from_tree = resolve_commit(repo, from)?.tree()?;
+    let to_tree = resolve_commit(repo, to)?.tree()?;
+    let mut opts = options.new_diff_options();
+    let mut diff = repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), Some(&mut opts))?;
+    detect_renames(&mut diff)?;
+    parse_diff(&diff)
+}
+
 /// Get the combined diff of the working directory against HEAD (staged + unstaged).
 #[allow(dead_code)] // default-options entry point for other callers
 pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> {
@@ -822,6 +838,42 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q", "-b", "main"]);
         dir
+    }
+
+    #[test]
+    fn compare_diff_spans_commits_and_detects_renames() {
+        let dir = temp_repo("compare");
+        let body = "line\n".repeat(50);
+        std::fs::write(dir.join("old.txt"), &body).unwrap();
+        std::fs::write(dir.join("keep.txt"), "a\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "one"]);
+        let repo = Repository::open(&dir).unwrap();
+        let first = repo.head().unwrap().target().unwrap().to_string();
+        std::fs::write(dir.join("keep.txt"), "a\nb\n").unwrap();
+        git(&dir, &["commit", "-q", "-am", "two"]);
+        git(&dir, &["mv", "old.txt", "new.txt"]);
+        std::fs::write(dir.join("added.txt"), "n\n").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "three"]);
+        let third = repo.head().unwrap().target().unwrap().to_string();
+
+        let opts = DiffReadOptions::default();
+        let files = read_compare_diff_with(&repo, &first, &third, &opts).unwrap();
+        let mut paths: Vec<_> = files.iter().map(|f| (f.status.clone(), f.new_path.clone().unwrap_or_default())).collect();
+        paths.sort_by(|a, b| a.1.cmp(&b.1));
+        // Both later commits are included; the rename survives across them.
+        assert_eq!(paths.len(), 3, "{paths:?}");
+        assert_eq!(paths[0].1, "added.txt");
+        assert_eq!(paths[1].1, "keep.txt");
+        assert_eq!(paths[2].1, "new.txt");
+        let renamed = files.iter().find(|f| f.new_path.as_deref() == Some("new.txt")).unwrap();
+        assert_eq!(renamed.old_path.as_deref(), Some("old.txt"));
+        // Reversed direction reverses the change.
+        let back = read_compare_diff_with(&repo, &third, &first, &opts).unwrap();
+        assert!(back.iter().any(|f| f.new_path.as_deref() == Some("old.txt")));
+        assert!(read_compare_diff_with(&repo, &first, "zzzz", &opts).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

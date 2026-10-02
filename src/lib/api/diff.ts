@@ -29,6 +29,21 @@ export function getCommitDiff(
   });
 }
 
+/** Diff between two commits (`from` → `to`). */
+export function getCompareDiff(
+  path: string,
+  from: string,
+  to: string,
+  options?: DiffReadOptions,
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_compare_diff", {
+    path,
+    from,
+    to,
+    options: options ?? diffReadDefaults,
+  });
+}
+
 export function getWorkingDiff(
   path: string,
   options?: DiffReadOptions,
