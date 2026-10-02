@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { Loader2, ExternalLink, AlertCircle } from "lucide-svelte";
+  import { Loader2, ExternalLink, AlertCircle, AlertTriangle, ArrowUpFromLine } from "lucide-svelte";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import { untrack } from "svelte";
   import Modal from "../shared/Modal.svelte";
   import * as tauri from "../../lib/tauri";
-  import type { GitHubRemoteInfo } from "../../lib/types/github";
   import type { GitHubPullRequest } from "../../lib/types/github";
+  import type { HostedRemote } from "../../lib/types/hosting";
   import type { BranchInfo } from "../../lib/types/git";
+  import { refreshAll } from "../../lib/stores/graph";
+  import { toastError } from "../../lib/stores/toasts";
 
   interface Props {
     open_: boolean;
@@ -16,11 +18,14 @@
 
   let { open_: isOpen, onclose, repoPath }: Props = $props();
 
-  let remote = $state<GitHubRemoteInfo | null>(null);
+  /** Hosted remotes (GitHub / GitLab / Gitea), preferred target first. */
+  let remotes = $state<HostedRemote[]>([]);
+  let targetName = $state("");
+  let headRemoteName = $state("");
   let detecting = $state(false);
   let noRemote = $state(false);
 
-  let localBranches = $state<string[]>([]);
+  let branchInfos = $state<BranchInfo[]>([]);
   let remoteBranches = $state<string[]>([]);
   let currentBranch = $state("");
 
@@ -30,8 +35,33 @@
   let body = $state("");
 
   let creating = $state(false);
+  let pushing = $state(false);
   let error = $state("");
   let createdPr = $state<GitHubPullRequest | null>(null);
+
+  const target = $derived(remotes.find((r) => r.remote_name === targetName) ?? null);
+  const headRemote = $derived(remotes.find((r) => r.remote_name === headRemoteName) ?? target);
+  /** Remotes a PR head can come from: same provider + host as the target. */
+  const headCandidates = $derived(
+    target ? remotes.filter((r) => r.provider === target.provider && r.host === target.host) : [],
+  );
+  const isFork = $derived(
+    !!target && !!headRemote && headRemote.project_path.toLowerCase() !== target.project_path.toLowerCase(),
+  );
+  /** Head as sent to the API: `branch`, or `owner:branch` for a fork. */
+  const headSpec = $derived(isFork && headRemote ? `${headRemote.owner}:${head}` : head);
+  const localBranches = $derived(branchInfos.filter((b) => !b.is_remote).map((b) => b.name));
+  const prWord = $derived(target?.provider === "gitlab" ? "Merge Request" : "Pull Request");
+
+  /** Whether `head` exists on the head remote and is up to date there. */
+  const pushState = $derived.by((): { kind: "ok" } | { kind: "missing" } | { kind: "ahead"; count: number } => {
+    if (!headRemote || !head) return { kind: "ok" };
+    const tracking = `${headRemote.remote_name}/${head}`;
+    if (!branchInfos.some((b) => b.is_remote && b.name === tracking)) return { kind: "missing" };
+    const local = branchInfos.find((b) => !b.is_remote && b.name === head);
+    if (local && local.upstream === tracking && local.ahead > 0) return { kind: "ahead", count: local.ahead };
+    return { kind: "ok" };
+  });
 
   // Re-detect only when the dialog opens or the repo changes. detectRemote()
   // synchronously reads `detecting`; without untrack, flipping it back to
@@ -50,40 +80,54 @@
     createdPr = null;
 
     try {
-      remote = await tauri.githubDetectRemote(repoPath);
-      if (!remote) {
-        noRemote = true;
-        detecting = false;
-        return;
-      }
-
-      // Load branches in parallel
-      const [branches, info, remoteBranchList] = await Promise.all([
+      const [list, branches, info] = await Promise.all([
+        tauri.hostingListRemotes(repoPath),
         tauri.getBranches(repoPath),
         tauri.getRepoInfo(repoPath),
-        tauri.githubListBranches(remote.owner, remote.repo),
       ]);
-
-      localBranches = branches
-        .filter((b: BranchInfo) => !b.is_remote)
-        .map((b: BranchInfo) => b.name);
-      remoteBranches = remoteBranchList;
+      remotes = list;
+      branchInfos = branches;
+      if (!list.length) {
+        noRemote = true;
+        return;
+      }
+      targetName = list[0].remote_name;
+      // A fork workflow usually pushes to `origin` and targets `upstream`.
+      headRemoteName = list.find((r) => r.remote_name === "origin")?.remote_name ?? targetName;
       currentBranch = info.head_name ?? "";
-
       head = currentBranch;
-      base = remoteBranches.includes("main")
-        ? "main"
-        : remoteBranches.includes("master")
-          ? "master"
-          : remoteBranches[0] ?? "";
-
-      // Auto-fill title from branch name
       title = branchToTitle(currentBranch);
+      await loadBaseBranches();
     } catch (err) {
       error = String(err);
     } finally {
       detecting = false;
     }
+  }
+
+  async function loadBaseBranches() {
+    if (!targetName) return;
+    try {
+      remoteBranches = await tauri.hostingListBranches(repoPath, targetName);
+      if (!remoteBranches.includes(base)) {
+        base = remoteBranches.includes("main")
+          ? "main"
+          : remoteBranches.includes("master")
+            ? "master"
+            : remoteBranches[0] ?? "";
+      }
+    } catch (err) {
+      error = String(err);
+      remoteBranches = [];
+    }
+  }
+
+  function onTargetChange(name: string) {
+    targetName = name;
+    const t = remotes.find((r) => r.remote_name === name);
+    const h = remotes.find((r) => r.remote_name === headRemoteName);
+    if (!t || !h || h.provider !== t.provider || h.host !== t.host) headRemoteName = name;
+    loadBaseBranches();
   }
 
   function branchToTitle(branch: string): string {
@@ -93,17 +137,36 @@
       .replace(/^\w/, (c) => c.toUpperCase());
   }
 
+  async function pushHead() {
+    if (!headRemote || !head || pushing) return;
+    pushing = true;
+    try {
+      const res = await tauri.pushBranch(repoPath, head, headRemote.remote_name, true);
+      if (!res.success) {
+        error = res.message;
+      } else {
+        error = "";
+        branchInfos = await tauri.getBranches(repoPath);
+        refreshAll(repoPath);
+      }
+    } catch (err) {
+      toastError("Push failed", err);
+    } finally {
+      pushing = false;
+    }
+  }
+
   async function handleCreate() {
-    if (!remote || !title.trim() || !head || !base || creating) return;
+    if (!target || !title.trim() || !head || !base || creating) return;
     creating = true;
     error = "";
     try {
-      createdPr = await tauri.githubCreatePullRequest(
-        remote.owner,
-        remote.repo,
+      createdPr = await tauri.hostingCreatePr(
+        repoPath,
+        target.remote_name,
         title.trim(),
         body.trim(),
-        head,
+        headSpec,
         base,
       );
     } catch (err) {
@@ -124,12 +187,12 @@
     body = "";
     error = "";
     createdPr = null;
-    remote = null;
+    remotes = [];
     onclose();
   }
 </script>
 
-<Modal open={isOpen} title="Create Pull Request" onclose={handleClose} width="500px">
+<Modal open={isOpen} title="Create {prWord}" onclose={handleClose} width="520px">
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -137,30 +200,53 @@
   {#if detecting}
     <div class="loading-state">
       <Loader2 size={20} class="spinner" />
-      <span>Detecting GitHub remote...</span>
+      <span>Detecting remote...</span>
     </div>
   {:else if noRemote}
     <div class="no-remote">
       <AlertCircle size={20} />
-      <span>No GitHub remote detected for this repository.</span>
+      <span>No GitHub, GitLab or Gitea remote detected for this repository.</span>
     </div>
   {:else if createdPr}
     <!-- Success -->
     <div class="success-state">
       <div class="success-msg">
-        Pull Request <strong>#{createdPr.number}</strong> created: {createdPr.title}
+        {prWord} <strong>{target?.provider === "gitlab" ? "!" : "#"}{createdPr.number}</strong> created: {createdPr.title}
       </div>
       <div class="success-actions">
         <button class="btn-primary" onclick={handleOpenInBrowser}>
           <ExternalLink size={14} />
-          <span>Open on GitHub</span>
+          <span>Open in browser</span>
         </button>
         <button class="btn-ghost" onclick={handleClose}>Close</button>
       </div>
     </div>
-  {:else if remote}
+  {:else if target}
     <!-- PR form -->
     <div class="pr-form">
+      {#if remotes.length > 1}
+        <div class="branch-row">
+          <label class="branch-field">
+            <span class="branch-label">Target repository</span>
+            <select class="branch-select" value={targetName} onchange={(e) => onTargetChange(e.currentTarget.value)}>
+              {#each remotes as r (r.remote_name)}
+                <option value={r.remote_name}>{r.project_path} ({r.remote_name})</option>
+              {/each}
+            </select>
+          </label>
+          {#if headCandidates.length > 1}
+            <label class="branch-field">
+              <span class="branch-label">Head repository</span>
+              <select class="branch-select" bind:value={headRemoteName}>
+                {#each headCandidates as r (r.remote_name)}
+                  <option value={r.remote_name}>{r.project_path} ({r.remote_name})</option>
+                {/each}
+              </select>
+            </label>
+          {/if}
+        </div>
+      {/if}
+
       <div class="branch-row">
         <label class="branch-field">
           <span class="branch-label">Base</span>
@@ -172,7 +258,7 @@
         </label>
         <span class="arrow">←</span>
         <label class="branch-field">
-          <span class="branch-label">Head</span>
+          <span class="branch-label">Head{isFork && headRemote ? ` (${headRemote.owner}:)` : ""}</span>
           <select class="branch-select" bind:value={head}>
             {#each localBranches as b (b)}
               <option value={b}>{b}</option>
@@ -181,13 +267,30 @@
         </label>
       </div>
 
+      {#if pushState.kind !== "ok" && headRemote}
+        <div class="push-warning">
+          <AlertTriangle size={14} />
+          <span>
+            {#if pushState.kind === "missing"}
+              <code>{head}</code> hasn't been pushed to <code>{headRemote.remote_name}</code> yet.
+            {:else}
+              {pushState.count} local commit{pushState.count === 1 ? "" : "s"} on <code>{head}</code> not pushed to <code>{headRemote.remote_name}</code>.
+            {/if}
+          </span>
+          <button class="btn-push" onclick={pushHead} disabled={pushing}>
+            {#if pushing}<Loader2 size={12} class="spinner" />{:else}<ArrowUpFromLine size={12} />{/if}
+            Push
+          </button>
+        </div>
+      {/if}
+
       <label class="field-label">
         Title
         <input
           type="text"
           class="field-input"
           bind:value={title}
-          placeholder="Pull request title"
+          placeholder="{prWord} title"
         />
       </label>
 
@@ -202,7 +305,7 @@
       </label>
 
       <div class="remote-info">
-        {remote.owner}/{remote.repo} via <code>{remote.remote_name}</code>
+        {target.project_path} via <code>{target.remote_name}</code>{#if isFork} · head <code>{headSpec}</code>{/if}
       </div>
 
       <button
@@ -214,7 +317,7 @@
           <Loader2 size={14} class="spinner" />
           <span>Creating...</span>
         {:else}
-          <span>Create Pull Request</span>
+          <span>Create {prWord}</span>
         {/if}
       </button>
     </div>
@@ -433,5 +536,48 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  .push-warning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-lane-2);
+    color: var(--color-text-primary);
+    font-size: 12px;
+  }
+
+  .push-warning :global(svg:first-child) {
+    color: var(--color-lane-2);
+    flex-shrink: 0;
+  }
+
+  .push-warning span {
+    flex: 1;
+  }
+
+  .push-warning code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .btn-push {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface-elevated);
+    color: var(--color-text-primary);
+    font-size: 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .btn-push:hover:not(:disabled) {
+    border-color: var(--color-accent);
   }
 </style>
