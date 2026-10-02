@@ -77,6 +77,23 @@ pub fn run() {
             // Window
             commands::window::is_tiling_wm,
             commands::updater::updater_supported,
+            // Branch list / remotes
+            commands::branch_ops::set_branch_upstream,
+            commands::branch_ops::unset_branch_upstream,
+            commands::branch_ops::fast_forward_branch,
+            commands::branch_ops::push_local_branch,
+            commands::branch_ops::rebase_branch,
+            commands::branch_ops::rebase_branch_abort,
+            commands::branch_ops::create_branch_at,
+            commands::branch_ops::checkout_remote_tracking,
+            commands::branch_ops::compare_branches,
+            commands::remotes::list_remotes,
+            commands::remotes::add_remote,
+            commands::remotes::remove_remote,
+            commands::remotes::rename_remote,
+            commands::remotes::set_remote_urls,
+            commands::remotes::fetch_remote,
+            commands::remotes::prune_remote,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

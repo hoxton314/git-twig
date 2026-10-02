@@ -22,6 +22,8 @@ import type {
   RepoListPage,
   GitHubRemoteInfo,
 } from "./types/github";
+// Branch list / remotes
+import type { RemoteInfo, BranchComparison } from "./types/git";
 
 // ── Repo management ───────────────────────────────────────────────────
 
@@ -395,4 +397,117 @@ export function githubListBranches(
   repo: string,
 ): Promise<string[]> {
   return invoke<string[]>("github_list_branches", { owner, repo });
+}
+
+// ── Branch list / remotes ────────────────────────────────────────────
+
+export function setBranchUpstream(
+  path: string,
+  branchName: string,
+  upstream: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("set_branch_upstream", { path, branchName, upstream });
+}
+
+export function unsetBranchUpstream(path: string, branchName: string): Promise<CommandResult> {
+  return invoke<CommandResult>("unset_branch_upstream", { path, branchName });
+}
+
+/** Fast-forward a branch that is not checked out to its upstream. */
+export function fastForwardBranch(path: string, branchName: string): Promise<CommandResult> {
+  return invoke<CommandResult>("fast_forward_branch", { path, branchName });
+}
+
+/** Push to the branch's upstream, or to `remote` with --set-upstream. */
+export function pushLocalBranch(
+  path: string,
+  branchName: string,
+  remote?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("push_local_branch", {
+    path,
+    branchName,
+    remote: remote ?? null,
+  });
+}
+
+/** Rebase `branchName` (current branch if omitted) onto `onto`. */
+export function rebaseBranch(
+  path: string,
+  onto: string,
+  branchName?: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("rebase_branch", {
+    path,
+    onto,
+    branchName: branchName ?? null,
+  });
+}
+
+export function rebaseBranchAbort(path: string): Promise<CommandResult> {
+  return invoke<CommandResult>("rebase_branch_abort", { path });
+}
+
+/** Create a branch at `startPoint` without checking it out. */
+export function createBranchAt(
+  path: string,
+  branchName: string,
+  startPoint: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("create_branch_at", { path, branchName, startPoint });
+}
+
+/** Checkout `<remote>/<branchName>` as a local tracking branch. */
+export function checkoutRemoteTracking(
+  path: string,
+  remote: string,
+  branchName: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("checkout_remote_tracking", { path, remote, branchName });
+}
+
+export function compareBranches(
+  path: string,
+  base: string,
+  other: string,
+): Promise<BranchComparison> {
+  return invoke<BranchComparison>("compare_branches", { path, base, other });
+}
+
+export function listRemotes(path: string): Promise<RemoteInfo[]> {
+  return invoke<RemoteInfo[]>("list_remotes", { path });
+}
+
+export function addRemote(path: string, name: string, url: string): Promise<CommandResult> {
+  return invoke<CommandResult>("add_remote", { path, name, url });
+}
+
+export function removeRemote(path: string, name: string): Promise<CommandResult> {
+  return invoke<CommandResult>("remove_remote", { path, name });
+}
+
+export function renameRemote(
+  path: string,
+  oldName: string,
+  newName: string,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("rename_remote", { path, oldName, newName });
+}
+
+/** Set the fetch URL; a null/empty push URL removes a dedicated pushurl. */
+export function setRemoteUrls(
+  path: string,
+  name: string,
+  fetchUrl: string,
+  pushUrl: string | null,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("set_remote_urls", { path, name, fetchUrl, pushUrl });
+}
+
+export function fetchRemote(path: string, name: string): Promise<CommandResult> {
+  return invoke<CommandResult>("fetch_remote", { path, name });
+}
+
+export function pruneRemote(path: string, name: string): Promise<CommandResult> {
+  return invoke<CommandResult>("prune_remote", { path, name });
 }

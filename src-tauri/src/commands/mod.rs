@@ -10,3 +10,6 @@ pub mod staging;
 pub mod stash;
 pub mod updater;
 pub mod window;
+// Branch list / remotes
+pub mod branch_ops;
+pub mod remotes;
