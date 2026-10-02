@@ -223,9 +223,17 @@ try {
       [el(older)],
     );
     await session.click(await session.findByText(".context-menu .item", "Squash 2 commits"));
-    const [box] = await session.waitFor('textarea[aria-label="Squashed commit message"]', {
-      pred: (t) => t.some((x) => x.includes("initial commit")),
-    });
+    const [box] = await session.waitFor('textarea[aria-label="Squashed commit message"]');
+    // A bound textarea has no text content; read its value.
+    const end = Date.now() + 10_000;
+    let value = "";
+    while (Date.now() < end && !value.includes("initial commit")) {
+      value = await session.execute("return arguments[0].value;", [el(box)]);
+      if (!value.includes("initial commit")) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!value.includes("initial commit") || !value.includes("add notes from e2e")) {
+      throw new Error(`unexpected default message ${JSON.stringify(value)}`);
+    }
     await session.execute(
       "arguments[0].value = 'add notes from e2e'; arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
       [el(box)],
