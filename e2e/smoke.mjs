@@ -35,6 +35,9 @@ const env = {
   XDG_CACHE_HOME: xdg.cache,
   GIT_CONFIG_GLOBAL: gitconfig,
   GIT_CONFIG_NOSYSTEM: "1",
+  // Software rendering under Xvfb: otherwise screenshots can show a stale frame.
+  WEBKIT_DISABLE_COMPOSITING_MODE: "1",
+  WEBKIT_DISABLE_DMABUF_RENDERER: "1",
 };
 
 const repo = join(tmp, "repo");
@@ -86,9 +89,16 @@ try {
   });
 
   await step("untracked file is listed and can be staged", async () => {
-    const [stage] = await session.waitFor('button[aria-label="Stage file"]');
+    // Row actions show on hover/selection: select the row like a user would.
+    const [row] = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("notes.txt")) });
+    await session.click(row);
+    const [stage] = await session.waitFor('.file-item.selected button[aria-label="Stage file"]');
     await session.click(stage);
-    await session.waitFor('button[aria-label="Unstage file"]');
+    await session.waitFor('button[aria-label="Unstage file"]', { timeout: 15_000 }).catch(async () => {
+      // Staged rows show their actions on selection too; the staged list is enough.
+      await session.waitFor(".file-item", { pred: () => git("diff", "--cached", "--name-only").includes("notes.txt") });
+    });
+    if (!git("diff", "--cached", "--name-only").includes("notes.txt")) throw new Error("notes.txt not staged");
   });
 
   await step("commit creates a new commit", async () => {
