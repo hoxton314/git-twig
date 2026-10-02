@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2, Pin, PinOff, X, History, AlertTriangle } from "lucide-svelte";
+  import { FolderOpen, GitBranch, GitFork, Plus, FolderGit2, Pin, PinOff, X, History, AlertTriangle, FolderPlus } from "lucide-svelte";
   import { openRepos, addRepo, activeRepoPath } from "../../lib/stores/repos";
   import { currentView } from "../../lib/stores/ui";
   import { settings } from "../../lib/stores/settings";
@@ -18,6 +18,9 @@
   import { openRepoWithDialog } from "../../lib/appActions";
   import { openNewRepoDialog } from "../../lib/newRepo";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
+  import GroupsSection from "./GroupsSection.svelte";
+  import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
+  import { groupMenuItems } from "../../lib/groupMenu";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
   import * as tauri from "../../lib/tauri";
   import type { RepoInfo } from "../../lib/types/git";
@@ -86,6 +89,13 @@
     $activeRepoPath = path;
   }
 
+  let groupMenu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
+
+  function openGroupMenu(e: MouseEvent, path: string, name: string) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    groupMenu = { x: r.left, y: r.bottom, items: groupMenuItems(path, name) };
+  }
+
   function relativeTime(ms: number): string {
     const s = Math.max(0, (Date.now() - ms) / 1000);
     if (s < 60) return "just now";
@@ -150,6 +160,8 @@
     oncreated={handleRepoCreated}
   />
 
+  <GroupsSection onopen={openOrSwitch} />
+
   {#if $favoriteRepos.length > 0}
     <section class="open-repos" aria-labelledby="favorites-heading">
       <h2 class="section-title" id="favorites-heading"><Pin size={13} /> Favorites</h2>
@@ -174,6 +186,14 @@
                 <span class="repo-path">{repo.path}</span>
               </div>
               {#if missing}<span class="repo-badge missing-badge">Missing</span>{/if}
+            </button>
+            <button
+              class="row-action"
+              onclick={(e) => openGroupMenu(e, repo.path, repo.name)}
+              title="Add to group"
+              aria-label="Add {repo.name} to a group"
+            >
+              <FolderPlus size={14} />
             </button>
             <button
               class="row-action"
@@ -222,6 +242,14 @@
               {/if}
             </button>
             {#if !missing}
+              <button
+                class="row-action"
+                onclick={(e) => openGroupMenu(e, repo.path, repo.name)}
+                title="Add to group"
+                aria-label="Add {repo.name} to a group"
+              >
+                <FolderPlus size={14} />
+              </button>
               <button
                 class="row-action"
                 onclick={() => setFavoriteRepo(repo.path, true, repo.name)}
@@ -307,6 +335,10 @@
     </div>
   {/if}
 </div>
+
+{#if groupMenu}
+  <ContextMenu x={groupMenu.x} y={groupMenu.y} items={groupMenu.items} onclose={() => (groupMenu = null)} />
+{/if}
 
 <style>
   .home-screen {

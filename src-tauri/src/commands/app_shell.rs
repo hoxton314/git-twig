@@ -42,6 +42,41 @@ pub struct RepoHistory {
     /// Pinned repository paths, in display order.
     #[serde(default)]
     pub favorites: Vec<String>,
+    /// User-defined repository groups, in display order.
+    #[serde(default)]
+    pub groups: Vec<RepoGroup>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct RepoGroup {
+    pub id: String,
+    pub name: String,
+    /// Repository paths, in display order.
+    #[serde(default)]
+    pub paths: Vec<String>,
+}
+
+const MAX_GROUPS: usize = 100;
+const MAX_GROUP_REPOS: usize = 500;
+
+/// Bound and tidy groups before saving: trimmed non-empty names, unique ids,
+/// no duplicate paths, size limits.
+pub(crate) fn tidy_groups(groups: Vec<RepoGroup>) -> Vec<RepoGroup> {
+    let mut seen_ids = std::collections::HashSet::new();
+    groups
+        .into_iter()
+        .filter_map(|mut g| {
+            g.name = g.name.trim().chars().take(100).collect();
+            if g.id.is_empty() || g.name.is_empty() || !seen_ids.insert(g.id.clone()) {
+                return None;
+            }
+            let mut seen = std::collections::HashSet::new();
+            g.paths.retain(|p| !p.is_empty() && seen.insert(p.clone()));
+            g.paths.truncate(MAX_GROUP_REPOS);
+            Some(g)
+        })
+        .take(MAX_GROUPS)
+        .collect()
 }
 
 /// Recent list is capped so the file stays small.
@@ -79,6 +114,7 @@ pub async fn save_repo_history(
     mut history: RepoHistory,
 ) -> Result<(), TwigError> {
     history.recent.truncate(MAX_RECENT);
+    history.groups = tidy_groups(std::mem::take(&mut history.groups));
     let file = history_file(&app)?;
     let json = serde_json::to_string_pretty(&history)?;
     write_atomic(&file, &json, false)?;
@@ -163,6 +199,25 @@ pub async fn import_settings(path: String) -> Result<AppSettings, TwigError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn groups_default_and_get_tidied() {
+        let old: RepoHistory = serde_json::from_str(r#"{"recent":[],"favorites":["/a"]}"#).unwrap();
+        assert!(old.groups.is_empty(), "files from before groups still load");
+        let g = |id: &str, name: &str, paths: &[&str]| RepoGroup {
+            id: id.into(),
+            name: name.into(),
+            paths: paths.iter().map(|p| p.to_string()).collect(),
+        };
+        let tidy = tidy_groups(vec![
+            g("1", "  Work  ", &["/a", "/b", "/a", ""]),
+            g("1", "dup id", &[]),
+            g("2", "   ", &["/c"]),
+            g("", "no id", &[]),
+            g("3", "OSS", &[]),
+        ]);
+        assert_eq!(tidy, vec![g("1", "Work", &["/a", "/b"]), g("3", "OSS", &[])]);
+    }
+
     use super::*;
 
     #[test]
@@ -172,6 +227,7 @@ mod tests {
         let h = RepoHistory {
             recent: vec![RecentRepo { path: "/a".into(), name: "a".into(), last_opened: 1.0 }],
             favorites: vec!["/a".into()],
+            groups: vec![],
         };
         let json = serde_json::to_string(&h).unwrap_or_default();
         let back: RepoHistory = serde_json::from_str(&json).unwrap_or_default();

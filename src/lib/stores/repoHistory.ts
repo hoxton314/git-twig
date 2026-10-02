@@ -3,12 +3,13 @@
  * `repo_history.json` (app data dir) independently of the default repo folder.
  */
 import { writable, derived, get } from "svelte/store";
-import type { RecentRepo, RepoHistory, RepoInfo } from "../types/git";
+import type { RecentRepo, RepoGroup, RepoHistory, RepoInfo } from "../types/git";
+import * as groupOps from "../repoGroups";
 import * as tauri from "../tauri";
 
 const MAX_RECENT = 30;
 
-export const repoHistory = writable<RepoHistory>({ recent: [], favorites: [] });
+export const repoHistory = writable<RepoHistory>({ recent: [], favorites: [], groups: [] });
 
 /** Paths (recent or favorite) that no longer exist on disk. */
 export const missingRepoPaths = writable<Set<string>>(new Set());
@@ -46,7 +47,7 @@ function persist() {
 export async function loadRepoHistory() {
   try {
     const h = await tauri.loadRepoHistory();
-    repoHistory.set({ recent: h.recent ?? [], favorites: h.favorites ?? [] });
+    repoHistory.set({ recent: h.recent ?? [], favorites: h.favorites ?? [], groups: h.groups ?? [] });
   } catch (e) {
     console.error("Failed to load repo history:", e);
   }
@@ -58,7 +59,7 @@ export async function loadRepoHistory() {
 /** Re-check which remembered repos still exist (e.g. when the home screen shows). */
 export async function refreshMissingPaths() {
   const h = get(repoHistory);
-  const paths = [...new Set([...h.recent.map((r) => r.path), ...h.favorites])];
+  const paths = [...new Set([...h.recent.map((r) => r.path), ...h.favorites, ...h.groups.flatMap((g) => g.paths)])];
   if (paths.length === 0) {
     missingRepoPaths.set(new Set());
     return;
@@ -121,4 +122,48 @@ export function setFavoriteRepo(path: string, favorite: boolean, name?: string) 
 
 export function toggleFavoriteRepo(path: string, name?: string) {
   return setFavoriteRepo(path, !isFavoriteRepo(path), name);
+}
+
+// ── Groups ───────────────────────────────────────────────────────────
+
+export const repoGroups = derived(repoHistory, ($h) => $h.groups);
+
+/** Display name for a remembered path (recent list, else the folder name). */
+export function repoDisplayName(h: RepoHistory, path: string): string {
+  return h.recent.find((r) => r.path === path)?.name ?? baseName(path);
+}
+
+/** Create a group (optionally with repositories); resolves to its id. */
+export async function createRepoGroup(name: string, paths: string[] = []): Promise<string> {
+  await ready;
+  const id = groupOps.newGroupId(get(repoHistory).groups);
+  await mutate((h) => ({ ...h, groups: groupOps.createGroup(h.groups, id, name, paths) }));
+  return id;
+}
+
+export function renameRepoGroup(id: string, name: string) {
+  return mutate((h) => ({ ...h, groups: groupOps.renameGroup(h.groups, id, name) }));
+}
+
+export function deleteRepoGroup(id: string) {
+  return mutate((h) => ({ ...h, groups: groupOps.deleteGroup(h.groups, id) }));
+}
+
+/** Add `path` to a group, remembering its display name like favorites do. */
+export function addRepoToGroup(id: string, path: string, name?: string) {
+  return mutate((h) => {
+    const recent =
+      name && !h.recent.some((r) => r.path === path)
+        ? [...h.recent, { path, name, last_opened: 0 }].slice(0, MAX_RECENT)
+        : h.recent;
+    return { ...h, recent, groups: groupOps.addToGroup(h.groups, id, path) };
+  });
+}
+
+export function removeRepoFromGroup(id: string, path: string) {
+  return mutate((h) => ({ ...h, groups: groupOps.removeFromGroup(h.groups, id, path) }));
+}
+
+export function findGroup(id: string): RepoGroup | undefined {
+  return get(repoHistory).groups.find((g) => g.id === id);
 }

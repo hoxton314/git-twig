@@ -8,7 +8,6 @@
   import HomeScreen from "./HomeScreen.svelte";
   import Toaster from "../shared/Toaster.svelte";
   import UndoHistory from "../reflog/UndoHistory.svelte";
-  import SettingsScreen from "../settings/SettingsScreen.svelte";
   import OperationBanner from "../conflicts/OperationBanner.svelte";
   import OperationHost from "../conflicts/OperationHost.svelte";
   import FileViewHost from "../history/FileViewHost.svelte";
@@ -321,7 +320,10 @@
   <TabBar />
 
   {#if view === "settings"}
-    <SettingsScreen />
+    <!-- Loaded on first open to keep the main bundle small. -->
+    {#await import("../settings/SettingsScreen.svelte") then { default: SettingsScreen }}
+      <SettingsScreen />
+    {/await}
   {:else if repo}
     <div class="content" bind:this={contentEl}>
       <Sidebar />

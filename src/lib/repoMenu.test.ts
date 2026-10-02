@@ -71,4 +71,18 @@ describe("repo menu", () => {
     for (let k = 0; k < 20; k++) filterEntries(big, `pro${k}`);
     expect((performance.now() - t) / 20).toBeLessThan(25); // ms per keystroke
   });
+
+  it("lists groups first and filters them by name", () => {
+    const withGroups = buildEntries(quick, scanned, new Set(["/code/twig"]), [
+      { id: "1", name: "Work", paths: ["/code/twig", "/code/notes"] },
+      { id: "2", name: "Empty", paths: [] },
+    ]);
+    const sections = filterEntries(withGroups, "");
+    expect(sections[0].title).toBe("Groups");
+    expect(sections[0].rows.map((r) => [r.path, r.branch, r.open, r.missing])).toEqual([
+      ["group:1", "2 repos", false, false],
+      ["group:2", "0 repos", false, true],
+    ]);
+    expect(flatRows(filterEntries(withGroups, "work")).map((r) => r.path)).toEqual(["group:1"]);
+  });
 });
