@@ -151,6 +151,13 @@ pub async fn prune_remote(repo_path: &Path, name: &str) -> Result<GitOutput, Twi
     run_git(repo_path, &["remote", "prune", "--", name]).await
 }
 
+/// `<base>-<pid>-<n>`: a scratch ref name no concurrent call shares.
+pub fn unique_scratch_name(base: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    format!("{base}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))
+}
+
 /// Fetch one ref (e.g. `refs/pull/7/head`) from `remote` and return the
 /// commit it points to. The ref is fetched into a private scratch ref rather
 /// than read from `FETCH_HEAD`, which a concurrent background fetch could
@@ -231,6 +238,16 @@ mod tests {
         assert_eq!(got.ok().as_deref(), Some(head.as_str()));
         let scratch = run_git(&dir, &["rev-parse", "--verify", "--quiet", "refs/twig/fetch/pr-7"]).await.unwrap();
         assert!(!scratch.success, "scratch ref left behind");
+
+        // Concurrent fetches of the same PR use distinct scratch refs.
+        let (a, b) = (unique_scratch_name("pr-7"), unique_scratch_name("pr-7"));
+        assert_ne!(a, b);
+        let (ra, rb) = tokio::join!(
+            fetch_ref_commit(&dir, "origin", "refs/pull/7/head", &a),
+            fetch_ref_commit(&dir, "origin", "refs/pull/7/head", &b),
+        );
+        assert_eq!(ra.unwrap().ok().as_deref(), Some(head.as_str()));
+        assert_eq!(rb.unwrap().ok().as_deref(), Some(head.as_str()));
 
         let missing = fetch_ref_commit(&dir, "origin", "refs/pull/8/head", "pr-8").await.unwrap();
         assert!(missing.is_err());

@@ -5,15 +5,18 @@ use crate::error::TwigError;
 /// Whether a redirect from `prev` to `next` may be followed. Tokens travel
 /// in headers reqwest does not know are sensitive (GitLab's `PRIVATE-TOKEN`,
 /// Gitea's `Authorization: token`), so they would be forwarded to any host a
-/// redirect points to. Only same-host redirects are followed, and never from
-/// HTTPS down to plain HTTP.
+/// redirect points to. Only same-origin redirects are followed (plus the
+/// standard `http:80` → `https:443` upgrade), never HTTPS down to HTTP.
 fn redirect_allowed(prev: &reqwest::Url, next: &reqwest::Url) -> bool {
     let same_host = prev
         .host_str()
         .zip(next.host_str())
         .is_some_and(|(a, b)| a.eq_ignore_ascii_case(b));
-    let downgrade = prev.scheme() == "https" && next.scheme() != "https";
-    same_host && !downgrade && matches!(next.scheme(), "https" | "http")
+    let (pp, np) = (prev.port_or_known_default(), next.port_or_known_default());
+    let same_origin = prev.scheme() == next.scheme() && pp == np;
+    let upgrade =
+        prev.scheme() == "http" && next.scheme() == "https" && pp == Some(80) && np == Some(443);
+    same_host && (same_origin || upgrade)
 }
 
 pub fn build_client() -> Result<reqwest::Client, TwigError> {
@@ -128,6 +131,10 @@ mod tests {
         assert!(!ok("https://gitlab.example.com/a", "https://evil.example.net/a"));
         assert!(!ok("https://gitlab.example.com/a", "https://gitlab.example.com.evil.net/a"));
         assert!(!ok("https://gitlab.example.com/a", "http://gitlab.example.com/a"));
+        // Another service on the same machine.
+        assert!(!ok("https://git.corp/a", "https://git.corp:8443/a"));
+        assert!(!ok("http://gitea.lan:3000/a", "https://gitea.lan/a"));
+        assert!(ok("https://git.corp:443/a", "https://git.corp/b"));
     }
 
     /// End to end: a cross-host redirect is not followed, so the custom

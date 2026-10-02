@@ -279,7 +279,7 @@ pub async fn hosting_checkout_pr(
             &repo_path,
             &remote.remote_name,
             &head_ref,
-            &format!("pr-{number}"),
+            &crate::git::remotes::unique_scratch_name(&format!("pr-{number}")),
         ),
     )
     .await?;
