@@ -1,6 +1,6 @@
 <script lang="ts">
   import { RotateCcw } from "lucide-svelte";
-  import { ACTIONS, eventToShortcut, normalizeShortcut } from "../../lib/keybindings";
+  import { ACTIONS, eventToShortcut, normalizeShortcut, resolveShortcut } from "../../lib/keybindings";
   import { settings, updateSettings } from "../../lib/stores/settings";
 
   const s = $derived($settings);
@@ -61,6 +61,18 @@
       capturingActionId = null;
       return;
     }
+    // Backspace / Delete (no modifiers) unbinds the action.
+    if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      const actionId = capturingActionId;
+      capturingActionId = null;
+      const action = ACTIONS.find((a) => a.id === actionId);
+      if (!actionId || !action) return;
+      const overrides = { ...s.keybinding_overrides };
+      if (action.defaultShortcut) overrides[actionId] = "";
+      else delete overrides[actionId];
+      updateSettings({ keybinding_overrides: overrides });
+      return;
+    }
 
     const shortcut = eventToShortcut(e);
     if (!shortcut) return;
@@ -98,7 +110,7 @@
   }
 
   function effectiveShortcut(actionId: string): string {
-    return s.keybinding_overrides[actionId] || ACTIONS.find((a) => a.id === actionId)?.defaultShortcut || "";
+    return resolveShortcut(s.keybinding_overrides, actionId);
   }
 </script>
 
@@ -116,7 +128,7 @@
       <p class="capture-title" id="capture-title" aria-live="assertive">
         Press a key combination for “{ACTIONS.find((a) => a.id === capturingActionId)?.label ?? capturingActionId}”
       </p>
-      <p class="capture-hint" id="capture-hint">Press Escape to cancel</p>
+      <p class="capture-hint" id="capture-hint">Press Escape to cancel, Backspace to remove the shortcut</p>
     </div>
   </div>
 {/if}

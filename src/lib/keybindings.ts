@@ -218,10 +218,19 @@ let overrides: Record<string, string> = {};
 let parsedBindings: Map<string, ParsedShortcut> = new Map();
 let installed = false;
 
+/**
+ * Effective shortcut of an action: its override when one is stored (an empty
+ * override means "unbound"), else its default.
+ */
+export function resolveShortcut(overrideMap: Record<string, string>, actionId: string): string {
+  if (Object.prototype.hasOwnProperty.call(overrideMap, actionId)) return overrideMap[actionId] ?? "";
+  return ACTIONS.find((a) => a.id === actionId)?.defaultShortcut ?? "";
+}
+
 function rebuildParsedBindings() {
   parsedBindings = new Map();
   for (const action of ACTIONS) {
-    const shortcut = overrides[action.id] || action.defaultShortcut;
+    const shortcut = resolveShortcut(overrides, action.id);
     if (shortcut) {
       parsedBindings.set(action.id, parseShortcut(shortcut));
     }
@@ -243,25 +252,23 @@ function handleKeydown(e: KeyboardEvent) {
     for (const action of ACTIONS) {
       if (action.id !== "commit" && !action.allowInInputs) continue;
       const binding = parsedBindings.get(action.id);
-      if (binding && matchesEvent(binding, e)) {
-        const handler = handlers.get(action.id);
-        if (handler) {
-          e.preventDefault();
-          handler();
-        }
+      const handler = handlers.get(action.id);
+      if (binding && handler && matchesEvent(binding, e)) {
+        e.preventDefault();
+        handler();
         return;
       }
     }
     return;
   }
 
+  // First bound action that currently has a handler wins: a conflicting
+  // binding whose component isn't mounted must not swallow the key.
   for (const [actionId, parsed] of parsedBindings) {
-    if (matchesEvent(parsed, e)) {
-      const handler = handlers.get(actionId);
-      if (handler) {
-        e.preventDefault();
-        handler();
-      }
+    const handler = handlers.get(actionId);
+    if (handler && matchesEvent(parsed, e)) {
+      e.preventDefault();
+      handler();
       return;
     }
   }
@@ -277,7 +284,7 @@ export function setOverrides(newOverrides: Record<string, string>) {
 function currentShortcutMap(): Record<string, string> {
   const map: Record<string, string> = {};
   for (const action of ACTIONS) {
-    const sc = overrides[action.id] || action.defaultShortcut;
+    const sc = resolveShortcut(overrides, action.id);
     if (sc) map[action.id] = sc;
   }
   return map;
@@ -323,7 +330,7 @@ export function onAction(actionId: string, handler: ActionHandler): () => void {
 
 /** Get the current effective shortcut for an action. */
 export function getShortcut(actionId: string): string {
-  return overrides[actionId] || ACTIONS.find((a) => a.id === actionId)?.defaultShortcut || "";
+  return resolveShortcut(overrides, actionId);
 }
 
 /** Install the global keydown listener. Call once at startup. */
