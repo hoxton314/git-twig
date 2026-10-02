@@ -180,3 +180,79 @@ export const LANE_COLORS = [
 export function laneColor(lane: number): string {
   return LANE_COLORS[lane % LANE_COLORS.length];
 }
+
+// ── Conflict resolution & history rewriting (rebase, force push) ────
+
+export type OperationKind =
+  | "none"
+  | "merge"
+  | "rebase"
+  | "cherry_pick"
+  | "revert"
+  | "am"
+  | "bisect";
+
+export interface ConflictFile {
+  path: string;
+  kind:
+    | "both_modified"
+    | "both_added"
+    | "deleted_by_us"
+    | "deleted_by_them"
+    | "added_by_us"
+    | "added_by_them"
+    | "both_deleted";
+  has_base: boolean;
+  has_ours: boolean;
+  has_theirs: boolean;
+}
+
+export interface RepoOperationState {
+  kind: OperationKind;
+  interactive: boolean;
+  conflicts: ConflictFile[];
+  message: string | null;
+  head_name: string | null;
+  onto: string | null;
+  step: number | null;
+  total: number | null;
+  current_commit: string | null;
+  current_subject: string | null;
+  stopped_for_edit: boolean;
+  can_skip: boolean;
+  ours_label: string;
+  theirs_label: string;
+}
+
+export interface ConflictVersions {
+  path: string;
+  base: string | null;
+  ours: string | null;
+  theirs: string | null;
+  merged: string | null;
+  is_binary: boolean;
+  too_large: boolean;
+}
+
+export interface RebaseCommit {
+  oid: string;
+  short_oid: string;
+  summary: string;
+  message: string;
+  author_name: string;
+  timestamp: number;
+}
+
+export interface RebaseCommitList {
+  commits: RebaseCommit[];
+  merges_skipped: number;
+  base_oid: string | null;
+}
+
+export type RebaseAction = "pick" | "reword" | "edit" | "squash" | "fixup" | "drop";
+
+export interface RebaseTodoItem {
+  oid: string;
+  action: RebaseAction;
+  message: string | null;
+}

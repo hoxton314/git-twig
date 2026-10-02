@@ -196,12 +196,12 @@ Global actions (open repo, close tab, tab switching, settings, sidebar toggle, f
 - Authentication / credential manager (GitHub token is in the OS keyring; fetch/push over HTTPS still rely on the system git credential helper)
 - ~~GitHub API integration~~ ✓ (clone from GitHub, create repo, create PR via PAT in Settings > GitHub)
 - SSH key management
-- Conflict resolution UI
+- ~~Conflict resolution UI~~ ✓ (operation banner + conflict list + 3-way resolver in `src/components/conflicts/`, backend `git/conflicts.rs`)
 - Blame view
 - ~~Git identity profiles~~ (use local git config directly, no extra abstraction needed)
 - ~~Light theme~~ ✓ (dark/light toggle in Appearance settings, `[data-theme="light"]` in `app.css`)
 - ~~Stash management UI~~ ✓ (list/push/pop/apply/drop via `StashPanel.svelte`, includes untracked files)
-- Interactive rebase UI
+- ~~Interactive rebase UI~~ ✓ (`src/components/rebase/`, backend `git/history.rs`; also rebase onto and force push with lease)
 - File history view
 - Submodule support
 
