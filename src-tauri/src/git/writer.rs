@@ -288,16 +288,6 @@ pub async fn stash_pop(repo_path: &Path, index: u32) -> Result<GitOutput, TwigEr
     run_git(repo_path, &["stash", "pop", &stash_ref]).await
 }
 
-pub async fn stash_apply(repo_path: &Path, index: u32) -> Result<GitOutput, TwigError> {
-    let stash_ref = format!("stash@{{{index}}}");
-    run_git(repo_path, &["stash", "apply", &stash_ref]).await
-}
-
-pub async fn stash_drop(repo_path: &Path, index: u32) -> Result<GitOutput, TwigError> {
-    let stash_ref = format!("stash@{{{index}}}");
-    run_git(repo_path, &["stash", "drop", &stash_ref]).await
-}
-
 pub async fn stash_list(repo_path: &Path) -> Result<GitOutput, TwigError> {
     run_git(
         repo_path,

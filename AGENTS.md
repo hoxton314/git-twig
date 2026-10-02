@@ -20,7 +20,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 4. **No `unwrap()` in Rust** -- use `TwigError` and return `Result` from all commands
 5. **All Tauri commands must be `async`**
 6. **TypeScript types** must mirror Rust structs exactly (see `src/lib/types/git.ts`)
-7. **Every Tauri command** gets a typed wrapper in `src/lib/tauri.ts` -- no direct `invoke()` elsewhere
+7. **Every Tauri command** gets a typed wrapper in `src/lib/api/<area>.ts` (re-exported by `src/lib/tauri.ts`) -- no direct `invoke()` elsewhere
 
 ## Key Files to Understand First
 
@@ -35,7 +35,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src-tauri/src/commands/settings.rs` | `AppSettings` struct, load/save to `settings.json` |
 | `src-tauri/src/commands/git_config.rs` | Read/write global `~/.gitconfig` values, detect LFS |
 | `src/lib/types/git.ts` | All shared TypeScript interfaces |
-| `src/lib/tauri.ts` | Typed `invoke()` wrappers for every command |
+| `src/lib/tauri.ts` | Re-exports the typed `invoke()` wrappers from `src/lib/api/<area>.ts` (repo, graph, branches, diff, stash, settings, github, history, workspace, hosting); import as `import * as tauri from "…/lib/tauri"` |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
 | `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
 | `src/lib/stores/clock.ts` | Shared minute clock (`now`) for relative dates |
@@ -66,7 +66,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 3. Create the `#[tauri::command]` handler in the appropriate `src-tauri/src/commands/*.rs`
 4. Register it in `src-tauri/src/lib.rs` `invoke_handler`
 5. Add the TypeScript interface to `src/lib/types/git.ts`
-6. Add the typed wrapper to `src/lib/tauri.ts`
+6. Add the typed wrapper to the matching `src/lib/api/<area>.ts` (new area: add a module and an `export *` line in `src/lib/tauri.ts`)
 7. Use the wrapper from Svelte components -- never call `invoke()` directly
 
 ### Adding a new setting
