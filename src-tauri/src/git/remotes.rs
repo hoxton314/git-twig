@@ -151,6 +151,45 @@ pub async fn prune_remote(repo_path: &Path, name: &str) -> Result<GitOutput, Twi
     run_git(repo_path, &["remote", "prune", "--", name]).await
 }
 
+/// Fetch one ref (e.g. `refs/pull/7/head`) from `remote` and return the
+/// commit it points to. The ref is fetched into a private scratch ref rather
+/// than read from `FETCH_HEAD`, which a concurrent background fetch could
+/// overwrite in between; the scratch ref is removed afterwards.
+/// Returns `Ok(Err(output))` when the fetch itself fails.
+pub async fn fetch_ref_commit(
+    repo_path: &Path,
+    remote: &str,
+    src_ref: &str,
+    scratch_name: &str,
+) -> Result<Result<String, GitOutput>, TwigError> {
+    safe_ref(remote)?;
+    safe_ref(src_ref)?;
+    if !src_ref.starts_with("refs/") || src_ref.contains(':') {
+        return Err(TwigError::InvalidArgument(format!("'{src_ref}' is not a full ref name")));
+    }
+    if scratch_name.is_empty() || !scratch_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(TwigError::InvalidArgument(format!("bad scratch ref name '{scratch_name}'")));
+    }
+    let scratch = format!("refs/twig/fetch/{scratch_name}");
+    let refspec = format!("+{src_ref}:{scratch}");
+    let fetch = run_git(
+        repo_path,
+        &["fetch", "--no-tags", "--no-write-fetch-head", "--", remote, &refspec],
+    )
+    .await?;
+    if !fetch.success {
+        return Ok(Err(fetch));
+    }
+    let spec = format!("{scratch}^{{commit}}");
+    let sha = run_git(repo_path, &["rev-parse", "--verify", "--quiet", &spec]).await?;
+    let _ = run_git(repo_path, &["update-ref", "-d", &scratch]).await?;
+    let oid = sha.stdout.trim().to_string();
+    if !sha.success || oid.is_empty() {
+        return Err(TwigError::GitCli(format!("could not resolve the fetched {src_ref}")));
+    }
+    Ok(Ok(oid))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,6 +211,33 @@ mod tests {
         git_ok(&dir, &["add", "a.txt"]).await;
         git_ok(&dir, &["commit", "-q", "-m", "c1"]).await;
         dir
+    }
+
+    #[tokio::test]
+    async fn fetch_ref_commit_uses_a_scratch_ref() {
+        let upstream = temp_repo("pr-up").await;
+        git_ok(&upstream, &["commit", "-q", "--allow-empty", "-m", "pr head"]).await;
+        let head = run_git(&upstream, &["rev-parse", "HEAD"]).await.unwrap().stdout.trim().to_string();
+        git_ok(&upstream, &["update-ref", "refs/pull/7/head", &head]).await;
+        git_ok(&upstream, &["reset", "-q", "--hard", "HEAD~1"]).await;
+
+        let dir = temp_repo("pr").await;
+        let url = upstream.to_string_lossy().to_string();
+        git_ok(&dir, &["remote", "add", "origin", &url]).await;
+        // A stale FETCH_HEAD pointing elsewhere must not be used.
+        std::fs::write(dir.join(".git/FETCH_HEAD"), format!("{}\t\tbogus\n", "0".repeat(40))).unwrap();
+
+        let got = fetch_ref_commit(&dir, "origin", "refs/pull/7/head", "pr-7").await.unwrap();
+        assert_eq!(got.ok().as_deref(), Some(head.as_str()));
+        let scratch = run_git(&dir, &["rev-parse", "--verify", "--quiet", "refs/twig/fetch/pr-7"]).await.unwrap();
+        assert!(!scratch.success, "scratch ref left behind");
+
+        let missing = fetch_ref_commit(&dir, "origin", "refs/pull/8/head", "pr-8").await.unwrap();
+        assert!(missing.is_err());
+        assert!(fetch_ref_commit(&dir, "origin", "main:x", "pr-9").await.is_err());
+        assert!(fetch_ref_commit(&dir, "origin", "refs/pull/7/head", "../x").await.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&upstream);
     }
 
     #[tokio::test]

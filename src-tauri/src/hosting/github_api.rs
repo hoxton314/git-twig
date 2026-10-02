@@ -665,4 +665,46 @@ mod tests {
             PollOutcome::Failed("Weird thing".into())
         );
     }
+
+    /// Read-only calls against github.com/hoxton314/git-twig. Opt-in:
+    /// `TWIG_LIVE_GITHUB_TOKEN=$(gh auth token) cargo test live_github -- --ignored`
+    #[tokio::test]
+    #[ignore = "needs network and TWIG_LIVE_GITHUB_TOKEN"]
+    async fn live_github_read_only() {
+        let Ok(token) = std::env::var("TWIG_LIVE_GITHUB_TOKEN") else {
+            return;
+        };
+        let client = crate::hosting::http::build_client().unwrap();
+        let ep = GitHubEndpoint::new("github.com", "");
+        let (owner, repo) = ("hoxton314", "git-twig");
+
+        let page = list_pull_requests(&client, &ep, &token, owner, repo, "merged", None)
+            .await
+            .unwrap();
+        let pr = page.items.iter().find(|p| p.number == 16).expect("PR #16 in merged list");
+        assert_eq!(pr.state, "merged");
+        assert_eq!(pr.base_ref, "main");
+
+        let detail = get_pull_request(&client, &ep, &token, owner, repo, 16).await.unwrap();
+        assert_eq!(detail.summary.number, 16);
+        assert!(detail.body.contains("Closes #3"));
+        assert!(detail.changed_files.unwrap_or(0) >= 1);
+
+        let files = list_pull_request_files(&client, &ep, &token, owner, repo, 16).await.unwrap();
+        let f = files.iter().find(|f| f.path == "src-tauri/src/git/history.rs").expect("history.rs");
+        assert!(!f.patch_missing && !f.hunks.is_empty());
+        assert!(f.additions > 0);
+
+        // CI on main's tip: the CI workflow exists, so there is a check.
+        let sha = std::process::Command::new("git")
+            .args(["ls-remote", "https://github.com/hoxton314/git-twig", "refs/heads/main"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| s.split_whitespace().next().map(String::from))
+            .expect("main sha");
+        let ci = ci_status(&client, &ep, &token, owner, repo, &sha).await.unwrap();
+        assert_ne!(ci.state, "none", "{ci:?}");
+        assert!(ci.checks.iter().any(|c| c.name.contains("check")), "{ci:?}");
+    }
 }

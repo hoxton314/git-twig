@@ -2,11 +2,35 @@
 
 use crate::error::TwigError;
 
+/// Whether a redirect from `prev` to `next` may be followed. Tokens travel
+/// in headers reqwest does not know are sensitive (GitLab's `PRIVATE-TOKEN`,
+/// Gitea's `Authorization: token`), so they would be forwarded to any host a
+/// redirect points to. Only same-host redirects are followed, and never from
+/// HTTPS down to plain HTTP.
+fn redirect_allowed(prev: &reqwest::Url, next: &reqwest::Url) -> bool {
+    let same_host = prev
+        .host_str()
+        .zip(next.host_str())
+        .is_some_and(|(a, b)| a.eq_ignore_ascii_case(b));
+    let downgrade = prev.scheme() == "https" && next.scheme() != "https";
+    same_host && !downgrade && matches!(next.scheme(), "https" | "http")
+}
+
 pub fn build_client() -> Result<reqwest::Client, TwigError> {
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > 10 {
+            return attempt.error("too many redirects");
+        }
+        match attempt.previous().last() {
+            Some(prev) if !redirect_allowed(prev, attempt.url()) => attempt.stop(),
+            _ => attempt.follow(),
+        }
+    });
     reqwest::Client::builder()
         .user_agent(concat!("Twig/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(std::time::Duration::from_secs(10))
         .timeout(std::time::Duration::from_secs(30))
+        .redirect(policy)
         .build()
         .map_err(|e| TwigError::Http(e.to_string()))
 }
@@ -92,6 +116,58 @@ mod tests {
         );
         assert_eq!(error_message(r#"{"message":["a","b"]}"#), "a; b");
         assert_eq!(error_message("plain"), "plain");
+    }
+
+    #[test]
+    fn redirects_stay_on_host_and_never_downgrade() {
+        let u = |s: &str| reqwest::Url::parse(s).unwrap();
+        let ok = |a: &str, b: &str| redirect_allowed(&u(a), &u(b));
+        assert!(ok("https://gitlab.example.com/api/v4/x", "https://gitlab.example.com/api/v4/y"));
+        assert!(ok("http://gitea.lan/api", "https://gitea.lan/api"));
+        assert!(ok("https://Git.Example.com/a", "https://git.example.com/b"));
+        assert!(!ok("https://gitlab.example.com/a", "https://evil.example.net/a"));
+        assert!(!ok("https://gitlab.example.com/a", "https://gitlab.example.com.evil.net/a"));
+        assert!(!ok("https://gitlab.example.com/a", "http://gitlab.example.com/a"));
+    }
+
+    /// End to end: a cross-host redirect is not followed, so the custom
+    /// token header never reaches the other host.
+    #[tokio::test]
+    async fn cross_host_redirect_is_not_followed() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let target = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target.local_addr().unwrap().port();
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin_port = origin.local_addr().unwrap().port();
+        // `localhost` vs `127.0.0.1`: same machine, different host.
+        let location = format!("http://localhost:{target_port}/steal");
+        tokio::spawn(async move {
+            if let Ok((mut sock, _)) = origin.accept().await {
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf).await;
+                let resp = format!(
+                    "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+            }
+        });
+        let hit = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = hit.clone();
+        tokio::spawn(async move {
+            if target.accept().await.is_ok() {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        });
+        let client = build_client().unwrap();
+        let resp = client
+            .get(format!("http://127.0.0.1:{origin_port}/api"))
+            .header("PRIVATE-TOKEN", "secret")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), 302);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!hit.load(std::sync::atomic::Ordering::SeqCst), "token header followed the redirect");
     }
 
     #[test]
