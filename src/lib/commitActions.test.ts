@@ -19,6 +19,7 @@ const result = (over: object) => ({
   stash_oid: null,
   picked: 0,
   skipped: [],
+  empty: false,
   ...over,
 });
 
@@ -41,6 +42,27 @@ describe("cherryPickRangeAction", () => {
     const [kind, text] = toasts.toast.mock.calls[0];
     expect(kind).toBe("warning");
     expect(text).toContain("after 1 of 3 commits");
+  });
+
+  it("explains a stop on an already-applied commit", async () => {
+    tauri.cherryPickCommits.mockResolvedValue(result({ success: false, empty: true, picked: 1 }));
+    await cherryPickRangeAction("/r", ["a", "b", "c"]);
+    const [kind, text, opts] = toasts.toast.mock.calls[0];
+    expect(kind).toBe("warning");
+    expect(opts.title).toBe("Nothing to apply");
+    expect(text).toContain("already on HEAD");
+  });
+
+  it("reports a failure part-way with what was applied and an Undo", async () => {
+    tauri.cherryPickCommits.mockResolvedValue(
+      result({ success: false, picked: 2, message: "error: your local changes would be overwritten\n" }),
+    );
+    await cherryPickRangeAction("/r", ["a", "b", "c"]);
+    expect(toasts.toast).toHaveBeenCalledTimes(1);
+    const [kind, text, opts] = toasts.toast.mock.calls[0];
+    expect(kind).toBe("error");
+    expect(text).toBe("error: your local changes would be overwritten 2 of 3 commits were applied.");
+    expect(opts.action.label).toBe("Undo");
   });
 
   it("uses the single-commit path for one commit", async () => {

@@ -132,6 +132,9 @@ pub struct PickManyResult {
     pub picked: usize,
     /// Commits left out because HEAD already contains them.
     pub skipped: Vec<String>,
+    /// Stopped (without conflicts) on a commit whose changes HEAD already
+    /// has under another hash; the banner's Skip moves past it.
+    pub empty: bool,
 }
 
 /// Cherry-pick several commits onto HEAD, in the given order (the caller
@@ -181,14 +184,26 @@ pub async fn cherry_pick_many(repo_path: &Path, revs: &[String]) -> Result<PickM
     let out = run_git(repo_path, &args).await?;
     let mut result = CommitOpResult::from_output(out, &before);
     let mut picked = oids.len();
+    let mut empty = false;
     if !result.success {
-        result.conflicted = rev_exists(repo_path, "CHERRY_PICK_HEAD").await?;
+        if rev_exists(repo_path, "CHERRY_PICK_HEAD").await? {
+            // Stopped on a commit: real conflicts, or nothing left to apply.
+            let unmerged = run_git(repo_path, &["ls-files", "--unmerged"]).await?;
+            let staged = run_git(repo_path, &["diff", "--cached", "--quiet"]).await?;
+            empty = unmerged.success && unmerged.stdout.trim().is_empty() && staged.success;
+            result.conflicted = !empty;
+        } else {
+            // Failed before stopping on a commit (e.g. local changes in the
+            // way): end the sequence, keeping what was applied, so the repo
+            // isn't left in a half-finished cherry-pick nothing shows.
+            let _ = run_git(repo_path, &["cherry-pick", "--quit"]).await?;
+        }
         // Commits applied so far: HEAD moved past the old head by that many.
         let range = format!("{head}..HEAD");
         let count = run_git(repo_path, &["rev-list", "--count", &range]).await?;
         picked = count.stdout.trim().parse().unwrap_or(0);
     }
-    Ok(PickManyResult { result, picked, skipped })
+    Ok(PickManyResult { result, picked, skipped, empty })
 }
 
 pub async fn revert(repo_path: &Path, rev: &str) -> Result<CommitOpResult, TwigError> {
@@ -387,7 +402,33 @@ mod tests {
         assert!(!r.result.success);
         assert!(r.result.conflicted);
         assert_eq!(r.picked, 0);
+        assert!(!r.empty);
         git(&dir, &["cherry-pick", "--abort"]).await;
+
+        // "four" is already on main under another hash (picked with -x):
+        // git stops on it with nothing to commit, which is not a conflict.
+        git(&dir, &["checkout", "-q", "feature"]).await;
+        let four = commit_file(&dir, "d.txt", "four\n", "four").await;
+        let five = commit_file(&dir, "e.txt", "five\n", "five").await;
+        git(&dir, &["checkout", "-q", "main"]).await;
+        git(&dir, &["cherry-pick", "-x", &four]).await;
+        let r = cherry_pick_many(&dir, &[four.clone(), five.clone()]).await.unwrap();
+        assert!(!r.result.success, "{r:?}");
+        assert!(r.empty && !r.result.conflicted, "{r:?}");
+        git(&dir, &["cherry-pick", "--abort"]).await;
+
+        // Local changes in the way of the second commit: the first stays
+        // applied and the sequence is ended, not left half-done.
+        let main_head = git(&dir, &["rev-parse", "HEAD"]).await;
+        std::fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+        let r = cherry_pick_many(&dir, &[five.clone(), three.clone()]).await.unwrap();
+        assert!(!r.result.success && !r.result.conflicted && !r.empty, "{r:?}");
+        assert_eq!(r.picked, 1);
+        assert_eq!(r.result.previous_head.as_deref(), Some(main_head.as_str()));
+        assert!(!rev_exists(&dir, "CHERRY_PICK_HEAD").await.unwrap());
+        let seq = git(&dir, &["rev-parse", "--git-path", "sequencer"]).await;
+        assert!(!dir.join(seq).exists(), "sequencer state left behind");
+        git(&dir, &["checkout", "--", "a.txt"]).await;
 
         assert!(cherry_pick_many(&dir, std::slice::from_ref(&base)).await.is_err(), "nothing left to pick");
         assert!(cherry_pick_many(&dir, &[]).await.is_err());

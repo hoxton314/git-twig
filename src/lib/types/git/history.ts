@@ -22,6 +22,8 @@ export interface PickManyResult extends CommitOpResult {
   picked: number;
   /** Commits left out because HEAD already contains them. */
   skipped: string[];
+  /** Stopped on a commit whose changes HEAD already has (not a conflict). */
+  empty: boolean;
 }
 
 export interface ReflogEntry {

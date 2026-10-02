@@ -7,7 +7,7 @@
 import { get } from "svelte/store";
 import { ask } from "@tauri-apps/plugin-dialog";
 import * as tauri from "./tauri";
-import type { CommitOpResult, ResetMode } from "./types/git";
+import type { CommitOpResult, PickManyResult, ResetMode } from "./types/git";
 import { refreshAll } from "./stores/graph";
 import { settings } from "./stores/settings";
 import { toast, toastError } from "./stores/toasts";
@@ -56,11 +56,14 @@ async function runHeadOp<T extends CommitOpResult>(
   title: string,
   op: () => Promise<T>,
   onSuccess: (r: T) => void,
+  /** Replaces the default error toast for a failed, non-conflicted result. */
+  onFailure?: (r: T) => void,
 ): Promise<T | null> {
   try {
     const r = await op();
     await refreshAll(path);
     if (r.success) onSuccess(r);
+    else if (onFailure) onFailure(r);
     else if (!r.conflicted) toast("error", r.message.trim() || "Git reported an error.", { title });
     return r;
   } catch (err) {
@@ -142,7 +145,9 @@ export const cherryPickAction = (path: string, oid: string) => applyCommit(path,
 export async function cherryPickRangeAction(path: string, oids: string[]) {
   if (oids.length === 1) return cherryPickAction(path, oids[0]);
   const ordered = [...oids].reverse();
-  const r = await runHeadOp(
+  const undo = (res: PickManyResult) =>
+    res.previous_head ? { label: "Undo", run: () => undoTo(path, res, "keep") } : undefined;
+  await runHeadOp(
     path,
     "Cherry-pick Failed",
     () => tauri.cherryPickCommits(path, ordered),
@@ -150,18 +155,35 @@ export async function cherryPickRangeAction(path: string, oids: string[]) {
       const skipped = res.skipped.length;
       const note = skipped > 0 ? ` (${skipped} already on HEAD, skipped)` : "";
       toast("success", `Cherry-picked ${res.picked} commit${res.picked === 1 ? "" : "s"}${note}`, {
-        action: res.previous_head ? { label: "Undo", run: () => undoTo(path, res, "keep") } : undefined,
+        action: undo(res),
       });
     },
+    (res) => {
+      const total = ordered.length - res.skipped.length;
+      const done = `after ${res.picked} of ${total} commits`;
+      if (res.conflicted) {
+        toast(
+          "warning",
+          `Cherry-pick stopped with conflicts ${done}. Resolve them, then continue (the rest of the range follows), skip or abort from the banner above the graph.`,
+          { title: "Conflicts", duration: 0 },
+        );
+      } else if (res.empty) {
+        toast(
+          "warning",
+          `Cherry-pick stopped ${done}: the next commit's changes are already on HEAD. Skip it from the banner above the graph to go on with the rest, or abort.`,
+          { title: "Nothing to apply", duration: 0 },
+        );
+      } else {
+        // The backend ended the sequence: what was applied stays applied.
+        const kept = res.picked > 0 ? ` ${res.picked} of ${total} commits were applied.` : "";
+        toast("error", `${res.message.trim() || "Git reported an error."}${kept}`, {
+          title: "Cherry-pick Failed",
+          duration: 0,
+          action: res.picked > 0 ? undo(res) : undefined,
+        });
+      }
+    },
   );
-  if (r?.conflicted) {
-    const total = ordered.length - r.skipped.length;
-    toast(
-      "warning",
-      `Cherry-pick stopped with conflicts after ${r.picked} of ${total} commits. Resolve them, then continue (the rest of the range follows), skip or abort from the banner above the graph.`,
-      { title: "Conflicts", duration: 0 },
-    );
-  }
 }
 export const revertAction = (path: string, oid: string) => applyCommit(path, oid, "revert");
 
