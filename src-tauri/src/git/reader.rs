@@ -375,15 +375,49 @@ pub fn read_working_status(repo: &Repository) -> Result<WorkingStatus, TwigError
     Ok(WorkingStatus { staged, unstaged })
 }
 
+/// Display options for diff reads (from the "Editor & Diff" settings).
+/// Every field is optional so older callers keep the git defaults.
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+pub struct DiffReadOptions {
+    /// Lines of context around each change (default 3).
+    pub context_lines: Option<u32>,
+    /// Ignore whitespace-only changes (`git diff -w`).
+    pub ignore_whitespace: Option<bool>,
+}
+
+/// Upper bound for user-supplied context so a bogus value can't make libgit2
+/// emit whole files for every hunk.
+const MAX_CONTEXT_LINES: u32 = 1000;
+
+impl DiffReadOptions {
+    fn new_diff_options(&self) -> DiffOptions {
+        let mut opts = DiffOptions::new();
+        opts.context_lines(self.context_lines.unwrap_or(3).min(MAX_CONTEXT_LINES));
+        if self.ignore_whitespace.unwrap_or(false) {
+            opts.ignore_whitespace(true);
+        }
+        opts
+    }
+}
+
 /// Get the staged diff (index vs HEAD) for a single file or all files.
+#[allow(dead_code)] // default-options entry point for other callers
 pub fn read_staged_diff(
     repo: &Repository,
     file_path: Option<&str>,
 ) -> Result<Vec<DiffFile>, TwigError> {
+    read_staged_diff_with(repo, file_path, &DiffReadOptions::default())
+}
+
+/// [`read_staged_diff`] with display options.
+pub fn read_staged_diff_with(
+    repo: &Repository,
+    file_path: Option<&str>,
+    options: &DiffReadOptions,
+) -> Result<Vec<DiffFile>, TwigError> {
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
-    let mut opts = DiffOptions::new();
-    opts.context_lines(3);
+    let mut opts = options.new_diff_options();
     if let Some(p) = file_path {
         literal_pathspec(&mut opts, p);
     }
@@ -396,12 +430,21 @@ pub fn read_staged_diff(
 }
 
 /// Get the unstaged diff (workdir vs index) for a single file or all files.
+#[allow(dead_code)] // default-options entry point for other callers
 pub fn read_unstaged_diff(
     repo: &Repository,
     file_path: Option<&str>,
 ) -> Result<Vec<DiffFile>, TwigError> {
-    let mut opts = DiffOptions::new();
-    opts.context_lines(3);
+    read_unstaged_diff_with(repo, file_path, &DiffReadOptions::default())
+}
+
+/// [`read_unstaged_diff`] with display options.
+pub fn read_unstaged_diff_with(
+    repo: &Repository,
+    file_path: Option<&str>,
+    options: &DiffReadOptions,
+) -> Result<Vec<DiffFile>, TwigError> {
+    let mut opts = options.new_diff_options();
     opts.include_untracked(true);
     opts.recurse_untracked_dirs(true);
     opts.show_untracked_content(true);
@@ -527,7 +570,17 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 /// Get the diff for a specific commit (compared to its first parent, or to empty tree for root commits).
+#[allow(dead_code)] // default-options entry point for other callers
 pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile>, TwigError> {
+    read_commit_diff_with(repo, oid_str, &DiffReadOptions::default())
+}
+
+/// [`read_commit_diff`] with display options.
+pub fn read_commit_diff_with(
+    repo: &Repository,
+    oid_str: &str,
+    options: &DiffReadOptions,
+) -> Result<Vec<DiffFile>, TwigError> {
     let commit = resolve_commit(repo, oid_str)?;
     let tree = commit.tree()?;
 
@@ -537,8 +590,7 @@ pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile
         None
     };
 
-    let mut opts = DiffOptions::new();
-    opts.context_lines(3);
+    let mut opts = options.new_diff_options();
 
     let mut diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), Some(&mut opts))?;
     detect_renames(&mut diff)?;
@@ -547,16 +599,23 @@ pub fn read_commit_diff(repo: &Repository, oid_str: &str) -> Result<Vec<DiffFile
 }
 
 /// Get the combined diff of the working directory against HEAD (staged + unstaged).
+#[allow(dead_code)] // default-options entry point for other callers
 pub fn read_working_diff(repo: &Repository) -> Result<Vec<DiffFile>, TwigError> {
+    read_working_diff_with(repo, &DiffReadOptions::default())
+}
+
+/// [`read_working_diff`] with display options.
+pub fn read_working_diff_with(
+    repo: &Repository,
+    options: &DiffReadOptions,
+) -> Result<Vec<DiffFile>, TwigError> {
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
-    let mut opts = DiffOptions::new();
-    opts.context_lines(3);
+    let mut opts = options.new_diff_options();
 
     let mut staged = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
     detect_renames(&mut staged)?;
-    let mut unstaged_opts = DiffOptions::new();
-    unstaged_opts.context_lines(3);
+    let mut unstaged_opts = options.new_diff_options();
     unstaged_opts.include_untracked(true);
     unstaged_opts.recurse_untracked_dirs(true);
     unstaged_opts.show_untracked_content(true);

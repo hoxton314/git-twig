@@ -32,3 +32,5 @@ pub mod worktrees;
 pub mod app_shell;
 // Hosting integrations (PRs, CI, OAuth, GitLab/Gitea)
 pub mod hosting;
+// Diff viewer: partial (hunk/line) staging
+pub mod hunks;

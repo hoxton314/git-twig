@@ -204,13 +204,24 @@ export function fetchAll(path: string): Promise<CommandResult> {
 
 export function getCommitDiff(
   path: string,
-  oid: string
+  oid: string,
+  options?: DiffReadOptions,
 ): Promise<DiffFile[]> {
-  return invoke<DiffFile[]>("get_commit_diff", { path, oid });
+  return invoke<DiffFile[]>("get_commit_diff", {
+    path,
+    oid,
+    options: options ?? diffReadDefaults,
+  });
 }
 
-export function getWorkingDiff(path: string): Promise<DiffFile[]> {
-  return invoke<DiffFile[]>("get_working_diff", { path });
+export function getWorkingDiff(
+  path: string,
+  options?: DiffReadOptions,
+): Promise<DiffFile[]> {
+  return invoke<DiffFile[]>("get_working_diff", {
+    path,
+    options: options ?? diffReadDefaults,
+  });
 }
 
 export function getFileBlob(
@@ -229,21 +240,25 @@ export function getWorkingStatus(path: string): Promise<WorkingStatus> {
 
 export function getStagedDiff(
   path: string,
-  filePath?: string
+  filePath?: string,
+  options?: DiffReadOptions,
 ): Promise<DiffFile[]> {
   return invoke<DiffFile[]>("get_staged_diff", {
     path,
     filePath: filePath ?? null,
+    options: options ?? diffReadDefaults,
   });
 }
 
 export function getUnstagedDiff(
   path: string,
-  filePath?: string
+  filePath?: string,
+  options?: DiffReadOptions,
 ): Promise<DiffFile[]> {
   return invoke<DiffFile[]>("get_unstaged_diff", {
     path,
     filePath: filePath ?? null,
+    options: options ?? diffReadDefaults,
   });
 }
 
@@ -1036,4 +1051,47 @@ export function githubDeviceWait(flowId: number): Promise<GitHubUser> {
 
 export function githubDeviceCancel(flowId: number): Promise<void> {
   return invoke<void>("github_device_cancel", { flowId });
+}
+
+// ── Diff viewer: read options & partial staging ──────────────────────
+
+import type {
+  DiffReadOptions,
+  DiffArea,
+  HunkAction,
+  SelectedLine,
+  HunkRange,
+} from "./types/git";
+
+/**
+ * Display options applied to every diff read that doesn't pass its own.
+ * Kept in sync with the "Editor & Diff" settings by the settings store, so
+ * all callers (staging refreshes, commit diffs, WIP view) honour them.
+ */
+let diffReadDefaults: DiffReadOptions = {};
+
+export function setDiffReadDefaults(options: DiffReadOptions) {
+  diffReadDefaults = { ...options };
+}
+
+/**
+ * Stage / unstage / discard selected lines of one file. `lines` are verified
+ * against the current diff; every change inside `ranges` is included too.
+ */
+export function applyDiffSelection(
+  path: string,
+  filePath: string,
+  area: DiffArea,
+  action: HunkAction,
+  lines: SelectedLine[],
+  ranges: HunkRange[],
+): Promise<CommandResult> {
+  return invoke<CommandResult>("apply_diff_selection", {
+    path,
+    filePath,
+    area,
+    action,
+    lines,
+    ranges,
+  });
 }

@@ -181,6 +181,8 @@ pub fn run() {
             commands::hosting::github_device_start,
             commands::hosting::github_device_wait,
             commands::hosting::github_device_cancel,
+            // Diff viewer: partial (hunk/line) staging
+            commands::hunks::apply_diff_selection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Twig");

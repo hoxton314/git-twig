@@ -125,6 +125,23 @@
 
     <div class="setting-row">
       <div class="setting-label">
+        <span class="label-text">Syntax highlighting</span>
+        <span class="label-hint">Color diff lines by programming language</span>
+      </div>
+      <div class="setting-control">
+        <label class="toggle">
+          <input
+            type="checkbox"
+            checked={s.syntax_highlighting}
+            onchange={() => updateSettings({ syntax_highlighting: !s.syntax_highlighting })}
+          />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
         <span class="label-text">External diff tool</span>
         <span class="label-hint">Path to external diff viewer (e.g. meld, kdiff3)</span>
       </div>

@@ -104,6 +104,12 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "open_pull_requests",  label: "Show pull requests",   category: "Hosting", defaultShortcut: "" },
   { id: "create_pull_request", label: "Create pull request",  category: "Hosting", defaultShortcut: "" },
   { id: "refresh_ci_status",   label: "Refresh CI status",    category: "Hosting", defaultShortcut: "" },
+  // Diff viewer
+  { id: "diff_next_hunk", label: "Next change in diff",  category: "Diff",       defaultShortcut: "Alt+ArrowDown" },
+  { id: "diff_prev_hunk", label: "Previous change in diff", category: "Diff",    defaultShortcut: "Alt+ArrowUp" },
+  // Ctrl+F is handled by the diff panel itself while it has focus.
+  { id: "diff_find",      label: "Find in diff",         category: "Diff",       defaultShortcut: "" },
+  { id: "diff_toggle_whitespace", label: "Toggle whitespace changes in diffs", category: "Diff", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

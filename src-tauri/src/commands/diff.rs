@@ -11,9 +11,13 @@ pub async fn get_commit_diff(
     state: State<'_, AppState>,
     path: String,
     oid: String,
+    options: Option<reader::DiffReadOptions>,
 ) -> Result<Vec<DiffFile>, TwigError> {
+    let options = options.unwrap_or_default();
     state
-        .read_repo(&path, move |repo| reader::read_commit_diff(repo, &oid))
+        .read_repo(&path, move |repo| {
+            reader::read_commit_diff_with(repo, &oid, &options)
+        })
         .await
 }
 
@@ -46,6 +50,10 @@ pub async fn get_file_blob(
 pub async fn get_working_diff(
     state: State<'_, AppState>,
     path: String,
+    options: Option<reader::DiffReadOptions>,
 ) -> Result<Vec<DiffFile>, TwigError> {
-    state.read_repo(&path, reader::read_working_diff).await
+    let options = options.unwrap_or_default();
+    state
+        .read_repo(&path, move |repo| reader::read_working_diff_with(repo, &options))
+        .await
 }

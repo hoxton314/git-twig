@@ -25,3 +25,5 @@ pub mod submodules;
 pub mod worktrees;
 // App shell: repo operation state for the status bar
 pub mod repo_state;
+// Diff viewer: partial (hunk/line) staging
+pub mod hunks;

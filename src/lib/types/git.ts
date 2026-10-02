@@ -144,6 +144,8 @@ export interface AppSettings {
   restore_tabs_on_startup: boolean;
   // Appearance
   theme: "dark" | "light";
+  // Diff viewer: syntax highlighting
+  syntax_highlighting: boolean;
   // Hosting integrations
   github_https_auth: boolean;
   github_host: string;
@@ -536,4 +538,31 @@ export interface RecentRepo {
 export interface RepoHistory {
   recent: RecentRepo[];
   favorites: string[];
+}
+
+// ── Diff viewer: read options & partial staging ──────────────────────
+
+/** Mirrors `reader::DiffReadOptions`; omitted fields use git defaults. */
+export interface DiffReadOptions {
+  context_lines?: number | null;
+  ignore_whitespace?: boolean | null;
+}
+
+export type DiffArea = "staged" | "unstaged";
+export type HunkAction = "stage" | "unstage" | "discard";
+
+/** Mirrors `hunks::SelectedLine`: a changed line exactly as displayed. */
+export interface SelectedLine {
+  origin: string;
+  old_lineno: number | null;
+  new_lineno: number | null;
+  content: string;
+}
+
+/** Mirrors `hunks::HunkRange`. */
+export interface HunkRange {
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
 }

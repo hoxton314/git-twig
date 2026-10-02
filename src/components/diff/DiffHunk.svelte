@@ -1,14 +1,45 @@
 <script lang="ts">
-  import type { DiffHunk as DiffHunkType } from "../../lib/types/git";
+  import type {
+    DiffHunk as DiffHunkType,
+    DiffLine,
+    HunkAction,
+  } from "../../lib/types/git";
+  import { highlightLines, isLanguageReady, type SyntaxToken } from "../../lib/diff/highlight";
+  import { wordDiff, findMatches, buildSegments, type Range, type Segment } from "../../lib/diff/inline";
 
   interface Props {
     hunk: DiffHunkType;
     mode: "unified" | "split";
     tabSize?: number;
     wrap?: boolean;
+    /** Loaded highlight.js language, or null for plain text. */
+    language?: string | null;
+    /** Render the "@@ ... @@" header row (false for expanded context blocks). */
+    showHeader?: boolean;
+    /** Which working-tree diff this is; enables hunk/line actions. */
+    actions?: "staged" | "unstaged" | null;
+    busy?: boolean;
+    /** Lower-cased search query. */
+    search?: string;
+    /** Unique prefix for search-match ids. */
+    matchPrefix?: string;
+    /** `lines` is null for "whole hunk". */
+    onaction?: (action: HunkAction, lines: DiffLine[] | null) => void;
   }
 
-  let { hunk, mode, tabSize = 4, wrap = false }: Props = $props();
+  let {
+    hunk,
+    mode,
+    tabSize = 4,
+    wrap = false,
+    language = null,
+    showHeader = true,
+    actions = null,
+    busy = false,
+    search = "",
+    matchPrefix = "",
+    onaction,
+  }: Props = $props();
 
   // libgit2 emits "\ No newline at end of file" as pseudo-lines with these
   // origins. They always refer to the line immediately before them.
@@ -20,20 +51,14 @@
     newLineno: number | null;
     content: string;
     noEol: boolean;
+    /** Index into hunk.lines. */
+    src: number;
   }
 
-  // For split view, pair up old/new lines side by side
+  // Split view: indices into `rows` for each side (null = filler cell).
   interface SplitPair {
-    oldLineno: number | null;
-    oldContent: string;
-    oldOrigin: string;
-    oldEmpty: boolean;
-    oldNoEol: boolean;
-    newLineno: number | null;
-    newContent: string;
-    newOrigin: string;
-    newEmpty: boolean;
-    newNoEol: boolean;
+    oldRow: number | null;
+    newRow: number | null;
   }
 
   // Strip the trailing line terminator git2 includes in each line's content
@@ -42,15 +67,17 @@
     return s.replace(/\r?\n$/, "");
   }
 
-  const rows = $derived(buildRows());
+  const rows = $derived(buildRows(hunk));
   const splitPairs = $derived(mode === "split" ? buildSplitPairs(rows) : []);
+  const isChange = (r: Row) => r.origin === "+" || r.origin === "-";
+  const hasChanges = $derived(rows.some(isChange));
 
-  function buildRows(): Row[] {
+  function buildRows(h: DiffHunkType): Row[] {
     const out: Row[] = [];
-    for (const line of hunk.lines) {
+    h.lines.forEach((line, i) => {
       if (EOFNL_ORIGINS.has(line.origin)) {
         if (out.length > 0) out[out.length - 1].noEol = true;
-        continue;
+        return;
       }
       out.push({
         origin: line.origin,
@@ -58,79 +85,205 @@
         newLineno: line.new_lineno,
         content: stripEol(line.content),
         noEol: false,
+        src: i,
       });
-    }
+    });
     return out;
+  }
+
+  /** Change blocks: runs of '-' rows followed by '+' rows. */
+  function changeBlocks(src: Row[]): { dels: number[]; adds: number[] }[] {
+    const blocks: { dels: number[]; adds: number[] }[] = [];
+    let cur: { dels: number[]; adds: number[] } | null = null;
+    src.forEach((r, i) => {
+      if (r.origin === "-") {
+        if (!cur || cur.adds.length > 0) {
+          cur = { dels: [], adds: [] };
+          blocks.push(cur);
+        }
+        cur.dels.push(i);
+      } else if (r.origin === "+") {
+        if (!cur) {
+          cur = { dels: [], adds: [] };
+          blocks.push(cur);
+        }
+        cur.adds.push(i);
+      } else {
+        cur = null;
+      }
+    });
+    return blocks;
   }
 
   function buildSplitPairs(src: Row[]): SplitPair[] {
     const pairs: SplitPair[] = [];
-    const dels: Row[] = [];
-    const adds: Row[] = [];
-
-    function flushQueues() {
+    const dels: number[] = [];
+    const adds: number[] = [];
+    const flush = () => {
       const max = Math.max(dels.length, adds.length);
       for (let i = 0; i < max; i++) {
-        const d = dels[i];
-        const a = adds[i];
-        pairs.push({
-          oldLineno: d?.oldLineno ?? null,
-          oldContent: d?.content ?? "",
-          oldOrigin: d?.origin ?? " ",
-          oldEmpty: !d,
-          oldNoEol: d?.noEol ?? false,
-          newLineno: a?.newLineno ?? null,
-          newContent: a?.content ?? "",
-          newOrigin: a?.origin ?? " ",
-          newEmpty: !a,
-          newNoEol: a?.noEol ?? false,
-        });
+        pairs.push({ oldRow: dels[i] ?? null, newRow: adds[i] ?? null });
       }
       dels.length = 0;
       adds.length = 0;
-    }
-
-    for (const line of src) {
-      if (line.origin === "-") {
-        dels.push(line);
-      } else if (line.origin === "+") {
-        adds.push(line);
-      } else {
-        flushQueues();
-        pairs.push({
-          oldLineno: line.oldLineno,
-          oldContent: line.content,
-          oldOrigin: " ",
-          oldEmpty: false,
-          oldNoEol: line.noEol,
-          newLineno: line.newLineno,
-          newContent: line.content,
-          newOrigin: " ",
-          newEmpty: false,
-          newNoEol: line.noEol,
-        });
+    };
+    src.forEach((r, i) => {
+      if (r.origin === "-") dels.push(i);
+      else if (r.origin === "+") adds.push(i);
+      else {
+        flush();
+        pairs.push({ oldRow: i, newRow: i });
       }
-    }
-    flushQueues();
+    });
+    flush();
     return pairs;
   }
+
+  // ── Syntax highlighting ────────────────────────────────────────────
+  // Each side is highlighted as one block so multi-line constructs work.
+  const syntax = $derived.by((): (SyntaxToken[] | null)[] => {
+    const out: (SyntaxToken[] | null)[] = rows.map(() => null);
+    if (!language || !isLanguageReady(language)) return out;
+    const oldIdx: number[] = [];
+    const newIdx: number[] = [];
+    rows.forEach((r, i) => {
+      if (r.origin !== "+") oldIdx.push(i);
+      if (r.origin !== "-") newIdx.push(i);
+    });
+    const oldTok = highlightLines(oldIdx.map((i) => rows[i].content), language);
+    const newTok = highlightLines(newIdx.map((i) => rows[i].content), language);
+    if (oldTok) oldIdx.forEach((ri, k) => (out[ri] = oldTok[k]));
+    // Context rows take the new side's tokens.
+    if (newTok) newIdx.forEach((ri, k) => (out[ri] = newTok[k]));
+    return out;
+  });
+
+  // ── Word diff ──────────────────────────────────────────────────────
+  const changedRanges = $derived.by((): (Range[] | null)[] => {
+    const out: (Range[] | null)[] = rows.map(() => null);
+    for (const b of changeBlocks(rows)) {
+      const n = Math.min(b.dels.length, b.adds.length);
+      for (let k = 0; k < n; k++) {
+        const d = wordDiff(rows[b.dels[k]].content, rows[b.adds[k]].content);
+        if (d) {
+          out[b.dels[k]] = d.old;
+          out[b.adds[k]] = d.new;
+        }
+      }
+    }
+    return out;
+  });
+
+  const segments = $derived<Segment[][]>(
+    rows.map((r, i) =>
+      buildSegments(r.content, syntax[i], changedRanges[i], findMatches(r.content, search)),
+    ),
+  );
+
+  // ── Line selection ─────────────────────────────────────────────────
+  let selected = $state<Set<number>>(new Set());
+  let lastClicked: number | null = null;
+
+  // A refreshed hunk invalidates the selection.
+  $effect(() => {
+    void hunk;
+    selected = new Set();
+    lastClicked = null;
+  });
+
+  function toggleRow(i: number, e: MouseEvent) {
+    const next = new Set(selected);
+    if (e.shiftKey && lastClicked !== null) {
+      const [a, b] = lastClicked < i ? [lastClicked, i] : [i, lastClicked];
+      for (let k = a; k <= b; k++) if (isChange(rows[k])) next.add(k);
+    } else if (next.has(i)) {
+      next.delete(i);
+    } else {
+      next.add(i);
+    }
+    lastClicked = i;
+    selected = next;
+  }
+
+  function selectAll() {
+    const next = new Set<number>();
+    rows.forEach((r, i) => {
+      if (isChange(r)) next.add(i);
+    });
+    selected = next;
+  }
+
+  function runAction(action: HunkAction, whole: boolean) {
+    if (!onaction || busy) return;
+    if (whole) {
+      onaction(action, null);
+    } else {
+      const lines = [...selected].sort((a, b) => a - b).map((i) => hunk.lines[rows[i].src]);
+      onaction(action, lines);
+    }
+  }
+
+  function segClass(s: Segment): string {
+    let c = s.cls;
+    if (s.changed) c += " wd-changed";
+    if (s.match >= 0) c += " search-hit";
+    return c;
+  }
+
+  const selectable = $derived(actions !== null && !!onaction);
+  const selCount = $derived(selected.size);
 </script>
 
 {#snippet eol()}<span class="no-eol" title="No newline at end of file">&#8856;</span>{/snippet}
 
-<div class="hunk" class:wrap style:tab-size={tabSize}>
-  <div class="hunk-header">{hunk.header.trim()}</div>
+{#snippet text(ri: number, side: string)}{#each segments[ri] as s, si (si)}{#if s.cls || s.changed || s.match >= 0}<span class={segClass(s)} data-m={s.match >= 0 ? `${matchPrefix}:${ri}:${side}:${s.match}` : undefined} data-match-start={s.matchStart ? "" : undefined}>{s.text}</span>{:else}{s.text}{/if}{/each}{#if rows[ri].noEol}{@render eol()}{/if}{/snippet}
+
+{#snippet lineno(ri: number, n: number | null)}{#if selectable && isChange(rows[ri])}<button class="ln-btn" class:on={selected.has(ri)} aria-pressed={selected.has(ri)} title="Select line (Shift+click for a range)" onclick={(e) => toggleRow(ri, e)}>{n ?? ""}</button>{:else}{n ?? ""}{/if}{/snippet}
+
+<div class="hunk" class:wrap class:syn={!!language} class:hunk-anchor={showHeader} style:tab-size={tabSize}>
+  {#if showHeader}
+    <div class="hunk-header">
+      <span class="hunk-header-text">{hunk.header.trim()}</span>
+      {#if selectable && hasChanges}
+        <div class="hunk-actions">
+          {#if selCount > 0}
+            <span class="sel-count">{selCount} line{selCount === 1 ? "" : "s"}</span>
+            {#if actions === "unstaged"}
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", false)}>Stage lines</button>
+              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", false)}>Discard lines</button>
+            {:else}
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", false)}>Unstage lines</button>
+            {/if}
+            <button class="hunk-btn subtle" onclick={() => (selected = new Set())}>Clear</button>
+          {:else}
+            <button class="hunk-btn subtle" onclick={selectAll} title="Select every changed line in this hunk">Select</button>
+            {#if actions === "unstaged"}
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", true)}>Stage hunk</button>
+              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", true)}>Discard hunk</button>
+            {:else}
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", true)}>Unstage hunk</button>
+            {/if}
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <div class="hunk-scroll">
     {#if mode === "unified"}
       <table class="unified-table">
         <tbody>
           {#each rows as line, i (i)}
-            <tr class="line" class:line-add={line.origin === "+"} class:line-del={line.origin === "-"}>
-              <td class="lineno old-lineno">{line.oldLineno ?? ""}</td>
-              <td class="lineno new-lineno">{line.newLineno ?? ""}</td>
+            <tr
+              class="line"
+              class:line-add={line.origin === "+"}
+              class:line-del={line.origin === "-"}
+              class:selected={selected.has(i)}
+            >
+              <td class="lineno old-lineno">{@render lineno(i, line.oldLineno)}</td>
+              <td class="lineno new-lineno">{@render lineno(i, line.newLineno)}</td>
               <td class="origin">{line.origin}</td>
-              <td class="content">{line.content}{#if line.noEol}{@render eol()}{/if}</td>
+              <td class="content">{@render text(i, "u")}</td>
             </tr>
           {/each}
         </tbody>
@@ -139,20 +292,25 @@
       <table class="split-table">
         <tbody>
           {#each splitPairs as pair, i (i)}
+            {@const o = pair.oldRow}
+            {@const n = pair.newRow}
+            {@const ctx = o !== null && o === n}
             <tr class="line">
-              <td class="lineno">{pair.oldLineno ?? ""}</td>
+              <td class="lineno" class:selected={o !== null && !ctx && selected.has(o)}>{#if o !== null}{#if ctx}{rows[o].oldLineno ?? ""}{:else}{@render lineno(o, rows[o].oldLineno)}{/if}{/if}</td>
               <td
                 class="content split-cell"
-                class:line-del={pair.oldOrigin === "-"}
-                class:empty-cell={pair.oldEmpty}
-              >{pair.oldContent}{#if pair.oldNoEol}{@render eol()}{/if}</td>
+                class:line-del={o !== null && !ctx}
+                class:empty-cell={o === null}
+                class:selected={o !== null && !ctx && selected.has(o)}
+              >{#if o !== null}{@render text(o, "o")}{/if}</td>
               <td class="split-divider"></td>
-              <td class="lineno">{pair.newLineno ?? ""}</td>
+              <td class="lineno" class:selected={n !== null && !ctx && selected.has(n)}>{#if n !== null}{#if ctx}{rows[n].newLineno ?? ""}{:else}{@render lineno(n, rows[n].newLineno)}{/if}{/if}</td>
               <td
                 class="content split-cell"
-                class:line-add={pair.newOrigin === "+"}
-                class:empty-cell={pair.newEmpty}
-              >{pair.newContent}{#if pair.newNoEol}{@render eol()}{/if}</td>
+                class:line-add={n !== null && !ctx}
+                class:empty-cell={n === null}
+                class:selected={n !== null && !ctx && selected.has(n)}
+              >{#if n !== null}{@render text(n, "n")}{/if}</td>
             </tr>
           {/each}
         </tbody>
@@ -169,15 +327,68 @@
   }
 
   .hunk-header {
-    padding: 4px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 26px;
+    padding: 2px 8px 2px 12px;
     background: var(--color-diff-hunk-bg);
     color: var(--color-text-muted);
     font-size: 11px;
     border-bottom: 1px solid var(--color-border);
     user-select: none;
+  }
+
+  .hunk-header-text {
+    flex: 1;
+    min-width: 0;
     white-space: pre;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .hunk-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    font-family: var(--font-sans, system-ui, sans-serif);
+  }
+
+  .sel-count {
+    color: var(--color-accent);
+    margin-right: 4px;
+  }
+
+  .hunk-btn {
+    padding: 1px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-size: 11px;
+    line-height: 18px;
+    cursor: pointer;
+  }
+
+  .hunk-btn:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .hunk-btn.danger:hover:not(:disabled) {
+    border-color: var(--color-diff-del-text);
+    color: var(--color-diff-del-text);
+  }
+
+  .hunk-btn.subtle {
+    background: transparent;
+    color: var(--color-text-muted);
+  }
+
+  .hunk-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   /* Without word wrap, long lines scroll horizontally instead of being clipped. */
@@ -249,8 +460,48 @@
     color: var(--color-text-muted);
     text-align: right;
     user-select: none;
-    opacity: 0.6;
     padding-right: 8px;
+  }
+
+  .unified-table .lineno,
+  .split-table .lineno {
+    opacity: 0.6;
+  }
+
+  .ln-btn {
+    display: block;
+    width: 100%;
+    min-height: 1.5em;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+  }
+
+  .ln-btn:hover {
+    color: var(--color-accent);
+  }
+
+  .ln-btn.on {
+    color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  tr.selected .lineno,
+  td.lineno.selected {
+    opacity: 1;
+    box-shadow: inset 3px 0 0 var(--color-accent);
+  }
+
+  tr.selected td,
+  td.selected {
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--color-accent) 14%, transparent),
+      color-mix(in srgb, var(--color-accent) 14%, transparent)
+    );
   }
 
   .origin {
@@ -281,6 +532,14 @@
     color: var(--color-diff-del-text);
   }
 
+  /* With syntax colors, the row tint alone marks additions/deletions. */
+  .syn .line-add .content,
+  .syn td.line-add,
+  .syn .line-del .content,
+  .syn td.line-del {
+    color: var(--color-text-primary);
+  }
+
   .empty-cell {
     background: var(--color-surface);
   }
@@ -291,5 +550,96 @@
     opacity: 0.8;
     user-select: none;
     cursor: help;
+  }
+
+  /* ── Word diff ── */
+  .line-add :global(.wd-changed),
+  td.line-add :global(.wd-changed) {
+    background: var(--color-diff-add-word-bg);
+    border-radius: 2px;
+  }
+
+  .line-del :global(.wd-changed),
+  td.line-del :global(.wd-changed) {
+    background: var(--color-diff-del-word-bg);
+    border-radius: 2px;
+  }
+
+  /* ── Search ── */
+  .hunk :global(.search-hit) {
+    background: var(--color-search-hit-bg);
+    color: var(--color-search-hit-text);
+    border-radius: 2px;
+  }
+
+  .hunk :global(.search-hit.search-active) {
+    background: var(--color-search-active-bg);
+    outline: 1px solid var(--color-search-active-outline);
+  }
+
+  /* ── Syntax (colors are theme tokens in app.css) ── */
+  .hunk :global(.hljs-keyword),
+  .hunk :global(.hljs-built_in),
+  .hunk :global(.hljs-selector-tag),
+  .hunk :global(.hljs-doctag) {
+    color: var(--color-syntax-keyword);
+  }
+
+  .hunk :global(.hljs-string),
+  .hunk :global(.hljs-regexp),
+  .hunk :global(.hljs-template-tag),
+  .hunk :global(.hljs-addition) {
+    color: var(--color-syntax-string);
+  }
+
+  .hunk :global(.hljs-number),
+  .hunk :global(.hljs-literal),
+  .hunk :global(.hljs-symbol),
+  .hunk :global(.hljs-bullet) {
+    color: var(--color-syntax-number);
+  }
+
+  .hunk :global(.hljs-comment),
+  .hunk :global(.hljs-quote) {
+    color: var(--color-syntax-comment);
+    font-style: italic;
+  }
+
+  .hunk :global(.hljs-title),
+  .hunk :global(.hljs-section),
+  .hunk :global(.hljs-selector-id),
+  .hunk :global(.hljs-selector-class) {
+    color: var(--color-syntax-function);
+  }
+
+  .hunk :global(.hljs-type),
+  .hunk :global(.hljs-class),
+  .hunk :global(.hljs-title.class_),
+  .hunk :global(.hljs-name) {
+    color: var(--color-syntax-type);
+  }
+
+  .hunk :global(.hljs-attr),
+  .hunk :global(.hljs-attribute),
+  .hunk :global(.hljs-variable),
+  .hunk :global(.hljs-template-variable),
+  .hunk :global(.hljs-property),
+  .hunk :global(.hljs-params) {
+    color: var(--color-syntax-variable);
+  }
+
+  .hunk :global(.hljs-meta),
+  .hunk :global(.hljs-tag),
+  .hunk :global(.hljs-punctuation),
+  .hunk :global(.hljs-operator) {
+    color: var(--color-syntax-meta);
+  }
+
+  .hunk :global(.hljs-emphasis) {
+    font-style: italic;
+  }
+
+  .hunk :global(.hljs-strong) {
+    font-weight: 700;
   }
 </style>

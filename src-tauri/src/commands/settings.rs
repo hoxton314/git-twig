@@ -117,6 +117,9 @@ pub struct AppSettings {
     /// Gitea / Forgejo instance URL (empty = not configured).
     #[serde(default)]
     pub gitea_base_url: String,
+    // ── Diff viewer: syntax highlighting ─────────────────────────────
+    #[serde(default = "default_true")]
+    pub syntax_highlighting: bool,
 }
 
 fn default_true() -> bool {
@@ -213,6 +216,7 @@ impl Default for AppSettings {
             github_api_url: String::new(),
             gitlab_base_url: default_gitlab_url(),
             gitea_base_url: String::new(),
+            syntax_highlighting: true,
         }
     }
 }
