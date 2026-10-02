@@ -51,9 +51,22 @@ mkdirSync(repo);
 const git = (...args) => execFileSync("git", args, { cwd: repo, env, encoding: "utf8" });
 git("init", "-q");
 writeFileSync(join(repo, "README.md"), "hello\n");
-git("add", "README.md");
+// A 20k-line file whose every line changes: a 40k-row diff (windowing test).
+const BIG_LINES = 20_000;
+writeFileSync(join(repo, "big.txt"), Array.from({ length: BIG_LINES }, (_, i) => `line ${i}\n`).join(""));
+// Every 10th line changes: ~2000 small hunks, too many rows to render unwindowed.
+writeFileSync(join(repo, "scattered.txt"), Array.from({ length: BIG_LINES }, (_, i) => `row ${i}\n`).join(""));
+git("add", "README.md", "big.txt", "scattered.txt");
 git("commit", "-q", "-m", "initial commit");
 writeFileSync(join(repo, "notes.txt"), "from the e2e test\n");
+writeFileSync(
+  join(repo, "scattered.txt"),
+  Array.from({ length: BIG_LINES }, (_, i) => (i % 10 === 0 ? `ROW ${i}\n` : `row ${i}\n`)).join(""),
+);
+writeFileSync(
+  join(repo, "big.txt"),
+  Array.from({ length: BIG_LINES }, (_, i) => `LINE ${i}\n`).join("") + "needle-at-the-end\n",
+);
 
 // Open the repo through a saved session (no native file dialog needed).
 writeFileSync(join(appData, "session.json"), JSON.stringify({ paths: [repo], active: repo }));
@@ -155,7 +168,36 @@ try {
     if (log[0] !== "add notes from e2e" || log[1] !== "initial commit") {
       throw new Error(`unexpected history: ${JSON.stringify(log)}`);
     }
-    if (git("status", "--porcelain").trim() !== "") throw new Error("working tree not clean");
+    // Only the pre-modified big.txt (used by the next step) is left.
+    const status = git("status", "--porcelain").replace(/\n$/, "");
+    if (status !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
+  });
+
+  await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
+    const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("big.txt")) });
+    const texts = await session.texts(".file-item");
+    await session.click(rows[texts.findIndex((t) => t.includes("big.txt"))]);
+    await session.waitFor(".diff-files tr.line", { timeout: 60_000 });
+    const domRows = await session.execute("return document.querySelectorAll('.diff-files tr.line').length;");
+    if (!(domRows > 0 && domRows < 1500)) throw new Error(`expected a windowed diff, found ${domRows} rendered rows`);
+
+    await session.click(await session.find('button[aria-label="Find in diff"]'));
+    const [box] = await session.waitFor('input[aria-label="Find in diff"]');
+    await session.type(box, "needle-at-the-end");
+    await session.waitFor(".match-count", { pred: (t) => t.some((x) => x.includes("1 of 1")), timeout: 20_000 });
+    // The match is ~40k rows down: its row must have been brought into the window.
+    await session.waitFor(".search-hit.search-active", { pred: (t) => t.some((x) => x.includes("needle")), timeout: 20_000 });
+    const after = await session.execute("return document.querySelectorAll('.diff-files tr.line').length;");
+    if (!(after < 1500)) throw new Error(`window grew to ${after} rows after jumping to the match`);
+  });
+
+  await step("a file with thousands of small hunks is collapsed behind Show anyway", async () => {
+    const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("scattered.txt")) });
+    const texts = await session.texts(".file-item");
+    await session.click(rows[texts.findIndex((t) => t.includes("scattered.txt"))]);
+    await session.waitFor(".binary-notice", { pred: (t) => t.some((x) => x.includes("Large diff")), timeout: 30_000 });
+    const domRows = await session.execute("return document.querySelectorAll('.diff-files tr.line').length;");
+    if (domRows !== 0) throw new Error(`collapsed diff still rendered ${domRows} rows`);
   });
 
   await step("clone from URL opens the clone in a new tab", async () => {
