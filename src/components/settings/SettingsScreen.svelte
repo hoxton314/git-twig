@@ -7,12 +7,14 @@
   import KeybindingsSettings from "./KeybindingsSettings.svelte";
   import GitHubSettings from "./GitHubSettings.svelte";
   import AboutSettings from "./AboutSettings.svelte";
+  import RepoSettings from "./RepoSettings.svelte";
   import { currentView } from "../../lib/stores/ui";
 
-  type Section = "general" | "appearance" | "editor" | "git" | "github" | "keybindings" | "about";
+  type Section = "general" | "repo" | "appearance" | "editor" | "git" | "github" | "keybindings" | "about";
 
   const sections: { id: Section; label: string }[] = [
     { id: "general", label: "General" },
+    { id: "repo", label: "This repository" },
     { id: "appearance", label: "Appearance" },
     { id: "editor", label: "Editor & Diff" },
     { id: "git", label: "Git Configuration" },
@@ -54,6 +56,8 @@
   <div class="settings-content">
     {#if activeSection === "general"}
       <GeneralSettings />
+    {:else if activeSection === "repo"}
+      <RepoSettings />
     {:else if activeSection === "appearance"}
       <AppearanceSettings />
     {:else if activeSection === "editor"}

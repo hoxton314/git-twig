@@ -1,14 +1,8 @@
 <script lang="ts">
   import { Check } from "lucide-svelte";
-  import {
-    settings,
-    updateSettings,
-    cssFontFamily,
-    UI_FONT_FALLBACK,
-    MONO_FONT_FALLBACK,
-  } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings, cssFontFamily, UI_FONT_FALLBACK, MONO_FONT_FALLBACK } from "../../lib/stores/settings";
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
 
   const accentColors = [
     { value: "#7aa2f7", label: "Blue" },
@@ -35,14 +29,14 @@
   ];
 
   function handleAccentChange(color: string) {
-    updateSettings({ accent_color: color });
+    updateGlobalSettings({ accent_color: color });
   }
 
   /** Commit a font family on change (blur / Enter / datalist pick). */
   function commitFont(field: "ui_font_family" | "mono_font_family", input: HTMLInputElement) {
     const value = input.value.trim();
     input.value = value;
-    updateSettings({ [field]: value });
+    updateGlobalSettings({ [field]: value });
   }
 
   const uiPreview = $derived(
@@ -66,7 +60,7 @@
         <select
           id="theme-select"
           value={s.theme}
-          onchange={(e) => updateSettings({ theme: e.currentTarget.value as "dark" | "light" })}
+          onchange={(e) => updateGlobalSettings({ theme: e.currentTarget.value as "dark" | "light" })}
         >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
@@ -116,7 +110,7 @@
           max="16"
           step="1"
           value={s.font_size}
-          oninput={(e) => updateSettings({ font_size: Number(e.currentTarget.value) })}
+          oninput={(e) => updateGlobalSettings({ font_size: Number(e.currentTarget.value) })}
         />
       </div>
     </div>
@@ -135,7 +129,7 @@
           max="16"
           step="1"
           value={s.diff_font_size}
-          oninput={(e) => updateSettings({ diff_font_size: Number(e.currentTarget.value) })}
+          oninput={(e) => updateGlobalSettings({ diff_font_size: Number(e.currentTarget.value) })}
         />
       </div>
     </div>
@@ -163,7 +157,7 @@
           {#each uiFontSuggestions as f (f)}<option value={f}></option>{/each}
         </datalist>
         {#if s.ui_font_family}
-          <button class="btn-ghost" onclick={() => updateSettings({ ui_font_family: "" })} aria-label="Reset interface font">Reset</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ ui_font_family: "" })} aria-label="Reset interface font">Reset</button>
         {/if}
       </div>
     </div>
@@ -191,7 +185,7 @@
           {#each monoFontSuggestions as f (f)}<option value={f}></option>{/each}
         </datalist>
         {#if s.mono_font_family}
-          <button class="btn-ghost" onclick={() => updateSettings({ mono_font_family: "" })} aria-label="Reset monospace font">Reset</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ mono_font_family: "" })} aria-label="Reset monospace font">Reset</button>
         {/if}
       </div>
     </div>

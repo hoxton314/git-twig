@@ -1,26 +1,54 @@
 import { get } from "svelte/store";
 import { openRepos, activeRepoPath } from "./repos";
-import { settings } from "./settings";
+import { globalSettings, repoOverrides } from "./settings";
+import { effectiveSettings } from "../repoSettings";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
 import { trackOperation } from "./operations";
 import { invalidateCi } from "./ci";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
-let currentSeconds = -1;
 let fetching = false;
-let unsubscribe: (() => void) | null = null;
 
-async function fetchAllRepos() {
+/** How often the scheduler checks which repositories are due. */
+const TICK_MS = 15_000;
+
+/** When each open repository was last auto-fetched (or first seen). */
+const lastFetched = new Map<string, number>();
+
+/** Auto-fetch interval (seconds) for `path`, honouring its overrides. */
+function intervalFor(path: string): number {
+  return effectiveSettings(get(globalSettings), get(repoOverrides), path).auto_fetch_interval;
+}
+
+/** Open repositories whose interval has elapsed (pure; exported for tests). */
+export function dueRepos(paths: string[], now: number, interval: (p: string) => number, last: Map<string, number>): string[] {
+  return paths.filter((p) => {
+    const secs = interval(p);
+    if (secs <= 0) return false;
+    if (!last.has(p)) {
+      // First seen: wait a full interval, like a fresh timer would.
+      last.set(p, now);
+      return false;
+    }
+    return now - (last.get(p) ?? now) >= secs * 1000;
+  });
+}
+
+async function tick() {
   // Skip this tick if the previous round is still running (slow remotes),
   // so fetches never pile up on top of each other.
   if (fetching) return;
+  const paths = [...get(openRepos).keys()];
+  for (const p of [...lastFetched.keys()]) if (!paths.includes(p)) lastFetched.delete(p);
+  const due = dueRepos(paths, Date.now(), intervalFor, lastFetched);
+  if (due.length === 0) return;
   fetching = true;
   try {
-    const paths = [...get(openRepos).keys()];
-    for (const path of paths) {
+    for (const path of due) {
       // The tab may have been closed while an earlier fetch was running.
       if (!get(openRepos).has(path)) continue;
+      lastFetched.set(path, Date.now());
       try {
         // Failures are recorded in `lastFetch` and shown in the status bar
         // rather than interrupting the user from a background timer.
@@ -39,37 +67,20 @@ async function fetchAllRepos() {
   }
 }
 
-function setupInterval(seconds: number) {
-  // Settings fire on every change (theme, accent, ...); only restart the
-  // timer when the interval itself changed, or it may never get to fire.
-  if (seconds === currentSeconds) return;
-  currentSeconds = seconds;
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
-  }
-  if (seconds > 0) {
-    intervalId = setInterval(fetchAllRepos, seconds * 1000);
-  }
-}
-
 /**
- * Subscribe to settings changes and manage the auto-fetch timer. Call once at
- * startup; returns a cleanup function that stops the timer.
+ * Start the auto-fetch scheduler: every repository is fetched on its own
+ * interval (the global one, or its per-repository override). Call once at
+ * startup; returns a cleanup function that stops it.
  */
 export function initAutoFetch(): () => void {
   stopAutoFetch();
-  unsubscribe = settings.subscribe((s) => {
-    setupInterval(s.auto_fetch_interval);
-  });
+  intervalId = setInterval(() => void tick(), TICK_MS);
   return stopAutoFetch;
 }
 
-/** Stop the auto-fetch timer and settings subscription. */
+/** Stop the auto-fetch scheduler. */
 export function stopAutoFetch() {
-  unsubscribe?.();
-  unsubscribe = null;
   if (intervalId) clearInterval(intervalId);
   intervalId = null;
-  currentSeconds = -1;
+  lastFetched.clear();
 }

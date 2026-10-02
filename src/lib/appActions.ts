@@ -5,7 +5,7 @@
 import { get } from "svelte/store";
 import { open, save, ask } from "@tauri-apps/plugin-dialog";
 import { addRepo } from "./stores/repos";
-import { settings, DEFAULT_SETTINGS, flushSettings } from "./stores/settings";
+import { settings, DEFAULT_SETTINGS, flushSettings, replaceGlobalSettings } from "./stores/settings";
 import { toast, toastError } from "./stores/toasts";
 import * as tauri from "./tauri";
 
@@ -68,7 +68,7 @@ export async function importSettingsFromFile(): Promise<void> {
       cancelLabel: "Cancel",
     });
     if (!confirmed) return;
-    settings.set({
+    replaceGlobalSettings({
       ...DEFAULT_SETTINGS,
       ...imported,
       keybinding_overrides: imported.keybinding_overrides ?? {},

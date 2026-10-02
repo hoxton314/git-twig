@@ -17,6 +17,15 @@ export function saveSettings(settings: AppSettings): Promise<void> {
   return invoke<void>("save_settings", { settings });
 }
 
+/** Per-repository overrides: repo path → overridden settings. */
+export function loadRepoSettings(): Promise<Record<string, Record<string, unknown>>> {
+  return invoke<Record<string, Record<string, unknown>>>("load_repo_settings");
+}
+
+export function saveRepoSettings(overrides: Record<string, Record<string, unknown>>): Promise<void> {
+  return invoke<void>("save_repo_settings", { overrides });
+}
+
 // ── Git Config ───────────────────────────────────────────────────────
 
 export function getGitConfig(): Promise<GitConfig> {

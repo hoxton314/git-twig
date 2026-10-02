@@ -1,8 +1,17 @@
-import { writable, get } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type { AppSettings } from "../types/git";
 import { setOverrides } from "../keybindings";
 import { diffViewMode } from "./ui";
 import * as tauri from "../tauri";
+import { activeRepoPath } from "./repos";
+import {
+  effectiveSettings,
+  sanitizeOverride,
+  splitPatch,
+  type OverridableKey,
+  type RepoOverride,
+  type RepoOverrides,
+} from "../repoSettings";
 
 const defaults: AppSettings = {
   default_repo_dir: null,
@@ -54,7 +63,19 @@ const defaults: AppSettings = {
 /** Default values for every setting (used by reset/import). */
 export const DEFAULT_SETTINGS: Readonly<AppSettings> = defaults;
 
-export const settings = writable<AppSettings>({ ...defaults });
+/** Global settings, as saved in settings.json. Write via `updateSettings`. */
+export const globalSettings = writable<AppSettings>({ ...defaults });
+
+/** Per-repository overrides (repo path → overridden settings). */
+export const repoOverrides = writable<RepoOverrides>({});
+
+/**
+ * Effective settings for the active repository: the global settings with
+ * its overrides applied. Read-only; this is what the app reads everywhere.
+ */
+export const settings = derived([globalSettings, repoOverrides, activeRepoPath], ([g, o, p]) =>
+  effectiveSettings(g, o, p),
+);
 
 /** True once settings have been loaded from disk (or defaults applied). */
 export const settingsReady = writable(false);
@@ -67,15 +88,68 @@ export async function loadSettings() {
   try {
     const s = await tauri.loadSettings();
     // Merge over defaults so fields missing from older backends/files are filled.
-    settings.set({ ...defaults, ...s, keybinding_overrides: s.keybinding_overrides ?? {} });
+    globalSettings.set({ ...defaults, ...s, keybinding_overrides: s.keybinding_overrides ?? {} });
   } catch (e) {
     console.error("Failed to load settings, using defaults:", e);
-    settings.set({ ...defaults });
+    globalSettings.set({ ...defaults });
+  }
+  try {
+    const raw = await tauri.loadRepoSettings();
+    const g = get(globalSettings);
+    const clean: RepoOverrides = {};
+    for (const [path, o] of Object.entries(raw ?? {})) {
+      const s = sanitizeOverride(o, g);
+      if (Object.keys(s).length > 0) clean[path] = s;
+    }
+    repoOverrides.set(clean);
+  } catch (e) {
+    console.error("Failed to load repository settings:", e);
   }
   // Apply the persisted default diff view at startup.
   diffViewMode.set(get(settings).diff_view_mode);
   loaded = true;
   settingsReady.set(true);
+}
+
+let repoSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function persistRepoOverrides() {
+  if (!loaded) return;
+  if (repoSaveTimeout) clearTimeout(repoSaveTimeout);
+  repoSaveTimeout = setTimeout(() => {
+    repoSaveTimeout = null;
+    tauri.saveRepoSettings(get(repoOverrides) as Record<string, Record<string, unknown>>).catch((e) => {
+      console.error("Failed to save repository settings:", e);
+    });
+  }, 300);
+}
+
+repoOverrides.subscribe(() => persistRepoOverrides());
+
+/** Override `key` for repository `path` (starting from the current effective value). */
+export function setRepoOverride<K extends OverridableKey>(path: string, key: K, value: AppSettings[K]) {
+  repoOverrides.update((all) => ({ ...all, [path]: { ...(all[path] ?? {}), [key]: value } as RepoOverride }));
+}
+
+/** Drop `path`'s override of `key` (back to the global value). */
+export function clearRepoOverride(path: string, key: OverridableKey) {
+  repoOverrides.update((all) => {
+    const current = { ...(all[path] ?? {}) };
+    delete current[key];
+    const next = { ...all };
+    if (Object.keys(current).length > 0) next[path] = current;
+    else delete next[path];
+    return next;
+  });
+}
+
+/** Drop every override of repository `path`. */
+export function clearRepoOverrides(path: string) {
+  repoOverrides.update((all) => {
+    const next = { ...all };
+    delete next[path];
+    return next;
+  });
 }
 
 /** Persist current settings to disk (debounced). */
@@ -84,7 +158,7 @@ function persistSettings() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
-    tauri.saveSettings(get(settings)).catch((e) => {
+    tauri.saveSettings(get(globalSettings)).catch((e) => {
       console.error("Failed to save settings:", e);
     });
   }, 300);
@@ -100,7 +174,7 @@ export async function flushSettings(): Promise<void> {
     saveTimeout = null;
   }
   if (!loaded) return;
-  await tauri.saveSettings(get(settings));
+  await tauri.saveSettings(get(globalSettings));
 }
 
 /** Apply visual settings to CSS custom properties. */
@@ -147,8 +221,9 @@ function applyFontFamily(root: HTMLElement, prop: string, value: string | undefi
   else root.style.removeProperty(prop);
 }
 
+globalSettings.subscribe(() => persistSettings());
+
 settings.subscribe((s) => {
-  persistSettings();
   applyVisualSettings(s);
   setOverrides(s.keybinding_overrides ?? {});
   // Diff viewer: context lines / whitespace apply to every diff read.
@@ -158,7 +233,26 @@ settings.subscribe((s) => {
   });
 });
 
-/** Update one or more settings fields and auto-save. */
+/**
+ * Update settings and auto-save. Keys the active repository overrides
+ * update its override (so a toggle keeps working in that repository);
+ * everything else updates the global settings.
+ */
 export function updateSettings(patch: Partial<AppSettings>) {
-  settings.update((s) => ({ ...s, ...patch }));
+  const path = get(activeRepoPath);
+  const { global, repo } = splitPatch(patch, get(repoOverrides), path);
+  if (Object.keys(global).length > 0) globalSettings.update((s) => ({ ...s, ...global }));
+  if (path && Object.keys(repo).length > 0) {
+    repoOverrides.update((all) => ({ ...all, [path]: { ...(all[path] ?? {}), ...repo } }));
+  }
+}
+
+/** Update the global settings only (the Settings screen edits these). */
+export function updateGlobalSettings(patch: Partial<AppSettings>) {
+  globalSettings.update((s) => ({ ...s, ...patch }));
+}
+
+/** Replace all global settings (import / reset). Overrides are kept. */
+export function replaceGlobalSettings(next: AppSettings) {
+  globalSettings.set(next);
 }

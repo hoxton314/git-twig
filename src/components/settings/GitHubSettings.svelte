@@ -5,7 +5,7 @@
   import type { GitHubUser } from "../../lib/types/github";
   import type { DeviceFlowStart, HostingInfo } from "../../lib/types/hosting";
   import { onMount } from "svelte";
-  import { settings, updateSettings, flushSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings, flushSettings } from "../../lib/stores/settings";
   import { clearCi } from "../../lib/stores/ci";
   import { toast } from "../../lib/stores/toasts";
   import ProviderTokenSettings from "./ProviderTokenSettings.svelte";
@@ -27,7 +27,7 @@
   let deviceBusy = $state(false);
   let deviceError = $state("");
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
   const host = $derived(info?.github_host ?? "github.com");
   const tokensUrl = $derived(`https://${host}/settings/tokens`);
 
@@ -173,12 +173,12 @@
     hostInput = h;
     apiInput = api;
     if (h === s.github_host && api === s.github_api_url) return;
-    updateSettings({ github_host: h, github_api_url: api });
+    updateGlobalSettings({ github_host: h, github_api_url: api });
     persistAndRefresh();
   }
 
   function toggleHttpsAuth() {
-    updateSettings({ github_https_auth: !s.github_https_auth });
+    updateGlobalSettings({ github_https_auth: !s.github_https_auth });
     flushSettings().catch(() => {});
   }
 </script>

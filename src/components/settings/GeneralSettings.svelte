@@ -1,10 +1,10 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { settings, updateSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { FolderOpen, Download, Upload } from "lucide-svelte";
   import { openSettingsFolder, exportSettingsToFile, importSettingsFromFile } from "../../lib/appActions";
 
-  const s = $derived($settings);
+  const s = $derived($globalSettings);
 
   const fetchIntervalOptions = [
     { value: 0, label: "Off" },
@@ -39,7 +39,7 @@
       defaultPath: s.default_repo_dir ?? undefined,
     });
     if (selected) {
-      updateSettings({ default_repo_dir: selected as string });
+      updateGlobalSettings({ default_repo_dir: selected as string });
     }
   }
 </script>
@@ -57,7 +57,7 @@
         <span class="path-value">{s.default_repo_dir ?? "Not set"}</span>
         <button class="btn-secondary" onclick={pickDefaultDir}>Browse</button>
         {#if s.default_repo_dir}
-          <button class="btn-ghost" onclick={() => updateSettings({ default_repo_dir: null })}>Clear</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ default_repo_dir: null })}>Clear</button>
         {/if}
       </div>
     </div>
@@ -70,7 +70,7 @@
       <div class="setting-control">
         <select
           value={s.auto_fetch_interval}
-          onchange={(e) => updateSettings({ auto_fetch_interval: Number(e.currentTarget.value) })}
+          onchange={(e) => updateGlobalSettings({ auto_fetch_interval: Number(e.currentTarget.value) })}
         >
           {#each fetchIntervalOptions as opt (opt.value)}
             <option value={opt.value}>{opt.label}</option>
@@ -93,7 +93,7 @@
           value={s.max_commits}
           onchange={(e) => {
             const v = commitNumber(e.currentTarget, s.max_commits, 100, 50000);
-            if (v !== null) updateSettings({ max_commits: v });
+            if (v !== null) updateGlobalSettings({ max_commits: v });
           }}
         />
       </div>
@@ -110,7 +110,7 @@
             type="checkbox"
             aria-label="Confirm destructive operations"
             checked={s.confirm_destructive_ops}
-            onchange={() => updateSettings({ confirm_destructive_ops: !s.confirm_destructive_ops })}
+            onchange={() => updateGlobalSettings({ confirm_destructive_ops: !s.confirm_destructive_ops })}
           />
           <span class="toggle-slider"></span>
         </label>
@@ -128,7 +128,7 @@
             type="checkbox"
             aria-label="Restore tabs on startup"
             checked={s.restore_tabs_on_startup}
-            onchange={() => updateSettings({ restore_tabs_on_startup: !s.restore_tabs_on_startup })}
+            onchange={() => updateGlobalSettings({ restore_tabs_on_startup: !s.restore_tabs_on_startup })}
           />
           <span class="toggle-slider"></span>
         </label>
@@ -146,7 +146,7 @@
           <input
             type="checkbox"
             checked={s.staging_tree_view}
-            onchange={() => updateSettings({ staging_tree_view: !s.staging_tree_view })}
+            onchange={() => updateGlobalSettings({ staging_tree_view: !s.staging_tree_view })}
           />
           <span class="toggle-slider"></span>
         </label>

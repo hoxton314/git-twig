@@ -8,7 +8,7 @@
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import { onMount } from "svelte";
   import * as tauri from "../../lib/tauri";
-  import { settings, updateSettings, flushSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings, flushSettings } from "../../lib/stores/settings";
   import { clearCi } from "../../lib/stores/ci";
   import type { GitHubUser } from "../../lib/types/github";
 
@@ -24,7 +24,7 @@
   let { provider, title, urlPlaceholder, tokenPath, scopesHint }: Props = $props();
 
   const urlKey = $derived(provider === "gitlab" ? "gitlab_base_url" : "gitea_base_url");
-  const savedUrl = $derived(($settings[urlKey] as string) ?? "");
+  const savedUrl = $derived(($globalSettings[urlKey] as string) ?? "");
 
   let urlInput = $state("");
   let tokenInput = $state("");
@@ -74,7 +74,7 @@
 
   async function saveUrl() {
     if (normalizedUrl === savedUrl) return;
-    updateSettings({ [urlKey]: normalizedUrl });
+    updateGlobalSettings({ [urlKey]: normalizedUrl });
     // The backend reads settings.json, so persist before re-checking.
     await flushSettings().catch(() => {});
     clearCi();
