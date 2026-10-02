@@ -117,6 +117,23 @@ export interface RebaseCommit {
   already_upstream: boolean;
 }
 
+/** A validated "squash these commits" plan. */
+export interface SquashPlan {
+  count: number;
+  /** Parent of the oldest squashed commit (null when it is the root). */
+  base: string | null;
+  /** Oldest squashed commit. */
+  first: string;
+  /** The squashed commits' messages, oldest first. */
+  message: string;
+  /** Newer commits rebased on top. */
+  later: number;
+  /** Remote-tracking branches that already contain the commits. */
+  pushed_to: string[];
+  /** The remote check stopped early; `pushed_to` may be incomplete. */
+  pushed_unknown: boolean;
+}
+
 export interface RebaseCommitList {
   commits: RebaseCommit[];
   merges_skipped: number;

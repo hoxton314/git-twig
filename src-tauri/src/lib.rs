@@ -138,6 +138,8 @@ pub fn run() {
             commands::history::rebase_onto,
             commands::history::list_rebase_commits,
             commands::history::interactive_rebase,
+            commands::history::plan_squash,
+            commands::history::squash_commits,
             commands::history::force_push_with_lease,
             // Commit graph: search & locate
             commands::graph::search_commits,

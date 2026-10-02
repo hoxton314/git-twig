@@ -210,6 +210,41 @@ try {
     if (left !== 0) throw new Error(`Escape left ${left} rows selected`);
   });
 
+  await step("squashing two selected commits rewrites them into one", async () => {
+    const el = (id) => ({ "element-6066-11e4-a52e-4f735466cecf": id });
+    await session.click(await session.findByText(".commit-row", "add notes from e2e"));
+    const older = await session.findByText(".commit-row", "initial commit");
+    await session.execute(
+      "arguments[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));",
+      [el(older)],
+    );
+    await session.execute(
+      "const r = arguments[0].getBoundingClientRect(); arguments[0].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 5 }));",
+      [el(older)],
+    );
+    await session.click(await session.findByText(".context-menu .item", "Squash 2 commits"));
+    const [box] = await session.waitFor('textarea[aria-label="Squashed commit message"]');
+    // A bound textarea has no text content; read its value.
+    const end = Date.now() + 10_000;
+    let value = "";
+    while (Date.now() < end && !value.includes("initial commit")) {
+      value = await session.execute("return arguments[0].value;", [el(box)]);
+      if (!value.includes("initial commit")) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!value.includes("initial commit") || !value.includes("add notes from e2e")) {
+      throw new Error(`unexpected default message ${JSON.stringify(value)}`);
+    }
+    await session.execute(
+      "arguments[0].value = 'add notes from e2e'; arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
+      [el(box)],
+    );
+    await session.click(await session.findByText("button[type=submit]", "Squash 2 Commits"));
+    await until(() => git("log", "--format=%s").trim() === "add notes from e2e", "squashed history");
+    // Autostash put the working changes back.
+    await until(() => git("status", "--porcelain").replace(/\n$/, "") === " M big.txt\n M scattered.txt", "restored changes");
+    if (!existsSync(join(repo, "notes.txt"))) throw new Error("notes.txt lost in the squash");
+  });
+
   await step("a 40k-row diff renders windowed and search reaches its last line", async () => {
     const rows = await session.waitFor(".file-item", { pred: (t) => t.some((x) => x.includes("big.txt")) });
     const texts = await session.texts(".file-item");

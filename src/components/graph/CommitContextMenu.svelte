@@ -6,6 +6,8 @@
   import { onMount } from "svelte";
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
   import CreateBranchDialog from "./CreateBranchDialog.svelte";
+  import SquashDialog from "./SquashDialog.svelte";
+  import { toast } from "../../lib/stores/toasts";
   import CreateTagDialog from "../tags/CreateTagDialog.svelte";
   import { activeRepoPath } from "../../lib/stores/repos";
   import {
@@ -20,6 +22,7 @@
     commitMenu,
     createBranchTarget,
     createTagTarget,
+    squashTarget,
     undoHistoryOpen,
   } from "../../lib/stores/commitUi";
   import { onAction } from "../../lib/keybindings";
@@ -114,6 +117,7 @@
           label: `Cherry-pick ${oids.length} commits onto ${currentBranch?.name ?? "HEAD"}`,
           action: () => cherryPickRangeAction(path, oids),
         },
+        { label: `Squash ${oids.length} commits…`, action: () => squashTarget.set([...oids]) },
         { separator: true },
       );
     }
@@ -193,6 +197,14 @@
           else cherryPickAction(p, c.oid);
         }),
       ),
+      onAction(
+        "squash_selected",
+        withSelected(() => {
+          const oids = $selectedCommits;
+          if (oids.length > 1) squashTarget.set([...oids]);
+          else toast("info", "Select two or more commits (Ctrl/Shift-click) to squash them.");
+        }),
+      ),
       onAction("revert_selected", withSelected((p, c) => revertAction(p, c.oid))),
       onAction(
         "copy_commit_sha",
@@ -226,4 +238,5 @@
 {/if}
 
 <CreateBranchDialog />
+<SquashDialog />
 <CreateTagDialog />

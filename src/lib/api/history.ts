@@ -13,6 +13,7 @@ import type {
   ReflogEntry,
   RepoOperationState,
   ResetMode,
+  SquashPlan,
   TagInfo,
 } from "../types/git";
 
@@ -144,6 +145,21 @@ export function rebaseOnto(path: string, upstream: string, autostash: boolean): 
 /** Commits base..HEAD (oldest first); `base = null` means from the root. */
 export function listRebaseCommits(path: string, base: string | null): Promise<RebaseCommitList> {
   return invoke<RebaseCommitList>("list_rebase_commits", { path, base });
+}
+
+/** Validate squashing `oids` (any order) and get the default message. */
+export function planSquash(path: string, oids: string[]): Promise<SquashPlan> {
+  return invoke<SquashPlan>("plan_squash", { path, oids });
+}
+
+/** Squash the contiguous run `oids` on the current branch into one commit. */
+export function squashCommits(
+  path: string,
+  oids: string[],
+  message: string,
+  autostash: boolean,
+): Promise<CommandResult> {
+  return invoke<CommandResult>("squash_commits", { path, oids, message, autostash });
 }
 
 export function interactiveRebase(
