@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openRepoInEditor } from "../../lib/appActions";
   import { showFileHistory, showBlame } from "../../lib/stores/fileviews";
   import { openConflictResolver } from "../../lib/stores/operation";
   import {
@@ -255,6 +256,13 @@
     items.push({ label: "Blame", disabled: !tracked || deleted, action: () => showBlame(file.path) });
     items.push({ separator: true });
     items.push({ label: "Open in default app", disabled: deleted, action: () => openFile(file.path) });
+    items.push({
+      label: "Open in editor",
+      disabled: deleted,
+      action: () => {
+        if (repoPath) openRepoInEditor(repoPath, file.path);
+      },
+    });
     items.push({ label: "Reveal in file manager", action: () => revealFile(file.path) });
     items.push({ label: "Open in external diff tool", disabled: !canDiff, action: () => externalDiff(file, area) });
     items.push({ separator: true });

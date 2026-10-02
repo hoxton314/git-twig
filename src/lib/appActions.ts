@@ -78,3 +78,23 @@ export async function importSettingsFromFile(): Promise<void> {
     toastError("Import failed", err);
   }
 }
+
+/** Open a terminal in `repoPath` (flushes settings so a just-edited command is used). */
+export async function openRepoInTerminal(repoPath: string): Promise<void> {
+  try {
+    await flushSettings();
+    await tauri.openInTerminal(repoPath);
+  } catch (err) {
+    toastError("Could not open terminal", err);
+  }
+}
+
+/** Open `repoPath` (or `file` in it) in the configured editor. */
+export async function openRepoInEditor(repoPath: string, file: string | null = null): Promise<void> {
+  try {
+    await flushSettings();
+    await tauri.openInEditor(repoPath, file);
+  } catch (err) {
+    toastError("Could not open editor", err);
+  }
+}

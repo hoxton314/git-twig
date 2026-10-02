@@ -49,6 +49,13 @@ pub struct AppSettings {
     pub external_diff_tool: Option<String>,
     #[serde(default)]
     pub external_merge_tool: Option<String>,
+    /// Command for "Open in terminal" (empty = platform default).
+    #[serde(default)]
+    pub terminal_command: Option<String>,
+    /// Command for "Open in editor"; `{path}` is replaced by the target,
+    /// otherwise it is appended (empty = `code`, else the system opener).
+    #[serde(default)]
+    pub editor_command: Option<String>,
 
     // ── Keybindings ─────────────────────────────────────────────────
     /// Custom keybinding overrides: action_id -> shortcut string (e.g. "Ctrl+Enter")
@@ -193,6 +200,8 @@ impl Default for AppSettings {
             context_lines: default_context_lines(),
             external_diff_tool: None,
             external_merge_tool: None,
+            terminal_command: None,
+            editor_command: None,
             keybinding_overrides: HashMap::new(),
             legacy_github_token: None,
             staging_tree_view: false,
@@ -318,6 +327,15 @@ pub async fn load_settings(app: tauri::AppHandle) -> Result<AppSettings, TwigErr
         }
     }
     Ok(settings)
+}
+
+/// Current settings from disk (defaults when missing or unreadable).
+pub(crate) fn load_settings_from_disk(app: &tauri::AppHandle) -> AppSettings {
+    settings_file(app)
+        .ok()
+        .and_then(|f| fs::read_to_string(f).ok())
+        .and_then(|json| serde_json::from_str::<AppSettings>(&json).ok())
+        .unwrap_or_default()
 }
 
 /// The not-yet-migrated plaintext token in `settings.json`, if any.

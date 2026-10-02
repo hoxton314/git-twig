@@ -29,6 +29,8 @@
   import { updater, checkForUpdates, ensureUpdaterSupport } from "../../lib/stores/updater";
   import {
     openRepoWithDialog,
+    openRepoInTerminal,
+    openRepoInEditor,
     openSettingsFolder,
     exportSettingsToFile,
     importSettingsFromFile,
@@ -176,6 +178,14 @@
       onAction("reveal_repo", () => {
         const path = get(activeRepoPath);
         if (path) tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err));
+      }),
+      onAction("open_terminal", () => {
+        const path = get(activeRepoPath);
+        if (path) openRepoInTerminal(path);
+      }),
+      onAction("open_editor", () => {
+        const path = get(activeRepoPath);
+        if (path) openRepoInEditor(path);
       }),
       onAction("copy_repo_path", () => {
         const path = get(activeRepoPath);

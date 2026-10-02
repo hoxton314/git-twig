@@ -21,6 +21,8 @@ const defaults: AppSettings = {
   context_lines: 3,
   external_diff_tool: null,
   external_merge_tool: null,
+  terminal_command: null,
+  editor_command: null,
   keybinding_overrides: {},
   staging_tree_view: false,
   // Commit graph view

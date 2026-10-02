@@ -160,6 +160,8 @@ pub fn run() {
             commands::app_shell::save_repo_history,
             commands::app_shell::repo_paths_exist,
             commands::app_shell::open_in_file_manager,
+            commands::launch::open_in_terminal,
+            commands::launch::open_in_editor,
             commands::app_shell::open_settings_folder,
             commands::app_shell::export_settings,
             commands::app_shell::import_settings,

@@ -118,3 +118,13 @@ export function cloneRepository(url: string, destination: string, opId: number):
 export function onCloneProgress(handler: (p: CloneProgress) => void): Promise<UnlistenFn> {
   return listen<CloneProgress>("clone-progress", (e) => handler(e.payload));
 }
+
+/** Open a terminal in the repository folder. */
+export function openInTerminal(path: string): Promise<void> {
+  return invoke("open_in_terminal", { path });
+}
+
+/** Open the repository (or `file`, repo-relative) in the configured editor. */
+export function openInEditor(path: string, file: string | null = null): Promise<void> {
+  return invoke("open_in_editor", { path, file });
+}
