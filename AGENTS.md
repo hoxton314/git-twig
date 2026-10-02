@@ -108,6 +108,7 @@ npm run tauri dev        # Dev mode (HMR + Rust rebuild on change)
 npm run tauri build      # Production build
 npm run build            # Frontend only build
 npm run check            # TypeScript + Svelte type checking
+npm test                 # Frontend unit tests (Vitest, `src/**/*.test.ts`)
 ```
 
 Rust-only check:
@@ -117,8 +118,8 @@ cd src-tauri && cargo check
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `npm run check`,
-`npm run build`, `cargo clippy --all-targets -- -D warnings` and `cargo test` on ubuntu-22.04. Keep
-all four green locally before pushing. Releases are built separately by `release.yml` on `v*` tags.
+`npm test`, `npm run build`, `cargo clippy --all-targets -- -D warnings` and `cargo test` on ubuntu-22.04. Keep
+all of them green locally before pushing. Releases are built separately by `release.yml` on `v*` tags.
 
 ## Coding Conventions
 
@@ -132,6 +133,8 @@ all four green locally before pushing. Releases are built separately by `release
 - Commit text from git2: use `git::graph::{commit_summary, commit_message, commit_author_name, decode_text}`, never `summary()`/`message()`/`name()` — those return `None` for non-UTF-8 (e.g. Latin-1) commits, which shows up as empty text
 
 ### Frontend
+
+- Unit tests: Vitest in the `node` environment, next to the code (`foo.ts` → `foo.test.ts`). Test pure logic and stores; mock `../tauri` with `vi.mock` (see `stores/graph.test.ts`) and stub `window`/`document` where needed (see `keybindings.test.ts`). UI behaviour belongs in the e2e smoke tests.
 
 - Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) -- no legacy `let` reactivity
 - TailwindCSS v4 with custom `@theme` tokens in `app.css` -- use `var(--color-*)` for colors

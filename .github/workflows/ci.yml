@@ -49,6 +49,9 @@ jobs:
       - name: Type check
         run: npm run check
 
+      - name: Frontend unit tests
+        run: npm test
+
       # Also produces ../dist, which tauri's generate_context! needs to compile.
       - name: Build frontend
         run: npm run build
