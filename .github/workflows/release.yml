@@ -17,7 +17,7 @@ jobs:
           - os: ubuntu-22.04
             args: --bundles deb,rpm
           - os: macos-latest
-            args: --target universal-apple-darwin --bundles dmg
+            args: --target universal-apple-darwin --bundles app,dmg
           - os: windows-latest
             args: --bundles nsis
 
