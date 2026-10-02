@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openRepoInEditor } from "../../lib/appActions";
   import { showFileHistory, showBlame } from "../../lib/stores/fileviews";
   import { openConflictResolver } from "../../lib/stores/operation";
   import {
@@ -259,7 +260,7 @@
       label: "Open in editor",
       disabled: deleted,
       action: () => {
-        if (repoPath) tauri.openInEditor(repoPath, file.path).catch((err) => toastError("Could not open editor", err));
+        if (repoPath) openRepoInEditor(repoPath, file.path);
       },
     });
     items.push({ label: "Reveal in file manager", action: () => revealFile(file.path) });

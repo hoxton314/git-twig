@@ -29,6 +29,8 @@
   import { updater, checkForUpdates, ensureUpdaterSupport } from "../../lib/stores/updater";
   import {
     openRepoWithDialog,
+    openRepoInTerminal,
+    openRepoInEditor,
     openSettingsFolder,
     exportSettingsToFile,
     importSettingsFromFile,
@@ -179,11 +181,11 @@
       }),
       onAction("open_terminal", () => {
         const path = get(activeRepoPath);
-        if (path) tauri.openInTerminal(path).catch((err) => toastError("Could not open terminal", err));
+        if (path) openRepoInTerminal(path);
       }),
       onAction("open_editor", () => {
         const path = get(activeRepoPath);
-        if (path) tauri.openInEditor(path).catch((err) => toastError("Could not open editor", err));
+        if (path) openRepoInEditor(path);
       }),
       onAction("copy_repo_path", () => {
         const path = get(activeRepoPath);

@@ -175,7 +175,7 @@
     <div class="setting-row">
       <div class="setting-label">
         <span class="label-text">Terminal</span>
-        <span class="label-hint">Command for “Open in terminal”; runs in the repository folder</span>
+        <span class="label-hint">Command for “Open in terminal”; runs in the repository folder ({"{path}"} is replaced by it)</span>
       </div>
       <div class="setting-control">
         <input
