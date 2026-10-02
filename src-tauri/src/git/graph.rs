@@ -101,9 +101,10 @@ pub(crate) fn commit_info(commit: &Commit) -> CommitInfo {
     let oid = commit.id();
     let author = commit.author();
     let enc = commit.message_encoding();
-    let email = decode_text(author.email_bytes(), None);
+    // git re-encodes the whole commit (idents included) by its header.
+    let email = decode_text(author.email_bytes(), enc);
     let gravatar_hash = format!("{:x}", md5::compute(email.trim().to_lowercase().as_bytes()));
-    let name = decode_text(author.name_bytes(), None);
+    let name = decode_text(author.name_bytes(), enc);
     CommitInfo {
         oid: oid.to_string(),
         short_oid: short_oid(oid),
@@ -321,9 +322,10 @@ impl Matcher {
         }
         let author = commit.author();
         let contains = |s: String| s.to_lowercase().contains(&self.needle);
-        contains(decode_text(author.name_bytes(), None))
-            || contains(decode_text(author.email_bytes(), None))
-            || contains(decode_text(commit.message_bytes(), commit.message_encoding()))
+        let enc = commit.message_encoding();
+        contains(decode_text(author.name_bytes(), enc))
+            || contains(decode_text(author.email_bytes(), enc))
+            || contains(decode_text(commit.message_bytes(), enc))
     }
 }
 
@@ -553,15 +555,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Commits recorded in a legacy encoding still show (lossily) and are
-    /// searchable instead of rendering as empty / "Unknown".
+    /// Commits recorded in a legacy encoding (message *and* author bytes)
+    /// show decoded and are searchable instead of rendering as empty /
+    /// "Unknown".
+    #[cfg(unix)]
     #[test]
     fn non_utf8_commit_metadata_is_shown_and_searchable() {
+        use std::os::unix::ffi::OsStrExt;
         let dir = temp_repo("latin1");
+        let name = std::ffi::OsStr::from_bytes(b"Ren\xe9");
         let ok = Command::new("git")
-            .args(["-c", "user.name=Ren\u{e9}", "-c", "user.email=r@example.com"])
             .args(["-c", "commit.gpgsign=false", "-c", "i18n.commitEncoding=ISO-8859-1"])
             .args(["commit", "-q", "--allow-empty", "-F", "-"])
+            .env("GIT_AUTHOR_NAME", name)
+            .env("GIT_COMMITTER_NAME", name)
+            .env("GIT_AUTHOR_EMAIL", "r@example.com")
+            .env("GIT_COMMITTER_EMAIL", "r@example.com")
             .current_dir(&dir)
             .stdin(std::process::Stdio::piped())
             .spawn()
@@ -578,8 +587,11 @@ mod tests {
         let g = read_commit_graph_page(&repo, 0, 10, &opts).unwrap();
         let c = &g.entries[0].commit;
         assert_eq!(c.summary, "caf\u{e9} latin");
-        assert_ne!(c.author_name, "Unknown");
+        assert_eq!(c.author_name, "Ren\u{e9}");
         assert_eq!(search_commits(&repo, "latin", &opts, 10).unwrap().matches.len(), 1);
+        assert_eq!(search_commits(&repo, "REN\u{c9}", &opts, 10).unwrap().matches.len(), 1);
+        // Plain lossy fallback for undeclared bytes.
+        assert_eq!(decode_text(b"a\xffb", None), "a\u{fffd}b");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
