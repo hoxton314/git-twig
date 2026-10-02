@@ -68,11 +68,22 @@ writeFileSync(
   Array.from({ length: BIG_LINES }, (_, i) => `LINE ${i}\n`).join("") + "needle-at-the-end\n",
 );
 
+// Another repository in the default folder, found by the "+" menu search.
+const extra = join(tmp, "extra-proj");
+mkdirSync(extra);
+execFileSync("git", ["init", "-q"], { cwd: extra, env });
+execFileSync("git", ["commit", "-q", "--allow-empty", "-m", "extra"], { cwd: extra, env });
+
 // Open the repo through a saved session (no native file dialog needed).
 writeFileSync(join(appData, "session.json"), JSON.stringify({ paths: [repo], active: repo }));
 writeFileSync(
   join(appData, "settings.json"),
-  JSON.stringify({ check_updates_on_startup: false, auto_fetch_interval: 0, confirm_destructive_ops: false }),
+  JSON.stringify({
+    check_updates_on_startup: false,
+    auto_fetch_interval: 0,
+    confirm_destructive_ops: false,
+    default_repo_dir: tmp,
+  }),
 );
 
 // ── Driver ──────────────────────────────────────────────────────────
@@ -215,6 +226,17 @@ try {
     await until(() => existsSync(join(tmp, "cloned", ".git")), "clone on disk");
     const head = execFileSync("git", ["log", "--format=%s", "-n", "1"], { cwd: join(tmp, "cloned"), env, encoding: "utf8" }).trim();
     if (head !== "add notes from e2e") throw new Error(`clone HEAD is ${JSON.stringify(head)}`);
+  });
+
+  await step("the + menu search finds a repository and Enter opens it", async () => {
+    await session.click(await session.find('button[aria-label="Add repository"]'));
+    const [box] = await session.waitFor('input[aria-label="Search repositories"]');
+    const focused = await session.execute("return document.activeElement?.getAttribute('aria-label');");
+    if (focused !== "Search repositories") throw new Error(`search box not focused (${focused})`);
+    await session.type(box, "extra");
+    await session.waitFor(".tab-menu-item-selected", { pred: (t) => t.some((x) => x.includes("extra-proj")) });
+    await session.type(box, "\uE007"); // Enter
+    await session.waitFor(".tab .tab-name", { pred: (t) => t.includes("extra-proj"), timeout: 30_000 });
   });
 } catch (err) {
   failed = true;

@@ -8,6 +8,7 @@ import { openRepos, activeRepoPath, addRepo } from "./stores/repos";
 import { currentView } from "./stores/ui";
 import { branches, refreshAll } from "./stores/graph";
 import { repoHistory, missingRepoPaths } from "./stores/repoHistory";
+import { scannedRepos, refreshScannedRepos } from "./stores/scannedRepos";
 import { trackOperation } from "./stores/operations";
 import { toast, toastError } from "./stores/toasts";
 import * as tauri from "./tauri";
@@ -119,6 +120,21 @@ export function installBuiltinPaletteProviders(): () => void {
           add(path, h.recent.find((r) => r.path === path)?.name ?? path.split(/[\\/]/).filter(Boolean).pop() ?? path, true);
         }
         for (const r of h.recent) if (r.last_opened > 0) add(r.path, r.name, false);
+        // Repositories in the default folder (rescanned when stale; results
+        // appear from the next keystroke if the scan was not done yet).
+        void refreshScannedRepos();
+        for (const r of get(scannedRepos)) {
+          if (seen.has(r.path) || open.has(r.path)) continue;
+          seen.add(r.path);
+          items.push({
+            id: `repo:${r.path}`,
+            label: `Open ${r.name}`,
+            category: "Repository",
+            detail: r.head_name ? `${r.head_name} · ${r.path}` : r.path,
+            keywords: "open repository folder",
+            run: () => openRepoPath(r.path),
+          });
+        }
         return items;
       },
     }),
