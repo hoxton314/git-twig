@@ -3,6 +3,7 @@ import { openRepos, activeRepoPath } from "./repos";
 import { settings } from "./settings";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
+import { invalidateCi } from "./ci";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let currentSeconds = -1;
@@ -21,6 +22,7 @@ async function fetchAllRepos() {
       if (!get(openRepos).has(path)) continue;
       try {
         await tauri.fetchAll(path);
+        invalidateCi(path);
       } catch {
         // Silently skip repos that fail to fetch
       }

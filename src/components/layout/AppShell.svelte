@@ -20,6 +20,9 @@
   import * as tauri from "../../lib/tauri";
   import { onMount } from "svelte";
   import { get } from "svelte/store";
+  // Hosting integrations
+  import PullRequestsPanel from "../github/PullRequestsPanel.svelte";
+  import { invalidateCi } from "../../lib/stores/ci";
 
   let showTitleBar = $state(false);
   let appVersion = $state("");
@@ -88,6 +91,7 @@
         try {
           const result = await tauri.fetchAll(path);
           refreshAll(path);
+          invalidateCi(path);
           if (!result.success) await showError("Fetch Failed", result.message);
         } catch (err) {
           await showError("Fetch Failed", err);
@@ -119,6 +123,7 @@
           // first pushes of new branches work.
           const result = await tauri.pushBranch(path, branch, undefined, true);
           refreshAll(path);
+          invalidateCi(path);
           if (!result.success) await showError("Push Failed", result.message);
         } catch (err) {
           await showError("Push Failed", err);
@@ -273,6 +278,7 @@
   {/if}
 
   <Toaster />
+  <PullRequestsPanel />
 </div>
 
 <style>

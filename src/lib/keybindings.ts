@@ -33,6 +33,11 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
   { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
   { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+
+  // Hosting integrations (GitHub / GitLab / Gitea)
+  { id: "open_pull_requests",  label: "Show pull requests",   category: "Hosting", defaultShortcut: "" },
+  { id: "create_pull_request", label: "Create pull request",  category: "Hosting", defaultShortcut: "" },
+  { id: "refresh_ci_status",   label: "Refresh CI status",    category: "Hosting", defaultShortcut: "" },
 ];
 
 // ── Shortcut parsing & matching ──────────────────────────────────────

@@ -334,6 +334,9 @@
   onMount(() => {
     return onAction("commit", handleCommit);
   });
+
+  // Hosting integrations: "Create pull request" palette/keybinding action.
+  onMount(() => onAction("create_pull_request", () => (showPrModal = true)));
 </script>
 
 <div class="staging-area">

@@ -22,6 +22,12 @@ const defaults: AppSettings = {
   external_diff_tool: null,
   external_merge_tool: null,
   keybinding_overrides: {},
+  // Hosting integrations
+  github_https_auth: true,
+  github_host: "github.com",
+  github_api_url: "",
+  gitlab_base_url: "https://gitlab.com",
+  gitea_base_url: "",
 };
 
 export const settings = writable<AppSettings>({ ...defaults });

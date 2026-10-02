@@ -144,6 +144,12 @@ export interface AppSettings {
   external_merge_tool: string | null;
   // Keybindings
   keybinding_overrides: Record<string, string>;
+  // Hosting integrations
+  github_https_auth: boolean;
+  github_host: string;
+  github_api_url: string;
+  gitlab_base_url: string;
+  gitea_base_url: string;
 }
 
 // ── Git Config ───────────────────────────────────────────────────
