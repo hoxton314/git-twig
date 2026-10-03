@@ -15,6 +15,7 @@
     setFavoriteRepo,
   } from "../../lib/stores/repoHistory";
   import { toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import { openRepoWithDialog } from "../../lib/appActions";
   import { openNewRepoDialog } from "../../lib/newRepo";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
@@ -75,7 +76,7 @@
       const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
-      toastError("Open repository failed", err);
+      toastError(tr("tabs.openFailed"), err);
       refreshMissingPaths();
     }
   }
@@ -119,33 +120,33 @@
 <div class="home-screen">
   <div class="hero">
     <h1 class="logo">Twig</h1>
-    <p class="tagline">Lighter than the rest.</p>
-    <button class="open-button" onclick={openRepoWithDialog} title={withShortcut("Open Repository", $shortcutLabels["open_repo"])}>
+    <p class="tagline">{$t("home.tagline")}</p>
+    <button class="open-button" onclick={openRepoWithDialog} title={withShortcut($t("home.openRepo"), $shortcutLabels["open_repo"])}>
       <FolderOpen size={16} />
-      Open Repository
+      {$t("home.openRepo")}
     </button>
     <div class="github-buttons">
       <button class="github-button" onclick={() => openNewRepoDialog("clone")}>
         <GitBranch size={15} />
-        Clone from URL
+        {$t("home.cloneUrl")}
       </button>
       <button class="github-button" onclick={() => openNewRepoDialog("init")}>
         <FolderGit2 size={15} />
-        New Repository
+        {$t("home.newRepo")}
       </button>
     </div>
     <div class="github-buttons">
       <button class="github-button" onclick={() => (showCloneModal = true)}>
         <GitFork size={15} />
-        Clone from GitHub
+        {$t("home.cloneGitHub")}
       </button>
       <button class="github-button" onclick={() => (showCreateRepoModal = true)}>
         <Plus size={15} />
-        New GitHub Repo
+        {$t("home.newGitHubRepo")}
       </button>
     </div>
     {#if $shortcutLabels["command_palette"]}
-      <p class="palette-hint">Press <kbd>{$shortcutLabels["command_palette"]}</kbd> for the command palette</p>
+      <p class="palette-hint">{$t("home.paletteHintBefore")}<kbd>{$shortcutLabels["command_palette"]}</kbd>{$t("home.paletteHintAfter")}</p>
     {/if}
   </div>
 
@@ -164,7 +165,7 @@
 
   {#if $favoriteRepos.length > 0}
     <section class="open-repos" aria-labelledby="favorites-heading">
-      <h2 class="section-title" id="favorites-heading"><Pin size={13} /> Favorites</h2>
+      <h2 class="section-title" id="favorites-heading"><Pin size={13} /> {$t("home.favorites")}</h2>
       <div class="repo-list">
         {#each $favoriteRepos as repo (repo.path)}
           {@const missing = $missingRepoPaths.has(repo.path)}
@@ -177,7 +178,7 @@
               title={missing ? `${repo.path} — folder not found` : repo.path}
             >
               {#if missing}
-                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label="Missing" />
+                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label={$t("home.missing")} />
               {:else}
                 <GitBranch size={16} class="repo-icon" />
               {/if}
@@ -185,21 +186,21 @@
                 <span class="repo-name">{repo.name}</span>
                 <span class="repo-path">{repo.path}</span>
               </div>
-              {#if missing}<span class="repo-badge missing-badge">Missing</span>{/if}
+              {#if missing}<span class="repo-badge missing-badge">{$t("home.missing")}</span>{/if}
             </button>
             <button
               class="row-action"
               onclick={(e) => openGroupMenu(e, repo.path, repo.name)}
-              title="Add to group"
-              aria-label="Add {repo.name} to a group"
+              title={$t("home.addToGroup")}
+              aria-label={$t("home.addToGroupNamed", { name: repo.name })}
             >
               <FolderPlus size={14} />
             </button>
             <button
               class="row-action"
               onclick={() => setFavoriteRepo(repo.path, false)}
-              title="Unpin from favorites"
-              aria-label="Unpin {repo.name} from favorites"
+              title={$t("tabs.unpin")}
+              aria-label={$t("home.unpinNamed", { name: repo.name })}
             >
               <PinOff size={14} />
             </button>
@@ -212,8 +213,8 @@
   {#if recentRepos.length > 0}
     <section class="open-repos" aria-labelledby="recent-heading">
       <div class="section-header">
-        <h2 class="section-title" id="recent-heading"><History size={13} /> Recent</h2>
-        <button class="link-btn" onclick={clearRecentRepos}>Clear</button>
+        <h2 class="section-title" id="recent-heading"><History size={13} /> {$t("home.recent")}</h2>
+        <button class="link-btn" onclick={clearRecentRepos}>{$t("home.clear")}</button>
       </div>
       <div class="repo-list">
         {#each recentRepos as repo (repo.path)}
@@ -227,7 +228,7 @@
               title={missing ? `${repo.path} — folder not found` : repo.path}
             >
               {#if missing}
-                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label="Missing" />
+                <AlertTriangle size={16} class="repo-icon missing-icon" aria-label={$t("home.missing")} />
               {:else}
                 <GitBranch size={16} class="repo-icon" />
               {/if}
@@ -236,7 +237,7 @@
                 <span class="repo-path">{repo.path}</span>
               </div>
               {#if missing}
-                <span class="repo-badge missing-badge">Missing</span>
+                <span class="repo-badge missing-badge">{$t("home.missing")}</span>
               {:else}
                 <span class="repo-time">{relativeTime(repo.last_opened)}</span>
               {/if}
@@ -245,16 +246,16 @@
               <button
                 class="row-action"
                 onclick={(e) => openGroupMenu(e, repo.path, repo.name)}
-                title="Add to group"
-                aria-label="Add {repo.name} to a group"
+                title={$t("home.addToGroup")}
+                aria-label={$t("home.addToGroupNamed", { name: repo.name })}
               >
                 <FolderPlus size={14} />
               </button>
               <button
                 class="row-action"
                 onclick={() => setFavoriteRepo(repo.path, true, repo.name)}
-                title="Pin to favorites"
-                aria-label="Pin {repo.name} to favorites"
+                title={$t("tabs.pin")}
+                aria-label={$t("home.pinNamed", { name: repo.name })}
               >
                 <Pin size={14} />
               </button>
@@ -262,8 +263,8 @@
             <button
               class="row-action"
               onclick={() => removeRecentRepo(repo.path)}
-              title="Remove from list"
-              aria-label="Remove {repo.name} from recent repositories"
+              title={$t("home.removeFromList")}
+              aria-label={$t("home.removeNamed", { name: repo.name })}
             >
               <X size={14} />
             </button>
@@ -275,7 +276,7 @@
 
   {#if repos.length > 0 && !$settings.default_repo_dir}
     <div class="open-repos">
-      <h2 class="section-title">Open repositories</h2>
+      <h2 class="section-title">{$t("home.openRepos")}</h2>
       <div class="repo-list">
         {#each repos as [path, info] (path)}
           <button class="repo-card" onclick={() => switchToRepo(path)}>
@@ -301,8 +302,8 @@
           {$settings.default_repo_dir}
         </h2>
         <select class="sort-select" bind:value={sortMode}>
-          <option value="recent">Recent</option>
-          <option value="name">Name</option>
+          <option value="recent">{$t("home.sortRecent")}</option>
+          <option value="name">{$t("home.sortName")}</option>
         </select>
       </div>
       <div class="repo-list">

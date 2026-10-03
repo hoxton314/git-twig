@@ -6,6 +6,7 @@
   import { operations, lastFetch } from "../../lib/stores/operations";
   import * as tauri from "../../lib/tauri";
   import type { RepoStatusSummary, RepoStateKind } from "../../lib/types/git";
+  import { t, type MessageKey } from "../../lib/i18n";
 
   interface Props {
     version?: string;
@@ -21,17 +22,17 @@
   const otherOps = $derived($operations.filter((op) => op.repoPath !== repoPath).length);
   const fetchRecord = $derived(repoPath ? $lastFetch[repoPath] : undefined);
 
-  const STATE_LABELS: Record<RepoStateKind, string> = {
-    clean: "",
-    merge: "Merging",
-    revert: "Reverting",
-    "cherry-pick": "Cherry-picking",
-    bisect: "Bisecting",
-    rebase: "Rebasing",
-    "rebase-interactive": "Rebasing (interactive)",
-    "rebase-merge": "Rebasing",
-    "apply-mailbox": "Applying patches",
+  const STATE_LABELS: Record<Exclude<RepoStateKind, "clean">, MessageKey> = {
+    merge: "state.merge",
+    revert: "state.revert",
+    "cherry-pick": "state.cherryPick",
+    bisect: "state.bisect",
+    rebase: "state.rebase",
+    "rebase-interactive": "state.rebaseInteractive",
+    "rebase-merge": "state.rebase",
+    "apply-mailbox": "state.applyMailbox",
   };
+  const stateLabel = $derived(summary && summary.state !== "clean" ? $t(STATE_LABELS[summary.state]) : "");
 
   // Re-read the summary when the repo, its refs or its working tree change
   // (refreshAll/refreshStatus update these stores) and when an operation ends.
@@ -70,12 +71,12 @@
 
   function relative(ts: number, current: number): string {
     const s = Math.max(0, Math.round((current - ts) / 1000));
-    if (s < 45) return "just now";
+    if (s < 45) return $t("time.justNow");
     const m = Math.round(s / 60);
-    if (m < 60) return `${m} min ago`;
+    if (m < 60) return $t("time.minutesAgo", { count: m });
     const h = Math.round(m / 60);
-    if (h < 24) return `${h} h ago`;
-    return `${Math.round(h / 24)} d ago`;
+    if (h < 24) return $t("time.hoursAgo", { count: h });
+    return $t("time.daysAgo", { count: Math.round(h / 24) });
   }
 
   function elapsed(startedAt: number, current: number): string {
@@ -91,16 +92,16 @@
   });
 </script>
 
-<footer class="status-bar" aria-label="Repository status">
+<footer class="status-bar" aria-label={$t("status.label")}>
   {#if summary}
-    <span class="item" title={summary.detached ? "HEAD is detached" : "Current branch"}>
+    <span class="item" title={summary.detached ? $t("status.detachedTitle") : $t("status.branchTitle")}>
       {#if summary.detached}
         <GitCommitHorizontal size={13} aria-hidden="true" />
-        <span>Detached at <span class="mono">{summary.head_short_oid}</span></span>
+        <span>{$t("status.detachedAt")} <span class="mono">{summary.head_short_oid}</span></span>
       {:else}
         <GitBranch size={13} aria-hidden="true" />
         <span class="mono">{summary.branch ?? "HEAD"}</span>
-        {#if summary.unborn}<span class="muted">(no commits)</span>{/if}
+        {#if summary.unborn}<span class="muted">{$t("status.noCommits")}</span>{/if}
       {/if}
     </span>
 
@@ -108,8 +109,8 @@
       {#if summary.upstream}
         <span
           class="item"
-          title="{summary.ahead} ahead, {summary.behind} behind {summary.upstream}"
-          aria-label="{summary.ahead} commits ahead and {summary.behind} behind {summary.upstream}"
+          title={$t("status.aheadBehindTitle", { ahead: summary.ahead, behind: summary.behind, upstream: summary.upstream })}
+          aria-label={$t("status.aheadBehindLabel", { ahead: summary.ahead, behind: summary.behind, upstream: summary.upstream })}
         >
           <Cloud size={13} aria-hidden="true" />
           <span class="mono muted">{summary.upstream}</span>
@@ -117,14 +118,14 @@
           <span class="count" class:active={summary.behind > 0}><ArrowDown size={11} aria-hidden="true" />{summary.behind}</span>
         </span>
       {:else}
-        <span class="item muted" title="This branch has no upstream; push to publish it">No upstream</span>
+        <span class="item muted" title={$t("status.noUpstreamTitle")}>{$t("status.noUpstream")}</span>
       {/if}
     {/if}
 
     {#if summary.state !== "clean"}
-      <span class="item state-badge" role="status" title="A {STATE_LABELS[summary.state].toLowerCase()} operation is in progress">
+      <span class="item state-badge" role="status" title={$t("status.stateTitle", { state: stateLabel.toLowerCase() })}>
         <AlertTriangle size={12} aria-hidden="true" />
-        {STATE_LABELS[summary.state]}
+        {stateLabel}
       </span>
     {/if}
   {/if}
@@ -140,7 +141,7 @@
   </span>
 
   {#if otherOps > 0}
-    <span class="item muted" title="Operations running in other tabs">{otherOps} running in other tabs</span>
+    <span class="item muted" title={$t("status.otherOpsTitle")}>{$t("status.otherOps", { count: otherOps })}</span>
   {/if}
 
   {#if fetchRecord}
@@ -148,15 +149,15 @@
       class="item"
       class:error={!fetchRecord.ok}
       title={fetchRecord.ok
-        ? `Last fetched ${new Date(fetchRecord.at).toLocaleString()}`
-        : `Last fetch failed ${new Date(fetchRecord.at).toLocaleString()}: ${fetchRecord.error ?? ""}`}
+        ? $t("status.lastFetched", { time: new Date(fetchRecord.at).toLocaleString() })
+        : $t("status.lastFetchFailed", { time: new Date(fetchRecord.at).toLocaleString(), error: fetchRecord.error ?? "" })}
     >
       {#if fetchRecord.ok}
         <CloudDownload size={13} aria-hidden="true" />
       {:else}
         <AlertTriangle size={13} aria-hidden="true" />
       {/if}
-      <span>{fetchRecord.ok ? "Fetched" : "Fetch failed"} {relative(fetchRecord.at, now)}</span>
+      <span>{fetchRecord.ok ? $t("status.fetched", { when: relative(fetchRecord.at, now) }) : $t("status.fetchFailed", { when: relative(fetchRecord.at, now) })}</span>
     </span>
   {/if}
 

@@ -5,6 +5,7 @@ import { diffViewMode } from "./ui";
 import * as tauri from "../tauri";
 import { activeRepoPath } from "./repos";
 import { CUSTOM_PREFIX, isColor } from "../themes";
+import { languageSetting } from "../i18n";
 import {
   effectiveSettings,
   sanitizeOverride,
@@ -63,6 +64,7 @@ const defaults: AppSettings = {
   notify_new_commits: "current",
   notify_ci: "all",
   custom_themes: [],
+  language: "system",
 };
 
 /** Default values for every setting (used by reset/import). */
@@ -312,6 +314,7 @@ globalSettings.subscribe(() => {
 settings.subscribe((s) => {
   applyVisualSettings(s);
   setOverrides(s.keybinding_overrides ?? {});
+  languageSetting.set(s.language ?? "system");
   // Diff viewer: context lines / whitespace apply to every diff read.
   tauri.setDiffReadDefaults({
     context_lines: s.context_lines,

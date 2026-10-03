@@ -21,6 +21,8 @@ export interface AppSettings {
   notify_ci: "off" | "failures" | "all";
   /** User colour themes. */
   custom_themes: import("../../themes").CustomTheme[];
+  /** UI language: "system" or a locale id (see lib/i18n). */
+  language: string;
   // Hosting integrations
   github_https_auth: boolean;
   github_host: string;
