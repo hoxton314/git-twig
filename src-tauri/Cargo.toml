@@ -38,6 +38,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 # Entries written by keyring 3 are read unchanged (same Secret Service
 # attributes, keychain items and Windows target names).
 keyring-core = "1"
+tauri-plugin-notification = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"

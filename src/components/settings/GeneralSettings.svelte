@@ -81,6 +81,24 @@
 
     <div class="setting-row">
       <div class="setting-label">
+        <span class="label-text">Notify about new upstream commits</span>
+        <span class="label-hint">After an auto-fetch: a system notification when Twig is in the background, a toast otherwise</span>
+      </div>
+      <div class="setting-control">
+        <select
+          value={s.notify_new_commits}
+          onchange={(e) => updateGlobalSettings({ notify_new_commits: e.currentTarget.value as "off" | "current" | "all" })}
+          aria-label="Notify about new upstream commits"
+        >
+          <option value="current">Current branch</option>
+          <option value="all">All branches with an upstream</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
         <span class="label-text">Commits per page</span>
         <span class="label-hint">How many commits the graph loads at a time; more load as you scroll</span>
       </div>
