@@ -22,6 +22,7 @@
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
   import { loadSettings, settings, flushSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
+  import { initCiWatch } from "../../lib/ciWatch";
   import { installKeybindings, onAction } from "../../lib/keybindings";
   import { togglePalette } from "../../lib/palette";
   import { installBuiltinPaletteProviders } from "../../lib/paletteProviders";
@@ -91,6 +92,7 @@
       });
     loadRepoHistory();
     const stopAutoFetch = initAutoFetch();
+    const stopCiWatch = initCiWatch();
     installKeybindings();
     const uninstallPalette = installBuiltinPaletteProviders();
 
@@ -245,6 +247,7 @@
       unlisten.then((fn) => fn());
       unlistenClose.then((fn) => fn());
       stopAutoFetch();
+      stopCiWatch();
       stopOpenPaths.then((unlisten) => unlisten());
       stopDrag?.();
     };

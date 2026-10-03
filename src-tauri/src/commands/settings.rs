@@ -133,6 +133,14 @@ pub struct AppSettings {
     /// checked-out branch) | "all" (every branch with an upstream).
     #[serde(default = "default_notify_new_commits")]
     pub notify_new_commits: String,
+    /// CI finished on the checked-out commit of an open repository:
+    /// "off" | "failures" | "all".
+    #[serde(default = "default_notify_ci")]
+    pub notify_ci: String,
+}
+
+fn default_notify_ci() -> String {
+    "all".to_string()
 }
 
 fn default_notify_new_commits() -> String {
@@ -237,6 +245,7 @@ impl Default for AppSettings {
             gitea_base_url: String::new(),
             syntax_highlighting: true,
             notify_new_commits: default_notify_new_commits(),
+            notify_ci: default_notify_ci(),
         }
     }
 }

@@ -135,3 +135,11 @@ export function clearCi() {
   cache.set(new Map());
   generation.update((g) => g + 1);
 }
+
+/** Every cached CI entry, keyed by repo path + remote + sha (for watchers). */
+export const ciCache: Readable<Map<string, CiEntry>> = { subscribe: cache.subscribe };
+
+/** Cache key of `sha` in `repoPath` (default remote), as used by `ciCache`. */
+export function ciKey(repoPath: string, sha: string): string {
+  return key(repoPath, sha, null);
+}

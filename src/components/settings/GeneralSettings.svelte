@@ -99,6 +99,24 @@
 
     <div class="setting-row">
       <div class="setting-label">
+        <span class="label-text">Notify when CI finishes</span>
+        <span class="label-hint">For the checked-out commit of open repositories with a GitHub, GitLab or Gitea remote</span>
+      </div>
+      <div class="setting-control">
+        <select
+          value={s.notify_ci}
+          onchange={(e) => updateGlobalSettings({ notify_ci: e.currentTarget.value as "off" | "failures" | "all" })}
+          aria-label="Notify when CI finishes"
+        >
+          <option value="all">Passed or failed</option>
+          <option value="failures">Failures only</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="setting-row">
+      <div class="setting-label">
         <span class="label-text">Commits per page</span>
         <span class="label-hint">How many commits the graph loads at a time; more load as you scroll</span>
       </div>
