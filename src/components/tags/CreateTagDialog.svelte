@@ -31,7 +31,6 @@
     if (!busy) $createTagTarget = null;
   }
 
-  /** Message split around its `{placeholders}`: odd indices are names. */
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();

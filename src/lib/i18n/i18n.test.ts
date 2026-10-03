@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { get } from "svelte/store";
-import { CATALOGS, LOCALES, languageSetting, placeholders, resolveLocale, t, translate, type Catalog } from "./index";
+import { CATALOGS, LOCALES, languageSetting, placeholders, resolveLocale, t, tr, translate, type Catalog } from "./index";
 import { en } from "./en";
 import { AREAS } from "./catalog";
 
@@ -82,6 +82,7 @@ describe("t store", () => {
   it("follows the language setting", () => {
     languageSetting.set("pl");
     expect(get(t)("common.cancel")).toBe("Anuluj");
+    expect(tr("common.cancel")).toBe("Anuluj");
     languageSetting.set("en");
     expect(get(t)("common.cancel")).toBe("Cancel");
     languageSetting.set("system");

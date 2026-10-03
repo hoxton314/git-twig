@@ -48,7 +48,6 @@
     onclose();
   }
 
-  /** Message split around its `{placeholders}`: odd indices are names. */
 
   function when(ts: number) {
     return new Date(ts * 1000).toLocaleDateString();

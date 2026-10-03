@@ -57,7 +57,6 @@
     }
   }
 
-  /** Message split around its `{placeholders}`: odd indices are names. */
 
   function optionId(name: string) {
     return `upstream-opt-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;

@@ -205,7 +205,6 @@
     return `${b.name} — ${b.last_commit_summary}${tracking}`;
   }
 
-  /** Message split around its `{placeholders}`: odd indices are names. */
 
   /**
    * Run a write op against the active repo, refresh, and toast the outcome.
