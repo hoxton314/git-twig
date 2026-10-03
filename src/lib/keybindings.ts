@@ -101,6 +101,7 @@ export const ACTIONS: KeybindingAction[] = [
   { id: "stash_files",       label: "Stash selected files…",    category: "Git",        defaultShortcut: "" },
   { id: "submodules_update", label: "Update submodules (init, recursive)", category: "Git", defaultShortcut: "" },
   { id: "submodules_sync",   label: "Sync submodule URLs",      category: "Git",        defaultShortcut: "" },
+  { id: "new_window",        label: "New window",               category: "Application", defaultShortcut: "Ctrl+Shift+N" },
   { id: "repo_dashboard",    label: "Repository dashboard (fetch all)…", category: "Repository", defaultShortcut: "" },
   { id: "lfs_manage",        label: "Git LFS…",                 category: "Git",        defaultShortcut: "" },
   { id: "worktree_add",      label: "Add worktree…",            category: "Git",        defaultShortcut: "" },

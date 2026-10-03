@@ -98,6 +98,7 @@ pub(crate) async fn clone_auth_env(
 
 #[tauri::command]
 pub async fn github_clone_repo(
+    window: tauri::Window,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     clone_url: String,
@@ -108,7 +109,7 @@ pub async fn github_clone_repo(
     if !out.success {
         return Err(TwigError::GitCli(format!("Clone failed: {}", out.stderr.trim())));
     }
-    crate::commands::repo::register_repo(&state, PathBuf::from(destination)).await
+    crate::commands::repo::register_repo(&state, PathBuf::from(destination), window.label()).await
 }
 
 #[tauri::command]

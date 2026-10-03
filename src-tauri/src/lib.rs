@@ -24,6 +24,14 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::new())
+        .on_window_event(|window, event| {
+            // A closed window no longer holds its repositories open.
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Some(state) = tauri::Manager::try_state::<AppState>(window) {
+                    let _ = state.release_window(window.label());
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             // Repo management
             commands::repo::open_repo,
@@ -65,6 +73,10 @@ pub fn run() {
             // Session persistence
             commands::session::save_session,
             commands::session::load_session,
+            commands::session::forget_window_session,
+            commands::session::saved_windows,
+            commands::session::forget_other_windows,
+            commands::session::open_new_window,
             // Settings
             commands::settings::load_settings,
             commands::settings::save_settings,

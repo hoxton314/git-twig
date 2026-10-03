@@ -95,6 +95,13 @@ function persistSession() {
   }, 300);
 }
 
+/** The window is closing: drop a pending save and save nothing more. */
+export function stopSessionSaving() {
+  sessionReady = false;
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = null;
+}
+
 openRepos.subscribe(() => persistSession());
 activeRepoPath.subscribe(() => persistSession());
 sidebarWidth.subscribe(() => persistSession());

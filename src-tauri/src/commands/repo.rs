@@ -5,7 +5,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::error::TwigError;
-use crate::state::{AppState, OpenRepo};
+use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RepoInfo {
@@ -60,6 +60,7 @@ pub(crate) fn build_repo_info(repo: &Repository, key: String, dir: &Path) -> Rep
 /// Open a repository by path and add it to the app state.
 #[tauri::command]
 pub async fn open_repo(
+    window: tauri::Window,
     state: State<'_, AppState>,
     path: String,
 ) -> Result<RepoInfo, TwigError> {
@@ -78,14 +79,12 @@ pub async fn open_repo(
     .await
     .map_err(|e| TwigError::Task(e.to_string()))??;
 
-    let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.insert(info.path.clone(), OpenRepo { path: canonical });
-
+    state.register(info.path.clone(), canonical, window.label())?;
     Ok(info)
 }
 
 /// Open the repository at `dir` (just created or cloned) and track it.
-pub(crate) async fn register_repo(state: &AppState, dir: PathBuf) -> Result<RepoInfo, TwigError> {
+pub(crate) async fn register_repo(state: &AppState, dir: PathBuf, window: &str) -> Result<RepoInfo, TwigError> {
     let (canonical, info) = tauri::async_runtime::spawn_blocking(move || {
         let shown = dir.to_string_lossy().to_string();
         let repo = Repository::open(&dir).map_err(|_| TwigError::NotARepo(shown))?;
@@ -97,14 +96,14 @@ pub(crate) async fn register_repo(state: &AppState, dir: PathBuf) -> Result<Repo
     })
     .await
     .map_err(|e| TwigError::Task(e.to_string()))??;
-    let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.insert(info.path.clone(), OpenRepo { path: canonical });
+    state.register(info.path.clone(), canonical, window)?;
     Ok(info)
 }
 
 /// `git init` a folder (created if missing) and open it.
 #[tauri::command]
 pub async fn init_repository(
+    window: tauri::Window,
     state: State<'_, AppState>,
     path: String,
     initial_branch: Option<String>,
@@ -113,7 +112,7 @@ pub async fn init_repository(
     if !out.success {
         return Err(TwigError::GitCli(format!("git init failed: {}", out.stderr.trim())));
     }
-    register_repo(&state, PathBuf::from(path)).await
+    register_repo(&state, PathBuf::from(path), window.label()).await
 }
 
 /// Progress line of a running clone, emitted as `clone-progress`.
@@ -128,6 +127,7 @@ pub struct CloneProgress {
 /// HTTPS clones from the configured GitHub host use the stored token.
 #[tauri::command]
 pub async fn clone_repository(
+    window: tauri::Window,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     url: String,
@@ -144,18 +144,17 @@ pub async fn clone_repository(
     if !out.success {
         return Err(TwigError::GitCli(format!("Clone failed: {}", out.stderr.trim())));
     }
-    register_repo(&state, PathBuf::from(destination)).await
+    register_repo(&state, PathBuf::from(destination), window.label()).await
 }
 
 /// Close a repository and remove it from state.
 #[tauri::command]
 pub async fn close_repo(
+    window: tauri::Window,
     state: State<'_, AppState>,
     path: String,
 ) -> Result<(), TwigError> {
-    let mut repos = state.repos.lock().map_err(|_| TwigError::Lock)?;
-    repos.remove(&path);
-    Ok(())
+    state.release(&path, window.label())
 }
 
 /// Get info about an already-open repo (e.g. refresh head name after checkout).

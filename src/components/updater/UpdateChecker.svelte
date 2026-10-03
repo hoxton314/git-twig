@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { isMainWindow } from "../../lib/windows";
   import { get } from "svelte/store";
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import { X } from "lucide-svelte";
@@ -28,7 +29,8 @@
       done = true;
       queueMicrotask(() => unsub());
       ensureUpdaterSupport().then((ok) => {
-        if (ok && get(settings).check_updates_on_startup) checkForUpdates(false);
+        // One window checks, or every window would offer the same update.
+        if (ok && isMainWindow() && get(settings).check_updates_on_startup) checkForUpdates(false);
       });
     });
     return () => {

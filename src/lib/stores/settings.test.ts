@@ -7,6 +7,7 @@ const tauri = vi.hoisted(() => ({
   loadRepoSettings: vi.fn(async () => ({ "/a": { context_lines: 9, theme: "light" }, "/b": { bogus: 1 } })),
   saveRepoSettings: vi.fn(async () => {}),
   setDiffReadDefaults: vi.fn(),
+  emitSync: vi.fn(),
 }));
 vi.mock("../tauri", () => tauri);
 vi.stubGlobal("document", {
@@ -63,6 +64,36 @@ describe("per-repository settings store", () => {
     vi.advanceTimersByTime(1000);
     vi.useRealTimers();
     expect(tauri.saveRepoSettings).not.toHaveBeenCalled();
+  });
+
+  it("takes another window's saved settings without saving or echoing them", async () => {
+    vi.useFakeTimers();
+    tauri.saveSettings.mockClear();
+    tauri.emitSync.mockClear();
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), tab_size: 7 });
+    s.applyRemoteSettings("repo-settings", { "/r": { context_lines: 1 } });
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+    expect(get(s.globalSettings).tab_size).toBe(7);
+    expect(get(s.repoOverrides)).toEqual({ "/r": { context_lines: 1 } });
+    expect(tauri.saveSettings).not.toHaveBeenCalled();
+    expect(tauri.emitSync).not.toHaveBeenCalled();
+  });
+
+  it("keeps this window's unsaved change when another window's save arrives", () => {
+    vi.useFakeTimers();
+    s.updateGlobalSettings({ tab_size: 3 }); // not saved yet (debounced)
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), tab_size: 8, context_lines: 11 });
+    expect(get(s.globalSettings).tab_size).toBe(3);
+    expect(get(s.globalSettings).context_lines).toBe(11);
+    s.setRepoOverride("/q", "tab_size", 2);
+    s.applyRemoteSettings("repo-settings", { "/other": { tab_size: 6 } });
+    expect(get(s.repoOverrides)).toEqual({ "/other": { tab_size: 6 }, "/q": { tab_size: 2 } });
+    vi.advanceTimersByTime(1000); // the pending saves write the merged values
+    vi.useRealTimers();
+    // Once saved, a later remote value applies as is.
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), tab_size: 5 });
+    expect(get(s.globalSettings).tab_size).toBe(5);
   });
 
   it("clears overrides back to the global value", () => {
