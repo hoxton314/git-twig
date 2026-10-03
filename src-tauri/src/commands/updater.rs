@@ -12,6 +12,11 @@ pub async fn updater_supported() -> bool {
     {
         use tauri::utils::{config::BundleType, platform::bundle_type};
 
+        // Flatpak updates the app itself (the binary inside is the deb build).
+        if std::env::var_os("FLATPAK_ID").is_some() {
+            return false;
+        }
+
         match bundle_type() {
             Some(BundleType::AppImage) => std::env::var_os("APPIMAGE").is_some(),
             Some(BundleType::Deb) => exe_owned_by("dpkg", "-S").await,

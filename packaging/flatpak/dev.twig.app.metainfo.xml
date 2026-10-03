@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.twig.app</id>
+  <name>Twig</name>
+  <summary>A lightweight, fast Git client</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-only</project_license>
+  <developer id="dev.twig">
+    <name>Twig contributors</name>
+  </developer>
+  <description>
+    <p>
+      Twig is a lightweight Git GUI: a fast commit graph, staging with hunk and
+      line selection, branches, stashes, interactive rebase, conflict
+      resolution, blame and file history, and pull requests for GitHub,
+      GitLab and Gitea.
+    </p>
+    <p>
+      Power tools include multi-select in the graph (compare, cherry-pick a
+      range, squash), bisect, code search, patch files and Git LFS.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.twig.app.desktop</launchable>
+  <url type="homepage">https://github.com/hoxton314/git-twig</url>
+  <url type="bugtracker">https://github.com/hoxton314/git-twig/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Development</category>
+    <category>RevisionControl</category>
+  </categories>
+  <releases>
+    <release version="0.5.0" date="2026-10-03"/>
+  </releases>
+</component>

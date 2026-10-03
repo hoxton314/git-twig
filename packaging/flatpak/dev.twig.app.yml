@@ -1,0 +1,71 @@
+# Flatpak manifest for Twig. Built in CI by .github/workflows/packaging.yml
+# from the release .deb (Twig itself is a Tauri app built with cargo/npm;
+# repackaging the tested binary keeps the Flatpak identical to the deb).
+# See README.md here for local builds and Flathub submission.
+app-id: dev.twig.app
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: twig
+
+finish-args:
+  # Display (Wayland first, X11 fallback) and GPU.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Fetch / push / clone and the GitHub, GitLab and Gitea APIs.
+  - --share=network
+  # Repositories live anywhere in the home directory (and on removable
+  # media); a Git client can't work through a file chooser portal.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # SSH remotes through the user's ssh-agent.
+  - --socket=ssh-auth
+  # Tokens are kept in the OS keyring (Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # "New upstream commits" / "CI finished" notifications.
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # The Platform runtime has no git; Twig drives the git CLI for every write.
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make -j"$FLATPAK_BUILDER_N_JOBS" prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1 all
+      - make prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1 install
+    cleanup:
+      - /share/man
+      - /share/gitweb
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
+        sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
+
+  - name: twig
+    buildsystem: simple
+    build-commands:
+      - ar x twig.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/twig /app/bin/twig
+      - install -Dm644 usr/share/applications/Twig.desktop /app/share/applications/dev.twig.app.desktop
+      # The window's app id is the identifier, so the renamed file matches it.
+      - desktop-file-edit --set-icon=dev.twig.app /app/share/applications/dev.twig.app.desktop
+      - |
+        for png in usr/share/icons/hicolor/*/apps/*.png; do
+          size=$(basename "$(dirname "$(dirname "$png")")")
+          case "$size" in *@*) continue ;; esac  # skip HiDPI duplicates
+          install -Dm644 "$png" "/app/share/icons/hicolor/$size/apps/dev.twig.app.png"
+        done
+      - install -Dm644 twig-icon.svg /app/share/icons/hicolor/scalable/apps/dev.twig.app.svg
+      - install -Dm644 dev.twig.app.metainfo.xml /app/share/metainfo/dev.twig.app.metainfo.xml
+    sources:
+      # Copied here by CI (or by hand, see README.md) from
+      # src-tauri/target/release/bundle/deb/*.deb.
+      - type: file
+        path: twig.deb
+      - type: file
+        path: ../../src-tauri/icons/twig-icon.svg
+      - type: file
+        path: dev.twig.app.metainfo.xml

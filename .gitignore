@@ -36,3 +36,7 @@ aur/*/*.png
 
 # AI
 .claude/
+# Flatpak builds (packaging/flatpak/README.md)
+packaging/flatpak/twig.deb
+build-dir/
+.flatpak-builder/

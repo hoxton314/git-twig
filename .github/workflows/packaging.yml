@@ -11,6 +11,7 @@ on:
       - 'src-tauri/tauri.conf.json'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/src/commands/updater.rs'
+      - 'packaging/**'
   workflow_dispatch:
 
 permissions:
@@ -99,3 +100,31 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/deb/*.deb
           retention-days: 7
+
+  # The Flatpak repackages the amd64 .deb built above (see packaging/flatpak).
+  flatpak:
+    needs: linux
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: twig-linux-amd64
+          path: dl
+
+      - name: Put the .deb next to the manifest
+        run: |
+          set -eu
+          ls -R dl
+          cp dl/deb/*.deb packaging/flatpak/twig.deb
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/dev.twig.app.yml
+          bundle: twig.flatpak
+          cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/dev.twig.app.yml') }}
