@@ -553,8 +553,13 @@
     background: var(--color-surface-elevated);
   }
 
+  /* Sections give up height (their lists scroll) so the commit box below
+     always stays reachable in short windows. */
   .file-section {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .section-header {

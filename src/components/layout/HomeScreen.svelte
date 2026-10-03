@@ -389,7 +389,7 @@
   }
 
   .open-button:hover {
-    background: rgba(122, 162, 247, 0.15);
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
   }
 
   .github-buttons {
@@ -505,6 +505,9 @@
   .repo-name {
     font-size: 13px;
     font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .repo-path {
@@ -520,10 +523,15 @@
     font-size: 11px;
     font-family: var(--font-mono);
     color: var(--color-accent);
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     padding: 2px 8px;
     border-radius: 3px;
-    background: rgba(122, 162, 247, 0.1);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
 
   .repo-card-open {

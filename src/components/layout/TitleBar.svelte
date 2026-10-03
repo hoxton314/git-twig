@@ -85,7 +85,7 @@
   }
 
   .win-close:hover {
-    background: rgba(247, 118, 142, 0.3);
-    color: #f7768e;
+    background: color-mix(in srgb, var(--color-diff-del-text) 30%, transparent);
+    color: var(--color-diff-del-text);
   }
 </style>

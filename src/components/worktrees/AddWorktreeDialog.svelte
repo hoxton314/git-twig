@@ -211,8 +211,23 @@
     color: var(--color-text-primary);
   }
 
+  /* Visually hidden but still focusable, so the choice works from the keyboard. */
   .seg input {
-    display: none;
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    pointer-events: none;
+  }
+
+  .seg label {
+    position: relative;
+  }
+
+  .seg label:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
   }
 
   .field {
@@ -300,7 +315,7 @@
   .btn.primary {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
   }
 
   .form :global(.spinner) {

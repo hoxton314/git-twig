@@ -12,6 +12,7 @@ export const THEME_TOKENS = [
   "--color-surface-elevated",
   "--color-border",
   "--color-accent-secondary",
+  "--color-on-accent",
   "--color-text-primary",
   "--color-text-muted",
   "--color-lane-0",
@@ -53,7 +54,7 @@ export interface CustomTheme {
 
 /** Groups for the editor. */
 export const TOKEN_GROUPS: { title: string; tokens: ThemeToken[] }[] = [
-  { title: "Surfaces & text", tokens: ["--color-bg", "--color-surface", "--color-surface-elevated", "--color-border", "--color-text-primary", "--color-text-muted", "--color-accent-secondary"] },
+  { title: "Surfaces & text", tokens: ["--color-bg", "--color-surface", "--color-surface-elevated", "--color-border", "--color-text-primary", "--color-text-muted", "--color-accent-secondary", "--color-on-accent"] },
   { title: "Graph lanes", tokens: ["--color-lane-0", "--color-lane-1", "--color-lane-2", "--color-lane-3", "--color-lane-4", "--color-lane-5"] },
   { title: "Diff", tokens: ["--color-diff-add-bg", "--color-diff-add-text", "--color-diff-add-word-bg", "--color-diff-del-bg", "--color-diff-del-text", "--color-diff-del-word-bg", "--color-diff-hunk-bg"] },
   { title: "Syntax", tokens: ["--color-syntax-keyword", "--color-syntax-string", "--color-syntax-number", "--color-syntax-comment", "--color-syntax-function", "--color-syntax-type", "--color-syntax-variable", "--color-syntax-meta"] },

@@ -10,6 +10,9 @@
   /* Accent */
   --color-accent: #7aa2f7;
   --color-accent-secondary: #bb9af7;
+  /* Text/icons on accent-coloured fills (buttons, highlighted menu items).
+     Dark in both themes: the light theme keeps the same accent. */
+  --color-on-accent: #1a1b26;
 
   /* Text */
   --color-text-primary: #c0caf5;

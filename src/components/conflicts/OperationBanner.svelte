@@ -396,7 +396,7 @@
   .op-btn.primary {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     font-weight: 500;
   }
 

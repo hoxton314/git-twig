@@ -306,7 +306,7 @@
 
   .shortcut-btn.conflict,
   .shortcut-btn.customized.conflict {
-    border-color: #f7768e;
+    border-color: var(--color-diff-del-text);
   }
 
   .shortcut-btn.customized {

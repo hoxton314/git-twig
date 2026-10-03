@@ -633,7 +633,7 @@
     border: none;
     border-radius: 4px;
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
