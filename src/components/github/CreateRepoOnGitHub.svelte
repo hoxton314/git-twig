@@ -190,8 +190,8 @@
     padding: 8px 12px;
     margin-bottom: 12px;
     border-radius: 4px;
-    background: rgba(247, 118, 142, 0.1);
-    color: #f7768e;
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
     font-size: 12px;
     word-break: break-word;
   }
@@ -264,7 +264,7 @@
 
   .vis-btn.active {
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
   }
 
   .checkbox-row {
@@ -289,7 +289,7 @@
     border: none;
     border-radius: 6px;
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;

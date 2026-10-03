@@ -1129,6 +1129,9 @@
     align-items: center;
     gap: 6px;
     padding: 5px 12px 5px 24px;
+    /* Fits the 20px merge/delete buttons that appear on hover, so showing
+       them doesn't grow the row and shift the list under the cursor. */
+    min-height: 30px;
     color: var(--color-text-primary);
     cursor: pointer;
     border: none;
@@ -1279,7 +1282,7 @@
 
   .btn-merge {
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     border: none;
     border-radius: 4px;
     padding: 6px 16px;

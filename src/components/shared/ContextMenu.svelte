@@ -162,7 +162,7 @@
   .item:hover:not(:disabled),
   .item:focus-visible {
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     outline: none;
   }
 

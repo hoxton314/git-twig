@@ -444,7 +444,10 @@
 
 <style>
   .stash-section {
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .section-header {
@@ -532,6 +535,7 @@
 
   .stash-list {
     max-height: 150px;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -574,6 +578,10 @@
     gap: 2px;
     flex-shrink: 0;
     align-items: center;
+    /* Width of the three 20px buttons, so the spinner shown while an action
+       runs doesn't re-flow the stash message. */
+    min-width: 64px;
+    justify-content: flex-end;
   }
 
   .stash-action-btn {
@@ -753,6 +761,6 @@
   .prompt-btn.primary {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
   }
 </style>

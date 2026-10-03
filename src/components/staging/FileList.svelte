@@ -243,6 +243,7 @@
 <style>
   .file-list {
     max-height: 200px;
+    min-height: 0;
     overflow-y: auto;
   }
 
@@ -251,6 +252,9 @@
     align-items: center;
     gap: 6px;
     padding: 3px 8px 3px 16px;
+    /* Fits the 18px action buttons shown on hover/selection without the
+       row growing and the list jumping. */
+    min-height: 24px;
     cursor: pointer;
     transition: background 0.1s;
     color: var(--color-text-primary);

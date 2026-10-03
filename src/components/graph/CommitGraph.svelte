@@ -778,7 +778,7 @@
 
   .wip-row.selected {
     background: color-mix(in srgb, var(--color-lane-2) 15%, transparent);
-    border-left: 2px solid var(--color-lane-2);
+    box-shadow: inset 2px 0 0 var(--color-lane-2);
   }
 
   .wip-icon {

@@ -115,7 +115,7 @@
     font-size: 13px;
     cursor: pointer;
   }
-  .btn-primary { background: var(--color-accent); color: var(--color-bg); border: none; font-weight: 600; }
+  .btn-primary { background: var(--color-accent); color: var(--color-on-accent); border: none; font-weight: 600; }
   .btn-secondary { background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); }
   .btn-secondary:hover:not(:disabled) { color: var(--color-text-primary); }
   .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }

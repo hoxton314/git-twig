@@ -189,7 +189,7 @@
 
   .commit-row.selected {
     background: var(--color-surface-elevated);
-    border-left: 2px solid var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-accent); /* no layout shift on select */
   }
 
   .commit-row.search-match {
@@ -203,6 +203,13 @@
   .commit-row.search-current {
     background: color-mix(in srgb, var(--color-accent) 22%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  }
+
+  /* Keep the selection stripe when the selected row is also the current match. */
+  .commit-row.selected.search-current {
+    box-shadow:
+      inset 2px 0 0 var(--color-accent),
+      inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent);
   }
 
   .avatar {

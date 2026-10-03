@@ -524,6 +524,13 @@
     overflow-x: auto;
     overflow-y: hidden;
     flex-shrink: 0;
+    /* A scrollbar inside the 36px bar squeezes every tab when one more opens;
+       the bar still scrolls with the wheel/trackpad. */
+    scrollbar-width: none;
+  }
+
+  .tab-bar::-webkit-scrollbar {
+    display: none;
   }
 
   .home-btn {
@@ -549,7 +556,7 @@
   .home-btn.active {
     background: var(--color-surface-elevated);
     color: var(--color-accent);
-    border-bottom: 2px solid var(--color-accent);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 
   .tab {
@@ -577,7 +584,7 @@
   .tab.active {
     background: var(--color-surface-elevated);
     color: var(--color-text-primary);
-    border-bottom: 2px solid var(--color-accent);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 
   .tab.dragging {
@@ -592,12 +599,18 @@
 
   .tab-name {
     font-weight: 500;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tab-branch {
     color: var(--color-accent);
     font-family: var(--font-mono);
     font-size: 11px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tab-close {
@@ -616,8 +629,8 @@
   }
 
   .tab-close:hover {
-    background: rgba(247, 118, 142, 0.2);
-    color: #f7768e;
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
   }
 
   .tab-new {
@@ -758,7 +771,12 @@
     font-size: 10px;
     font-family: var(--font-mono);
     color: var(--color-accent);
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .tab-menu-divider {
@@ -794,6 +812,6 @@
   .settings-btn.active {
     background: var(--color-surface-elevated);
     color: var(--color-accent);
-    border-bottom: 2px solid var(--color-accent);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 </style>

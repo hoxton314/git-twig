@@ -146,7 +146,7 @@
   .nav-item.active {
     background: var(--color-surface-elevated);
     color: var(--color-accent);
-    border-left: 2px solid var(--color-accent);
+    box-shadow: inset 2px 0 0 var(--color-accent);
   }
 
   .settings-content {

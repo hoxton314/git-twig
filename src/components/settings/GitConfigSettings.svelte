@@ -463,7 +463,7 @@
     font-size: 11px;
     padding: 3px 10px;
     border-radius: 3px;
-    background: rgba(247, 118, 142, 0.1);
+    background: var(--color-diff-del-bg);
     color: var(--color-diff-del-text);
   }
 
@@ -480,15 +480,15 @@
   }
 
   .notice.saving {
-    background: rgba(122, 162, 247, 0.1);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     color: var(--color-accent);
-    border: 1px solid rgba(122, 162, 247, 0.2);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 
   .notice.error {
-    background: rgba(247, 118, 142, 0.1);
+    background: var(--color-diff-del-bg);
     color: var(--color-diff-del-text);
-    border: 1px solid rgba(247, 118, 142, 0.2);
+    border: 1px solid color-mix(in srgb, var(--color-diff-del-text) 25%, transparent);
   }
 
   /* Toggle switch */

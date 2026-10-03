@@ -225,7 +225,7 @@
   }
   .btn-update {
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     border: none;
     border-radius: 4px;
     padding: 0.375rem 0.75rem;

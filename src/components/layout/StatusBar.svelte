@@ -188,6 +188,9 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
+    /* Narrow windows: clip long branch/upstream names instead of painting
+       over the next item. */
+    overflow: hidden;
   }
 
   .item :global(svg) {
@@ -197,6 +200,10 @@
 
   .mono {
     font-family: var(--font-mono);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .muted {

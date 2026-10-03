@@ -331,8 +331,8 @@
     padding: 8px 12px;
     margin-bottom: 12px;
     border-radius: 4px;
-    background: rgba(247, 118, 142, 0.1);
-    color: #f7768e;
+    background: var(--color-diff-del-bg);
+    color: var(--color-diff-del-text);
     font-size: 12px;
     word-break: break-word;
   }
@@ -373,6 +373,9 @@
     flex-direction: column;
     gap: 4px;
     flex: 1;
+    /* Selects size to their longest option; let long branch names truncate
+       instead of widening the dialog. */
+    min-width: 0;
   }
 
   .branch-label {
@@ -384,6 +387,9 @@
   }
 
   .branch-select {
+    width: 100%;
+    min-width: 0;
+    text-overflow: ellipsis;
     padding: 8px 10px;
     border: 1px solid var(--color-border);
     border-radius: 4px;
@@ -474,7 +480,7 @@
     border: none;
     border-radius: 6px;
     background: var(--color-accent);
-    color: var(--color-bg);
+    color: var(--color-on-accent);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
