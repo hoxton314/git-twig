@@ -46,6 +46,7 @@ A lightweight Git GUI desktop app built with Tauri v2 (Rust backend + Svelte 5 f
 | `src/lib/dashboard.ts` | Repository dashboard (group or all repos): scope, bounded-concurrency pool; panel `components/dashboard/Dashboard.svelte` (lazy); backend `git/dashboard.rs` (status of any validated working tree, fetch, `pull --ff-only`) |
 | `src/lib/notify.ts` | New-upstream-commit detection (behind deltas around an auto-fetch) and system notifications via `tauri-plugin-notification` (toast when focused); setting `notify_new_commits` ; `announce()` shared by `src/lib/ciWatch.ts` (CI finished on open repos' HEAD, setting `notify_ci`) |
 | `src/lib/windows.ts` | Multiple windows: per-window sessions (backend `commands/session.rs`, keyed by window label), new/restore/close handling; repos are refcounted per window in `state.rs`; settings/history/overrides synced across windows via `api/sync.ts` |
+| `src/lib/themes.ts` | Custom colour themes: token list (test-synced with app.css), validation, contrast, import/export; editor `settings/CustomThemes.svelte`; applied in `stores/settings.ts` |
 | `src/lib/stores/graph.ts` | Central Svelte store for graph, branches, diffs, staging; graph pagination (`loadMoreCommits`, `ensureGraphLoaded`) |
 | `src/lib/stores/graphSearch.ts` | Commit search state (highlight/filter modes, matches with graph row indices) |
 | `src/lib/graphSelection.ts` | Graph multi-selection (Ctrl/Shift-click ranges) and the two-commit compare pair; stores `commitSelection` / `selectedCommits` in `graph.ts` |

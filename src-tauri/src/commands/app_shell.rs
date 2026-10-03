@@ -197,8 +197,49 @@ pub async fn import_settings(path: String) -> Result<AppSettings, TwigError> {
     Ok(settings)
 }
 
+/// Largest theme file read (themes are a few KB).
+const MAX_THEME_BYTES: u64 = 256 * 1024;
+
+/// Write a theme document (JSON text, built by the frontend) to `path`.
+#[tauri::command]
+pub async fn export_theme_file(path: String, contents: String) -> Result<(), TwigError> {
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|e| TwigError::InvalidArgument(format!("not JSON: {e}")))?;
+    write_atomic(Path::new(&path), &contents, false)
+}
+
+/// Read a theme file as JSON (validated by the frontend).
+#[tauri::command]
+pub async fn import_theme_file(path: String) -> Result<serde_json::Value, TwigError> {
+    read_theme_json(Path::new(&path))
+}
+
+pub(crate) fn read_theme_json(path: &Path) -> Result<serde_json::Value, TwigError> {
+    if fs::metadata(path)?.len() > MAX_THEME_BYTES {
+        return Err(TwigError::InvalidArgument("that file is too large to be a theme".into()));
+    }
+    let text = fs::read_to_string(path)?;
+    serde_json::from_str(&text).map_err(|e| TwigError::InvalidArgument(format!("not a theme file (invalid JSON): {e}")))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn theme_files_must_be_small_json() {
+        let dir = std::env::temp_dir().join(format!("twig-theme-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ok = dir.join("t.json");
+        std::fs::write(&ok, r#"{"name":"x","colors":{}}"#).unwrap();
+        assert_eq!(super::read_theme_json(&ok).unwrap()["name"], "x");
+        let bad = dir.join("bad.json");
+        std::fs::write(&bad, "not json").unwrap();
+        assert!(super::read_theme_json(&bad).is_err());
+        let big = dir.join("big.json");
+        std::fs::write(&big, vec![b' '; 300 * 1024]).unwrap();
+        assert!(super::read_theme_json(&big).unwrap_err().to_string().contains("too large"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn groups_default_and_get_tidied() {
         let old: RepoHistory = serde_json::from_str(r#"{"recent":[],"favorites":["/a"]}"#).unwrap();
