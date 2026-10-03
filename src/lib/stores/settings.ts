@@ -60,6 +60,7 @@ const defaults: AppSettings = {
   syntax_highlighting: true,
   // Notifications
   notify_new_commits: "current",
+  notify_ci: "all",
 };
 
 /** Default values for every setting (used by reset/import). */

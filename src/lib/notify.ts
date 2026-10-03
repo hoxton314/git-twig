@@ -56,21 +56,34 @@ async function allowed(): Promise<boolean> {
   return permission;
 }
 
-/** Tell the user about new upstream commits in `repoName`. */
-export async function announceNewCommits(repoName: string, events: NewCommits[]): Promise<void> {
-  if (events.length === 0) return;
-  const body = describe(events);
+/**
+ * Show `title` / `body` as a system notification while the window is in
+ * the background, otherwise (or if notifications are refused) as a toast,
+ * which can also carry an action (system notifications can't).
+ */
+export async function announce(
+  title: string,
+  body: string,
+  opts: { kind?: "info" | "success" | "warning"; action?: { label: string; run: () => void } } = {},
+): Promise<void> {
+  const showToast = () => toast(opts.kind ?? "info", body, { title, action: opts.action, duration: opts.action ? 10_000 : undefined });
   if (typeof document !== "undefined" && document.hasFocus()) {
-    toast("info", body, { title: `New commits in ${repoName}` });
+    showToast();
     return;
   }
   if (await allowed()) {
     try {
-      sendNotification({ title: `New commits in ${repoName}`, body });
+      sendNotification({ title, body });
       return;
     } catch {
       // Fall through to a toast if the system refused.
     }
   }
-  toast("info", body, { title: `New commits in ${repoName}` });
+  showToast();
+}
+
+/** Tell the user about new upstream commits in `repoName`. */
+export async function announceNewCommits(repoName: string, events: NewCommits[]): Promise<void> {
+  if (events.length === 0) return;
+  await announce(`New commits in ${repoName}`, describe(events));
 }

@@ -16,6 +16,8 @@ export interface AppSettings {
   syntax_highlighting: boolean;
   /** System notification for new upstream commits after auto-fetch. */
   notify_new_commits: "off" | "current" | "all";
+  /** System notification when CI finishes on an open repository's HEAD. */
+  notify_ci: "off" | "failures" | "all";
   // Hosting integrations
   github_https_auth: boolean;
   github_host: string;
