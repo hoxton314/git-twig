@@ -2,6 +2,8 @@ import { get } from "svelte/store";
 import { openRepos, activeRepoPath } from "./repos";
 import { globalSettings, repoOverrides } from "./settings";
 import { effectiveSettings } from "../repoSettings";
+import { announceNewCommits, newUpstreamCommits, type NotifyMode } from "../notify";
+import type { BranchInfo } from "../types/git";
 import { refreshAll } from "./graph";
 import * as tauri from "../tauri";
 import { trackOperation, operations, isSyncing } from "./operations";
@@ -51,11 +53,22 @@ async function tick() {
       // A manual / dashboard fetch is running there: try again next tick.
       if (isSyncing(get(operations), path)) continue;
       lastFetched.set(path, Date.now());
+      const mode = get(globalSettings).notify_new_commits as NotifyMode;
+      // Branch ahead/behind before the fetch, to spot new upstream commits.
+      const before: BranchInfo[] | null = mode === "off" ? null : await tauri.getBranches(path).catch(() => null);
+      // A manual / dashboard fetch may have started while that read ran.
+      if (isSyncing(get(operations), path)) continue;
       try {
         // Failures are recorded in `lastFetch` and shown in the status bar
         // rather than interrupting the user from a background timer.
-        await trackOperation(path, "fetch", "Auto-fetching…", () => tauri.fetchAll(path), { background: true });
+        const res = await trackOperation(path, "fetch", "Auto-fetching…", () => tauri.fetchAll(path), { background: true });
         invalidateCi(path);
+        if (before && res.success) {
+          const after = await tauri.getBranches(path).catch(() => null);
+          const events = after ? newUpstreamCommits(before, after, mode) : [];
+          const name = get(openRepos).get(path)?.name ?? path;
+          void announceNewCommits(name, events);
+        }
       } catch {
         // Recorded by trackOperation; skip to the next repo.
       }

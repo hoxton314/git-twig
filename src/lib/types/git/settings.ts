@@ -14,6 +14,8 @@ export interface AppSettings {
   theme: "dark" | "light";
   // Diff viewer: syntax highlighting
   syntax_highlighting: boolean;
+  /** System notification for new upstream commits after auto-fetch. */
+  notify_new_commits: "off" | "current" | "all";
   // Hosting integrations
   github_https_auth: boolean;
   github_host: string;

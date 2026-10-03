@@ -128,6 +128,15 @@ pub struct AppSettings {
     // ── Diff viewer: syntax highlighting ─────────────────────────────
     #[serde(default = "default_true")]
     pub syntax_highlighting: bool,
+    // ── Notifications ────────────────────────────────────────────────
+    /// New upstream commits after an auto-fetch: "off" | "current" (the
+    /// checked-out branch) | "all" (every branch with an upstream).
+    #[serde(default = "default_notify_new_commits")]
+    pub notify_new_commits: String,
+}
+
+fn default_notify_new_commits() -> String {
+    "current".to_string()
 }
 
 fn default_true() -> bool {
@@ -227,6 +236,7 @@ impl Default for AppSettings {
             gitlab_base_url: default_gitlab_url(),
             gitea_base_url: String::new(),
             syntax_highlighting: true,
+            notify_new_commits: default_notify_new_commits(),
         }
     }
 }

@@ -58,6 +58,8 @@ const defaults: AppSettings = {
   gitea_base_url: "",
   // Diff viewer: syntax highlighting
   syntax_highlighting: true,
+  // Notifications
+  notify_new_commits: "current",
 };
 
 /** Default values for every setting (used by reset/import). */
