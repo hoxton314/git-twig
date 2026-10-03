@@ -56,6 +56,8 @@ async function tick() {
       const mode = get(globalSettings).notify_new_commits as NotifyMode;
       // Branch ahead/behind before the fetch, to spot new upstream commits.
       const before: BranchInfo[] | null = mode === "off" ? null : await tauri.getBranches(path).catch(() => null);
+      // A manual / dashboard fetch may have started while that read ran.
+      if (isSyncing(get(operations), path)) continue;
       try {
         // Failures are recorded in `lastFetch` and shown in the status bar
         // rather than interrupting the user from a background timer.
