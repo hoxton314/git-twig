@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/release.yml'
       - '.github/workflows/packaging.yml'
+      - '.github/workflows/ci.yml'
       - 'src-tauri/tauri.conf.json'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/src/commands/updater.rs'
@@ -20,8 +21,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  appimage:
-    runs-on: ubuntu-22.04
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            deb_arch: amd64
+          - os: ubuntu-22.04-arm
+            deb_arch: arm64
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +61,8 @@ jobs:
 
       # Same bundle as the release, without the updater signature (that key
       # only exists in the release environment).
-      - name: Build AppImage
-        run: npx tauri build --bundles appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Build AppImage and deb
+        run: npx tauri build --bundles appimage,deb --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
       - name: Check the AppImage
         run: |
@@ -71,8 +80,18 @@ jobs:
           # in-app updater decides it may replace this file.
           grep -aq "__TAURI_BUNDLE_TYPE_VAR_APP" squashfs-root/usr/bin/twig
 
+      - name: Check the deb
+        run: |
+          set -euo pipefail
+          d=$(realpath src-tauri/target/release/bundle/deb/*.deb)
+          dpkg-deb --info "$d"
+          test "$(dpkg-deb --field "$d" Architecture)" = "${{ matrix.deb_arch }}"
+          dpkg-deb --contents "$d" | grep -q './usr/bin/twig$'
+
       - uses: actions/upload-artifact@v4
         with:
-          name: twig-appimage
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          name: twig-linux-${{ matrix.deb_arch }}
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
           retention-days: 7
