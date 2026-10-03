@@ -41,13 +41,15 @@ Order within a release is rough priority.
 
 ## v0.6 — Workspace and distribution
 
-- Multiple windows, each with its own saved tabs.
-- Per-repository settings overrides.
-- Repository groups with a dashboard to fetch all repos at once.
-- System notifications (new upstream commits, CI finished).
-- Custom themes and translations.
-- Packaging: Flatpak or AppImage (in-app updates for distros without deb/rpm/AUR), signed and
-  notarized macOS and Windows builds, Linux ARM64 builds.
+- [x] Multiple windows, each with its own saved tabs.
+- [x] Per-repository settings overrides.
+- [x] Repository groups with a dashboard to fetch all repos at once.
+- [x] System notifications (new upstream commits, CI finished).
+- [x] Custom themes and translations (Polish is the first translation).
+- [x] Packaging: Flatpak or AppImage (in-app updates for distros without deb/rpm/AUR), signed and
+  notarized macOS and Windows builds, Linux ARM64 builds. (AppImage and ARM64 ship; the Flatpak
+  manifest is built in CI but not yet on Flathub; signing is wired up and needs the certificates
+  described in `docs/SIGNING.md`.)
 
 ## v1.0 — Stable
 
