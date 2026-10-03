@@ -333,6 +333,14 @@ export function updateSettings(patch: Partial<AppSettings>) {
   }
 }
 
+/**
+ * Like `updateGlobalSettings`, but computed from the current value, so the
+ * change also merges correctly over another window's save (lists, maps).
+ */
+export function updateGlobalSettingsWith(fn: (s: AppSettings) => Partial<AppSettings>) {
+  changeGlobal((s) => ({ ...s, ...fn(s) }));
+}
+
 /** Update the global settings only (the Settings screen edits these). */
 export function updateGlobalSettings(patch: Partial<AppSettings>) {
   changeGlobal((s) => ({ ...s, ...patch }));

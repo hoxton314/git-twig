@@ -5,7 +5,7 @@
    */
   import { open, save, ask } from "@tauri-apps/plugin-dialog";
   import { ChevronDown, ChevronRight, Copy, Download, Pencil, Trash2, Upload } from "lucide-svelte";
-  import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
+  import { globalSettings, updateGlobalSettings, updateGlobalSettingsWith } from "../../lib/stores/settings";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
   import {
@@ -16,6 +16,7 @@
     exportTheme,
     isColor,
     parseTheme,
+    pickedColor,
     toHexInput,
     tokenLabel,
     type CustomTheme,
@@ -32,8 +33,15 @@
     return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   }
 
-  function saveThemes(next: CustomTheme[], select?: string) {
-    updateGlobalSettings(select ? { custom_themes: next, theme: select } : { custom_themes: next });
+  /**
+   * Change the theme list as a function of its latest value (so edits in
+   * two windows merge instead of one stale copy replacing the other).
+   */
+  function changeThemes(fn: (list: CustomTheme[]) => CustomTheme[], select?: string) {
+    updateGlobalSettingsWith((cur) => ({
+      custom_themes: fn(cur.custom_themes ?? []),
+      ...(select !== undefined ? { theme: select } : {}),
+    }));
   }
 
   /** Copy the theme on screen now (built-in or custom) as a new custom theme. */
@@ -49,31 +57,47 @@
       ? (themes.find((t) => `${CUSTOM_PREFIX}${t.id}` === s.theme)?.name ?? "Custom")
       : base === "light" ? "Light" : "Dark";
     const theme: CustomTheme = { id: newId(), name: `${sourceName} (copy)`, base, colors };
-    saveThemes([...themes, theme], `${CUSTOM_PREFIX}${theme.id}`);
+    changeThemes((list) => [...list, theme], `${CUSTOM_PREFIX}${theme.id}`);
     editing = theme.id;
   }
 
-  function update(id: string, patch: Partial<CustomTheme>) {
-    saveThemes(themes.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  function update(id: string, patch: (t: CustomTheme) => Partial<CustomTheme>) {
+    changeThemes((list) => list.map((t) => (t.id === id ? { ...t, ...patch(t) } : t)));
   }
 
+  /** Set a token; an empty value goes back to the base theme's colour. */
   function setColor(t: CustomTheme, token: ThemeToken, value: string) {
     const v = value.trim();
-    if (!isColor(v)) {
-      toast("warning", `${v || "(empty)"} isn't a colour Twig accepts (use #hex, rgb(), rgba(), hsl()).`);
+    if (!v) {
+      update(t.id, (cur) => {
+        const colors = { ...cur.colors };
+        delete colors[token];
+        return { colors };
+      });
       return;
     }
-    update(t.id, { colors: { ...t.colors, [token]: v } });
+    if (!isColor(v)) {
+      toast("warning", `${v} isn't a colour Twig accepts (use #hex, rgb(), rgba(), hsl(); empty = base theme).`);
+      return;
+    }
+    update(t.id, (cur) => ({ colors: { ...cur.colors, [token]: v } }));
+  }
+
+  /** What the picker shows: the token's value, else what's on screen for it. */
+  function pickerValue(t: CustomTheme, token: ThemeToken): string {
+    const own = t.colors[token];
+    if (own) return toHexInput(own);
+    if (s.theme === `${CUSTOM_PREFIX}${t.id}`) {
+      return toHexInput(getComputedStyle(document.documentElement).getPropertyValue(token).trim());
+    }
+    return toHexInput("");
   }
 
   async function remove(t: CustomTheme) {
     const ok = await ask(`Delete the theme “${t.name}”?`, { title: "Delete Theme", kind: "warning", okLabel: "Delete" });
     if (!ok) return;
     const selected = s.theme === `${CUSTOM_PREFIX}${t.id}`;
-    saveThemes(
-      themes.filter((x) => x.id !== t.id),
-      selected ? t.base : undefined,
-    );
+    changeThemes((list) => list.filter((x) => x.id !== t.id), selected ? t.base : undefined);
     if (editing === t.id) editing = null;
   }
 
@@ -86,7 +110,8 @@
         toastError("Import theme failed", parsed.error);
         return;
       }
-      saveThemes([...themes, parsed.theme], `${CUSTOM_PREFIX}${parsed.theme.id}`);
+      const theme = parsed.theme;
+      changeThemes((list) => [...list, theme], `${CUSTOM_PREFIX}${theme.id}`);
       toast("success", `Imported “${parsed.theme.name}”`);
     } catch (err) {
       toastError("Import theme failed", err);
@@ -128,7 +153,9 @@
           {#if editing === t.id}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
           <span class="swatches">
             {#each ["--color-bg", "--color-surface", "--color-text-primary", "--color-lane-0", "--color-lane-1", "--color-lane-3"] as tok (tok)}
-              <span class="sw" style="background: {t.colors[tok as ThemeToken] ?? 'transparent'}"></span>
+              {@const c = t.colors[tok as ThemeToken]}
+              <!-- Only validated colours reach the style attribute (imported settings are untrusted). -->
+              <span class="sw" style="background: {c && isColor(c) ? c : 'transparent'}"></span>
             {/each}
           </span>
           <span class="name">{t.name}</span>
@@ -146,10 +173,16 @@
       {#if editing === t.id && current}
         <div class="editor">
           <div class="meta">
-            <label>Name <input value={current.name} maxlength="60" onchange={(e) => update(t.id, { name: e.currentTarget.value.trim() || current.name })} /></label>
+            <label>Name <input value={current.name} maxlength="60" onchange={(e) => {
+              const name = e.currentTarget.value.trim();
+              if (name) update(t.id, () => ({ name }));
+            }} /></label>
             <label>
               Base
-              <select value={current.base} onchange={(e) => update(t.id, { base: e.currentTarget.value as "dark" | "light" })}>
+              <select value={current.base} onchange={(e) => {
+                const base = e.currentTarget.value as "dark" | "light";
+                update(t.id, () => ({ base }));
+              }}>
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
               </select>
@@ -165,15 +198,16 @@
                 <div class="token">
                   <input
                     type="color"
-                    value={toHexInput(value)}
-                    oninput={(e) => setColor(t, token, e.currentTarget.value)}
+                    value={pickerValue(current, token)}
+                    oninput={(e) => setColor(current, token, pickedColor(e.currentTarget.value, value))}
                     aria-label="{tokenLabel(token)} colour"
                   />
                   <span class="token-name">{tokenLabel(token)}</span>
                   <input
                     class="token-value"
                     value={value}
-                    placeholder="from {current.base}"
+                    placeholder="{current.base} theme"
+                    title="Empty: use the {current.base} theme's colour"
                     spellcheck="false"
                     onchange={(e) => setColor(t, token, e.currentTarget.value)}
                     aria-label="{tokenLabel(token)} value"

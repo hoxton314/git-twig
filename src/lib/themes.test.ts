@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error -- Node built-in: tests run in Node, the app tsconfig has no Node types.
 import { readFileSync } from "node:fs";
-import { THEME_TOKENS, contrast, contrastWarnings, exportTheme, isColor, parseTheme, toHexInput, toRgb } from "./themes";
+import { THEME_TOKENS, alphaOf, pickedColor, contrast, contrastWarnings, exportTheme, isColor, parseTheme, toHexInput, toRgb } from "./themes";
 
 describe("custom themes", () => {
   it("covers every colour token app.css defines (except the accent setting)", () => {
@@ -19,11 +19,25 @@ describe("custom themes", () => {
   it("computes contrast and warns about unreadable text", () => {
     expect(contrast("#000", "#fff")).toBeCloseTo(21, 0);
     expect(contrast("#777", "#777")).toBeCloseTo(1, 5);
-    expect(contrast("hsl(0 0% 0%)", "#fff")).toBeNull();
+    expect(contrast("inherit", "#fff")).toBeNull();
+    expect(contrast("hsl(0 0% 0%)", "#fff")).toBeCloseTo(21, 0);
     expect(contrastWarnings({ "--color-text-primary": "#c0caf5", "--color-bg": "#1a1b26" })).toEqual([]);
     expect(contrastWarnings({ "--color-text-primary": "#444", "--color-bg": "#333" })[0]).toMatch(/text primary on bg: contrast 1\.\d:1/);
     expect(toRgb("rgba(10, 20, 30, 0.5)")).toEqual([10, 20, 30]);
     expect(toHexInput("rgb(255, 0, 16)")).toBe("#ff0010");
+    expect(toHexInput("hsl(0 100% 50%)")).toBe("#ff0000");
+    expect(toHexInput("hsl(120, 100%, 25%)")).toBe("#008000");
+  });
+
+  it("keeps a token's transparency when the colour picker changes it", () => {
+    expect(alphaOf("rgba(158, 206, 106, 0.15)")).toBeCloseTo(0.15);
+    expect(alphaOf("rgb(1 2 3 / 50%)")).toBeCloseTo(0.5);
+    expect(alphaOf("#ff000080")).toBeCloseTo(128 / 255);
+    expect(alphaOf("#ff0000")).toBe(1);
+    expect(alphaOf("rgb(1, 2, 3)")).toBe(1);
+    expect(pickedColor("#9ece6a", "rgba(158, 206, 106, 0.15)")).toBe("rgba(158, 206, 106, 0.15)");
+    expect(pickedColor("#ff0000", "#00ff00")).toBe("#ff0000");
+    expect(pickedColor("#ff0000", "")).toBe("#ff0000");
   });
 
   it("imports theme files, rejecting bad ones with a reason", () => {

@@ -114,6 +114,16 @@ describe("per-repository settings store", () => {
     expect(root.setAttribute).toHaveBeenLastCalledWith("data-theme", "dark");
   });
 
+  it("merges list edits made from the latest value over another window's save", () => {
+    vi.useFakeTimers();
+    const theme = (id: string) => ({ id, name: id, base: "dark" as const, colors: {} });
+    s.updateGlobalSettingsWith((cur) => ({ custom_themes: [...(cur.custom_themes ?? []), theme("mine")] }));
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), custom_themes: [theme("theirs")] });
+    expect(get(s.globalSettings).custom_themes.map((t) => t.id)).toEqual(["theirs", "mine"]);
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+  });
+
   it("clears overrides back to the global value", () => {
     s.setRepoOverride("/b", "tab_size", 8);
     s.clearRepoOverride("/a", "context_lines");
