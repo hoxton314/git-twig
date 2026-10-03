@@ -13,9 +13,8 @@
 import { derived, writable, get } from "svelte/store";
 import { en, type MessageKey } from "./en";
 import { pl } from "./pl";
-
-export type Plural = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string };
-export type Message = string | Plural;
+import type { Message } from "./types";
+export type { Plural, Message } from "./types";
 export type Catalog = Record<MessageKey, Message>;
 export type { MessageKey };
 
