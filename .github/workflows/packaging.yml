@@ -58,13 +58,15 @@ jobs:
       - name: Check the AppImage
         run: |
           set -euo pipefail
-          f=$(ls src-tauri/target/release/bundle/appimage/*.AppImage)
+          f=$(realpath src-tauri/target/release/bundle/appimage/*.AppImage)
           ls -la "$f"
           chmod +x "$f"
           cd "$(mktemp -d)"
           "$f" --appimage-extract > /dev/null
           test -x squashfs-root/usr/bin/twig
-          test -f squashfs-root/twig.desktop || ls squashfs-root
+          # Desktop entry and icon at the AppImage root (named after productName).
+          test -f squashfs-root/Twig.desktop
+          grep -q '^Exec=twig' squashfs-root/Twig.desktop
           # The binary knows it was bundled as an AppImage, which is how the
           # in-app updater decides it may replace this file.
           grep -aq "__TAURI_BUNDLE_TYPE_VAR_APP" squashfs-root/usr/bin/twig
