@@ -4,7 +4,7 @@
 # See README.md here for local builds and Flathub submission.
 app-id: dev.twig.app
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 command: twig
 
@@ -35,6 +35,14 @@ modules:
     build-commands:
       - make -j"$FLATPAK_BUILDER_N_JOBS" prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1 all
       - make prefix=/app NO_TCLTK=1 NO_GETTEXT=1 NO_PERL=1 NO_PYTHON=1 INSTALL_SYMLINKS=1 install
+      # `credential.helper=libsecret` from the user's config works in the sandbox.
+      - make -C contrib/credential/libsecret
+      - install -Dm755 contrib/credential/libsecret/git-credential-libsecret /app/libexec/git-core/git-credential-libsecret
+      # Read the host user's git config like git outside the sandbox does:
+      # Flatpak points XDG_CONFIG_HOME into ~/.var/app, which would hide
+      # ~/.config/git/config and ~/.config/git/ignore.
+      - rm /app/bin/git
+      - install -Dm755 git-wrapper.sh /app/bin/git
     cleanup:
       - /share/man
       - /share/gitweb
@@ -42,6 +50,8 @@ modules:
       - type: archive
         url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
         sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
+      - type: file
+        path: git-wrapper.sh
 
   - name: twig
     buildsystem: simple

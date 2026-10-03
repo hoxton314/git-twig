@@ -106,7 +106,7 @@ jobs:
     needs: linux
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
 
     steps:
