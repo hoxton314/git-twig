@@ -13,7 +13,9 @@
 $ErrorActionPreference = "Stop"
 
 function Set-Env([string]$name, [string]$value) {
-  Add-Content -Path $env:GITHUB_ENV -Value "$name=$value"
+  # Multi-line-safe form, in case a value contains a newline.
+  $delim = "TWIG_EOF_" + [guid]::NewGuid().ToString("N")
+  Add-Content -Path $env:GITHUB_ENV -Value "$name<<$delim`n$value`n$delim"
 }
 
 $overlay = Join-Path $env:RUNNER_TEMP "twig-windows-signing.json"
@@ -21,9 +23,14 @@ $timestamp = "http://timestamp.digicert.com"
 
 if ($env:WINDOWS_CERTIFICATE -and $env:WINDOWS_CERTIFICATE_PASSWORD) {
   $pfx = Join-Path $env:RUNNER_TEMP "twig-signing.pfx"
-  [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+  $b64 = $env:WINDOWS_CERTIFICATE -replace '\s', ''
+  [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($b64))
   $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
-  $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+  # A .pfx often carries its issuer chain too: sign with the certificate
+  # that has the private key.
+  $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password |
+    Where-Object HasPrivateKey | Select-Object -First 1
+  if (-not $cert) { throw "WINDOWS_CERTIFICATE has no certificate with a private key" }
   Remove-Item $pfx
   @{ bundle = @{ windows = @{
       certificateThumbprint = $cert.Thumbprint

@@ -13,20 +13,25 @@ set -euo pipefail
 
 out="${GITHUB_ENV:?not running in GitHub Actions}"
 
+# Write NAME=value for later steps in the multi-line-safe form.
+put() {
+  local delim="TWIG_EOF_$RANDOM$RANDOM"
+  printf '%s<<%s\n%s\n%s\n' "$1" "$delim" "$2" "$delim" >> "$out"
+}
+
+# base64 tools often wrap lines; the certificate must be one line.
+APPLE_CERTIFICATE="$(printf '%s' "${APPLE_CERTIFICATE:-}" | tr -d '\n\r\t ')"
+
 if [[ -n "${APPLE_CERTIFICATE:-}" && -n "${APPLE_CERTIFICATE_PASSWORD:-}" && -n "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-  {
-    echo "APPLE_CERTIFICATE=${APPLE_CERTIFICATE}"
-    echo "APPLE_CERTIFICATE_PASSWORD=${APPLE_CERTIFICATE_PASSWORD}"
-    echo "APPLE_SIGNING_IDENTITY=${APPLE_SIGNING_IDENTITY}"
-  } >> "$out"
+  put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+  put APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+  put APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
   echo "macOS: code signing ON (${APPLE_SIGNING_IDENTITY})"
 
   if [[ -n "${APPLE_ID:-}" && -n "${APPLE_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
-    {
-      echo "APPLE_ID=${APPLE_ID}"
-      echo "APPLE_PASSWORD=${APPLE_PASSWORD}"
-      echo "APPLE_TEAM_ID=${APPLE_TEAM_ID}"
-    } >> "$out"
+    put APPLE_ID "$APPLE_ID"
+    put APPLE_PASSWORD "$APPLE_PASSWORD"
+    put APPLE_TEAM_ID "$APPLE_TEAM_ID"
     echo "macOS: notarization ON"
   else
     echo "macOS: notarization off (APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID are all needed)"
