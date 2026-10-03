@@ -15,6 +15,9 @@ describe("CI finished notifications", () => {
     expect(ciTransition("pending", "success", "failures")).toBeNull();
     expect(ciTransition("pending", "failure", "failures")).toBe("failure");
     expect(ciTransition("pending", "failure", "off")).toBeNull();
+    // Not registered yet when first checked (fresh push), then finished.
+    expect(ciTransition("none", "success", "all")).toBe("success");
+    expect(ciTransition("none", "none", "all")).toBeNull();
     // Already finished when first seen, or still running: nothing to say.
     expect(ciTransition(undefined, "failure", "all")).toBeNull();
     expect(ciTransition("success", "success", "all")).toBeNull();
