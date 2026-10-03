@@ -67,6 +67,7 @@ describe("resolveLocale", () => {
     expect(resolveLocale("system", ["de-DE"])).toBe("en");
     expect(resolveLocale("system", [])).toBe("en");
     expect(resolveLocale("xx", [])).toBe("en");
+    expect(resolveLocale("constructor", ["toString"])).toBe("en");
   });
 });
 

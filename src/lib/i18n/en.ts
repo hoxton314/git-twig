@@ -84,7 +84,8 @@ export const en = {
   "tabs.repositories": "Repositories",
   "tabs.sectionGroups": "Groups",
   "tabs.sectionRecent": "Favorites & recent",
-  "tabs.openGroup": "Open the “{name}” group ({count})",
+  "tabs.openGroup": "Open the “{name}” group ({repos})",
+  "tabs.repoCount": { one: "{count} repo", other: "{count} repos" },
   "tabs.folderNotFound": "{path} (folder not found)",
   "tabs.missing": "missing",
   "tabs.open": "open",
@@ -146,6 +147,6 @@ export const en = {
   "time.minutesAgo": "{count} min ago",
   "time.hoursAgo": "{count} h ago",
   "time.daysAgo": "{count} d ago",
-} as const satisfies Record<string, string | { other: string }>;
+} as const satisfies Record<string, string | (Partial<Record<Intl.LDMLPluralRule, string>> & { other: string })>;
 
 export type MessageKey = keyof typeof en;

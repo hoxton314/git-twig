@@ -31,10 +31,10 @@ export const languageSetting = writable<string>("system");
 
 /** Pick a supported locale for a setting value and the system's languages. */
 export function resolveLocale(setting: string, systemLanguages: readonly string[]): Locale {
-  if (setting in CATALOGS) return setting as Locale;
+  if (Object.hasOwn(CATALOGS, setting)) return setting as Locale;
   for (const tag of systemLanguages) {
     const base = tag.toLowerCase().split("-")[0];
-    if (base in CATALOGS) return base as Locale;
+    if (Object.hasOwn(CATALOGS, base)) return base as Locale;
   }
   return "en";
 }

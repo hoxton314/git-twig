@@ -461,13 +461,13 @@
               role="option"
               aria-selected={idx === selectedIdx}
               disabled={row.missing}
-              title={row.kind === "group" ? $t("tabs.openGroup", { name: row.name, count: row.branch ?? "" }) : row.missing ? $t("tabs.folderNotFound", { path: row.path }) : row.path}
+              title={row.kind === "group" ? $t("tabs.openGroup", { name: row.name, repos: $t("tabs.repoCount", { count: row.count ?? 0 }) }) : row.missing ? $t("tabs.folderNotFound", { path: row.path }) : row.path}
               onclick={() => activateRow(row)}
               onmousemove={() => { if (!row.missing) selectedPath = row.path; }}
             >
               {#if row.kind === "favorite"}<Pin size={14} />{:else if row.kind === "recent"}<History size={14} />{:else}<GitBranch size={14} />{/if}
               <span class="tab-menu-repo-name">{#each highlightRuns(row.name, row.nameHits) as run, k (k)}{#if run.hit}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</span>
-              {#if row.kind === "group"}<span class="tab-menu-repo-branch">{row.branch}</span>{:else if row.missing}<span class="tab-menu-repo-branch">{$t("tabs.missing")}</span>{:else if row.open}<span class="tab-menu-repo-branch">{$t("tabs.open")}</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
+              {#if row.kind === "group"}<span class="tab-menu-repo-branch">{$t("tabs.repoCount", { count: row.count ?? 0 })}</span>{:else if row.missing}<span class="tab-menu-repo-branch">{$t("tabs.missing")}</span>{:else if row.open}<span class="tab-menu-repo-branch">{$t("tabs.open")}</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
             </button>
           {/each}
         {/each}

@@ -15,6 +15,8 @@ export interface RepoMenuEntry {
   name: string;
   branch: string | null;
   kind: RepoMenuKind;
+  /** Number of repositories in a group entry. */
+  count?: number;
   /** Already open as a tab (selecting switches to it). */
   open: boolean;
   /** Folder no longer exists: shown dimmed, never selectable. */
@@ -46,7 +48,8 @@ export function buildEntries(
   const out: RepoMenuEntry[] = groups.map((g) => ({
     path: `${GROUP_PREFIX}${g.id}`,
     name: g.name,
-    branch: `${g.paths.length} repo${g.paths.length === 1 ? "" : "s"}`,
+    branch: null,
+    count: g.paths.length,
     kind: "group",
     open: g.paths.length > 0 && g.paths.every((p) => openPaths.has(p)),
     missing: g.paths.length === 0,

@@ -79,9 +79,9 @@ describe("repo menu", () => {
     ]);
     const sections = filterEntries(withGroups, "");
     expect(sections[0].title).toBe("Groups");
-    expect(sections[0].rows.map((r) => [r.path, r.branch, r.open, r.missing])).toEqual([
-      ["group:1", "2 repos", false, false],
-      ["group:2", "0 repos", false, true],
+    expect(sections[0].rows.map((r) => [r.path, r.count, r.open, r.missing])).toEqual([
+      ["group:1", 2, false, false],
+      ["group:2", 0, false, true],
     ]);
     expect(flatRows(filterEntries(withGroups, "work")).map((r) => r.path)).toEqual(["group:1"]);
     // The internal id isn't searchable.
