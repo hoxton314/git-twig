@@ -6,6 +6,7 @@
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import * as tauri from "./tauri";
 import { toastError } from "./stores/toasts";
+import { stopSessionSaving } from "./stores/repos";
 
 export const MAIN_WINDOW = "main";
 
@@ -30,10 +31,17 @@ export async function openNewWindow(): Promise<void> {
   }
 }
 
-/** Main window at startup: reopen the windows that were open last time. */
-export async function restoreSavedWindows(): Promise<void> {
+/**
+ * Main window at startup: reopen the windows that were open last time, or,
+ * when tabs aren't restored, forget them.
+ */
+export async function restoreSavedWindows(restore: boolean): Promise<void> {
   if (!isMainWindow()) return;
   try {
+    if (!restore) {
+      await tauri.forgetOtherWindows();
+      return;
+    }
     for (const label of await tauri.savedWindows()) await tauri.openNewWindow(label);
   } catch (err) {
     console.error("restoring windows:", err);
@@ -47,7 +55,11 @@ export async function restoreSavedWindows(): Promise<void> {
 export async function onWindowClosing(): Promise<void> {
   try {
     const others = (await getAllWindows()).filter((w) => w.label !== windowLabel());
-    if (others.length > 0) await tauri.forgetWindowSession();
+    if (others.length > 0) {
+      // A tab save still pending would write this window back after the forget.
+      stopSessionSaving();
+      await tauri.forgetWindowSession();
+    }
   } catch {
     // Keep the session if we can't tell.
   }

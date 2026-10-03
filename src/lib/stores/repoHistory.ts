@@ -39,6 +39,7 @@ function persist() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
+    pendingOps = [];
     const value = get(repoHistory);
     tauri
       .saveRepoHistory(value)
@@ -76,8 +77,12 @@ export async function refreshMissingPaths() {
   }
 }
 
+/** Changes not yet saved, replayed over history another window saved. */
+let pendingOps: ((h: RepoHistory) => RepoHistory)[] = [];
+
 async function mutate(fn: (h: RepoHistory) => RepoHistory) {
   await ready;
+  pendingOps.push(fn);
   repoHistory.update(fn);
   persist();
 }
@@ -175,5 +180,7 @@ export function findGroup(id: string): RepoGroup | undefined {
 /** Take the history another window just saved (not re-saved). */
 export function applyRemoteHistory(payload: unknown) {
   const h = payload as RepoHistory;
-  repoHistory.set({ recent: h.recent ?? [], favorites: h.favorites ?? [], groups: h.groups ?? [] });
+  const base: RepoHistory = { recent: h.recent ?? [], favorites: h.favorites ?? [], groups: h.groups ?? [] };
+  // Our unsaved changes go on top; the pending save then writes the merge.
+  repoHistory.set(pendingOps.reduce((acc, f) => f(acc), base));
 }

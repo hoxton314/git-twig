@@ -73,6 +73,23 @@ export const globalSettings = writable<AppSettings>({ ...defaults });
 export const repoOverrides = writable<RepoOverrides>({});
 
 /**
+ * Local changes not yet saved, replayed on top of a value another window
+ * saved meanwhile, so neither window's change is lost.
+ */
+let pendingGlobal: ((s: AppSettings) => AppSettings)[] = [];
+let pendingOverrides: ((o: RepoOverrides) => RepoOverrides)[] = [];
+
+function changeGlobal(fn: (s: AppSettings) => AppSettings) {
+  pendingGlobal.push(fn);
+  globalSettings.update(fn);
+}
+
+function changeOverrides(fn: (o: RepoOverrides) => RepoOverrides) {
+  pendingOverrides.push(fn);
+  repoOverrides.update(fn);
+}
+
+/**
  * Effective settings for the active repository: the global settings with
  * its overrides applied. Read-only; this is what the app reads everywhere.
  */
@@ -88,6 +105,9 @@ let loaded = false;
 
 /** Load settings from disk. Call once at startup. */
 export async function loadSettings() {
+  // What's on disk now is the baseline: nothing local is pending.
+  pendingGlobal = [];
+  pendingOverrides = [];
   try {
     const s = await tauri.loadSettings();
     // Merge over defaults so fields missing from older backends/files are filled.
@@ -126,6 +146,7 @@ function persistRepoOverrides() {
   if (repoSaveTimeout) clearTimeout(repoSaveTimeout);
   repoSaveTimeout = setTimeout(() => {
     repoSaveTimeout = null;
+    pendingOverrides = [];
     const value = get(repoOverrides) as Record<string, Record<string, unknown>>;
     tauri.saveRepoSettings(value).then(() => tauri.emitSync("repo-settings", value)).catch((e) => {
       console.error("Failed to save repository settings:", e);
@@ -144,8 +165,12 @@ repoOverrides.subscribe(() => {
 export function applyRemoteSettings(kind: "settings" | "repo-settings", payload: unknown) {
   applyingRemote = true;
   try {
-    if (kind === "settings") globalSettings.set({ ...defaults, ...(payload as AppSettings) });
-    else repoOverrides.set(payload as RepoOverrides);
+    // Our unsaved changes go on top; the pending save then writes the merge.
+    if (kind === "settings") {
+      globalSettings.set(pendingGlobal.reduce((acc, f) => f(acc), { ...defaults, ...(payload as AppSettings) }));
+    } else {
+      repoOverrides.set(pendingOverrides.reduce((acc, f) => f(acc), payload as RepoOverrides));
+    }
   } finally {
     applyingRemote = false;
   }
@@ -153,12 +178,12 @@ export function applyRemoteSettings(kind: "settings" | "repo-settings", payload:
 
 /** Override `key` for repository `path` (starting from the current effective value). */
 export function setRepoOverride<K extends OverridableKey>(path: string, key: K, value: AppSettings[K]) {
-  repoOverrides.update((all) => ({ ...all, [path]: { ...(all[path] ?? {}), [key]: value } as RepoOverride }));
+  changeOverrides((all) => ({ ...all, [path]: { ...(all[path] ?? {}), [key]: value } as RepoOverride }));
 }
 
 /** Drop `path`'s override of `key` (back to the global value). */
 export function clearRepoOverride(path: string, key: OverridableKey) {
-  repoOverrides.update((all) => {
+  changeOverrides((all) => {
     const current = { ...(all[path] ?? {}) };
     delete current[key];
     const next = { ...all };
@@ -170,7 +195,7 @@ export function clearRepoOverride(path: string, key: OverridableKey) {
 
 /** Drop every override of repository `path`. */
 export function clearRepoOverrides(path: string) {
-  repoOverrides.update((all) => {
+  changeOverrides((all) => {
     const next = { ...all };
     delete next[path];
     return next;
@@ -183,6 +208,7 @@ function persistSettings() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
+    pendingGlobal = [];
     const value = get(globalSettings);
     tauri.saveSettings(value).then(() => tauri.emitSync("settings", value)).catch((e) => {
       console.error("Failed to save settings:", e);
@@ -200,6 +226,7 @@ export async function flushSettings(): Promise<void> {
     saveTimeout = null;
   }
   if (!loaded) return;
+  pendingGlobal = [];
   const value = get(globalSettings);
   await tauri.saveSettings(value);
   tauri.emitSync("settings", value);
@@ -207,6 +234,7 @@ export async function flushSettings(): Promise<void> {
     clearTimeout(repoSaveTimeout);
     repoSaveTimeout = null;
     if (repoLoaded) {
+      pendingOverrides = [];
       const overrides = get(repoOverrides) as Record<string, Record<string, unknown>>;
       await tauri.saveRepoSettings(overrides);
       tauri.emitSync("repo-settings", overrides);
@@ -280,18 +308,18 @@ settings.subscribe((s) => {
 export function updateSettings(patch: Partial<AppSettings>) {
   const path = get(activeRepoPath);
   const { global, repo } = splitPatch(patch, get(repoOverrides), path);
-  if (Object.keys(global).length > 0) globalSettings.update((s) => ({ ...s, ...global }));
+  if (Object.keys(global).length > 0) changeGlobal((s) => ({ ...s, ...global }));
   if (path && Object.keys(repo).length > 0) {
-    repoOverrides.update((all) => ({ ...all, [path]: { ...(all[path] ?? {}), ...repo } }));
+    changeOverrides((all) => ({ ...all, [path]: { ...(all[path] ?? {}), ...repo } }));
   }
 }
 
 /** Update the global settings only (the Settings screen edits these). */
 export function updateGlobalSettings(patch: Partial<AppSettings>) {
-  globalSettings.update((s) => ({ ...s, ...patch }));
+  changeGlobal((s) => ({ ...s, ...patch }));
 }
 
 /** Replace all global settings (import / reset). Overrides are kept. */
 export function replaceGlobalSettings(next: AppSettings) {
-  globalSettings.set(next);
+  changeGlobal(() => next);
 }

@@ -77,6 +77,11 @@ export function forgetWindowSession(): Promise<void> {
   return invoke<void>("forget_window_session");
 }
 
+/** Drop every saved window except the main one (tabs aren't restored). */
+export function forgetOtherWindows(): Promise<void> {
+  return invoke<void>("forget_other_windows");
+}
+
 /** Labels of the extra windows saved last time. */
 export function savedWindows(): Promise<string[]> {
   return invoke<string[]>("saved_windows");

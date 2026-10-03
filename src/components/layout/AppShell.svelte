@@ -86,7 +86,7 @@
       .then(async (unlisten) => {
         await drainPaths();
         // Main window: reopen the other windows from last time.
-        void restoreSavedWindows();
+        void restoreSavedWindows(get(settings).restore_tabs_on_startup);
         return unlisten;
       })
       .catch((err) => {

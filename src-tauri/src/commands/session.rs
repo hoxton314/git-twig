@@ -135,6 +135,13 @@ pub async fn forget_window_session(app: tauri::AppHandle, window: tauri::Window)
     update(&app, |data| data.forget(window.label()))
 }
 
+/// "Restore tabs on startup" is off: forget the extra windows (else they'd
+/// keep their old entries forever).
+#[tauri::command]
+pub async fn forget_other_windows(app: tauri::AppHandle) -> Result<(), TwigError> {
+    update(&app, |data| data.windows.retain(|l, _| l == MAIN_WINDOW))
+}
+
 /// Labels of the extra windows saved last time (reopened by the main window).
 #[tauri::command]
 pub async fn saved_windows(app: tauri::AppHandle) -> Result<Vec<String>, TwigError> {

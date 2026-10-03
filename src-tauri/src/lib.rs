@@ -75,6 +75,7 @@ pub fn run() {
             commands::session::load_session,
             commands::session::forget_window_session,
             commands::session::saved_windows,
+            commands::session::forget_other_windows,
             commands::session::open_new_window,
             // Settings
             commands::settings::load_settings,
