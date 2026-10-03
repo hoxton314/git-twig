@@ -12,6 +12,7 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/src/commands/updater.rs'
       - 'packaging/**'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 permissions:
@@ -128,3 +129,65 @@ jobs:
           manifest-path: packaging/flatpak/dev.twig.app.yml
           bundle: twig.flatpak
           cache-key: flatpak-builder-${{ hashFiles('packaging/flatpak/dev.twig.app.yml') }}
+
+  # macOS and Windows bundles through the same signing scripts as the
+  # release. PRs never get secrets, so this checks the unsigned path: the
+  # scripts must leave a build without signing configuration untouched.
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bundles: app
+          - os: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Configure macOS code signing
+        if: matrix.os == 'macos-latest'
+        run: bash .github/scripts/signing-macos.sh
+
+      - name: Configure Windows code signing
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: ./.github/scripts/signing-windows.ps1
+
+      - name: Build
+        shell: bash
+        run: |
+          # TWIG_SIGN_ARGS is "--config <file>" (two words) when signing is set up.
+          # shellcheck disable=SC2086
+          npx tauri build --bundles ${{ matrix.bundles }} ${TWIG_SIGN_ARGS:-} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Check the bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "${TWIG_SIGN_ARGS:-}" || { echo "signing configured without secrets?"; exit 1; }
+          if [ "${{ matrix.os }}" = macos-latest ]; then
+            ls -d src-tauri/target/release/bundle/macos/Twig.app
+            # The executable (named after the binary or the product).
+            find src-tauri/target/release/bundle/macos/Twig.app/Contents/MacOS -type f -perm -u+x | grep -q .
+          else
+            ls src-tauri/target/release/bundle/nsis/*-setup.exe
+          fi
+
