@@ -1,0 +1,78 @@
+name: Packaging
+
+# Builds the Linux packages the release workflow ships, on the same runner,
+# for PRs that touch packaging, so a broken bundle shows up before a tag.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/packaging.yml'
+      - 'src-tauri/tauri.conf.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/src/commands/updater.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # Same bundle as the release, without the updater signature (that key
+      # only exists in the release environment).
+      - name: Build AppImage
+        run: npx tauri build --bundles appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Check the AppImage
+        run: |
+          set -euo pipefail
+          f=$(realpath src-tauri/target/release/bundle/appimage/*.AppImage)
+          ls -la "$f"
+          chmod +x "$f"
+          cd "$(mktemp -d)"
+          "$f" --appimage-extract > /dev/null
+          test -x squashfs-root/usr/bin/twig
+          # Desktop entry and icon at the AppImage root (named after productName).
+          test -f squashfs-root/Twig.desktop
+          grep -q '^Exec=twig' squashfs-root/Twig.desktop
+          # The binary knows it was bundled as an AppImage, which is how the
+          # in-app updater decides it may replace this file.
+          grep -aq "__TAURI_BUNDLE_TYPE_VAR_APP" squashfs-root/usr/bin/twig
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: twig-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 7

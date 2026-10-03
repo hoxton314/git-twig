@@ -36,6 +36,10 @@ Primary: **Linux (Wayland via WebKitGTK)**. Also works on X11, macOS, and Window
 
 NVIDIA + Wayland is handled automatically at runtime (GPU detection in `main.rs`).
 
+Release downloads: `.deb` and `.rpm` (Debian/Ubuntu, Fedora/openSUSE), an **AppImage** for any other
+Linux distribution (updates itself in place), the AUR package `twig-bin`, a `.dmg` for macOS and an
+installer for Windows.
+
 ## Getting Started
 
 ### Prerequisites

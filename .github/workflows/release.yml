@@ -15,7 +15,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            args: --bundles deb,rpm
+            args: --bundles deb,rpm,appimage
           - os: macos-latest
             args: --target universal-apple-darwin --bundles app,dmg
           - os: windows-latest
@@ -67,7 +67,7 @@ jobs:
           releaseBody: |
             See the assets below to download and install Twig v__VERSION__.
 
-            **Linux**: Download the `.deb` or `.rpm`
+            **Linux**: Download the `.deb` or `.rpm`, or the `.AppImage` for any other distribution (it updates itself)
             **macOS**: Download the `.dmg`
             **Windows**: Download the `.exe` installer
           releaseDraft: true
@@ -96,7 +96,7 @@ jobs:
         run: |
           gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -p latest.json
           cat latest.json
-          for key in linux-x86_64-deb linux-x86_64-rpm darwin-aarch64 darwin-x86_64 windows-x86_64; do
+          for key in linux-x86_64-deb linux-x86_64-rpm linux-x86_64-appimage darwin-aarch64 darwin-x86_64 windows-x86_64; do
             jq -e --arg k "$key" '.platforms[$k].url and .platforms[$k].signature' latest.json > /dev/null \
               || { echo "::error::latest.json is missing updater platform '$key'"; exit 1; }
           done
