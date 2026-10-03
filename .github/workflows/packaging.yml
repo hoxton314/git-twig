@@ -89,7 +89,8 @@ jobs:
           test "$(dpkg-deb --field "$d" Architecture)" = "${{ matrix.deb_arch }}"
           # Not `| grep -q`: with pipefail an early grep exit fails the step (SIGPIPE).
           dpkg-deb --contents "$d" > "$RUNNER_TEMP/deb-contents.txt"
-          grep -q './usr/bin/twig$' "$RUNNER_TEMP/deb-contents.txt"
+          # Tauri's debs list paths without the usual "./" prefix.
+          grep -qE '(^|[ /])usr/bin/twig$' "$RUNNER_TEMP/deb-contents.txt"
 
       - uses: actions/upload-artifact@v4
         with:
