@@ -12,6 +12,11 @@ jobs:
   build-and-release:
     strategy:
       fail-fast: false
+      # One at a time: every job read-modify-writes latest.json on the
+      # release, and two finishing together (e.g. the x86_64 and ARM64 Linux
+      # jobs) could drop each other's updater entries. Slower, but releases
+      # are rare and a lost entry breaks updates for that platform.
+      max-parallel: 1
       matrix:
         include:
           - os: ubuntu-22.04
@@ -37,7 +42,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            xdg-utils
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

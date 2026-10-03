@@ -42,7 +42,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            xdg-utils
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -86,7 +87,9 @@ jobs:
           d=$(realpath src-tauri/target/release/bundle/deb/*.deb)
           dpkg-deb --info "$d"
           test "$(dpkg-deb --field "$d" Architecture)" = "${{ matrix.deb_arch }}"
-          dpkg-deb --contents "$d" | grep -q './usr/bin/twig$'
+          # Not `| grep -q`: with pipefail an early grep exit fails the step (SIGPIPE).
+          dpkg-deb --contents "$d" > "$RUNNER_TEMP/deb-contents.txt"
+          grep -q './usr/bin/twig$' "$RUNNER_TEMP/deb-contents.txt"
 
       - uses: actions/upload-artifact@v4
         with:
