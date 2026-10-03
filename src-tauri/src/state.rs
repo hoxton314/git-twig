@@ -1,5 +1,5 @@
 use git2::Repository;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -8,6 +8,9 @@ use crate::error::TwigError;
 /// Per-repo metadata. git2 handles are opened per read (see `read_repo`).
 pub struct OpenRepo {
     pub path: PathBuf,
+    /// Labels of the windows that have this repository open as a tab. The
+    /// entry goes away when the last one closes it.
+    pub windows: HashSet<String>,
 }
 
 /// Thread-safe application state holding all currently open repositories.
@@ -56,8 +59,70 @@ impl AppState {
     }
 }
 
+impl AppState {
+    /// Record that `window` has the repository `key` (at `path`) open.
+    pub fn register(&self, key: String, path: PathBuf, window: &str) -> Result<(), TwigError> {
+        let mut repos = self.repos.lock().map_err(|_| TwigError::Lock)?;
+        let entry = repos.entry(key).or_insert_with(|| OpenRepo { path: path.clone(), windows: HashSet::new() });
+        entry.path = path;
+        entry.windows.insert(window.to_string());
+        Ok(())
+    }
+
+    /// `window` closed its tab for `key`; forget the repository once no
+    /// window has it open.
+    pub fn release(&self, key: &str, window: &str) -> Result<(), TwigError> {
+        let mut repos = self.repos.lock().map_err(|_| TwigError::Lock)?;
+        if let Some(entry) = repos.get_mut(key) {
+            entry.windows.remove(window);
+            if entry.windows.is_empty() {
+                repos.remove(key);
+            }
+        }
+        Ok(())
+    }
+
+    /// A window went away: release everything it had open.
+    pub fn release_window(&self, window: &str) -> Result<(), TwigError> {
+        let mut repos = self.repos.lock().map_err(|_| TwigError::Lock)?;
+        repos.retain(|_, entry| {
+            entry.windows.remove(window);
+            !entry.windows.is_empty()
+        });
+        Ok(())
+    }
+}
+
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repositories_stay_open_while_any_window_uses_them() {
+        let state = AppState::new();
+        let p = PathBuf::from("/r");
+        state.register("/r".into(), p.clone(), "main").unwrap();
+        state.register("/r".into(), p.clone(), "win-2").unwrap();
+        state.register("/s".into(), PathBuf::from("/s"), "win-2").unwrap();
+
+        state.release("/r", "main").unwrap();
+        assert!(state.repo_path("/r").is_ok(), "win-2 still has it");
+        state.release("/r", "nope").unwrap();
+        state.release_window("win-2").unwrap();
+        assert!(state.repo_path("/r").is_err());
+        assert!(state.repo_path("/s").is_err());
+
+        // Closing the same tab twice is harmless.
+        state.register("/r".into(), p, "main").unwrap();
+        state.release("/r", "main").unwrap();
+        state.release("/r", "main").unwrap();
+        assert!(state.repo_path("/r").is_err());
+    }
+}
+

@@ -20,13 +20,14 @@
   import { activeRepo, restoreSession, activeRepoPath, openRepos, removeRepo, addRepo, moveRepo } from "../../lib/stores/repos";
   import { selectedCommitOid, selectedWorkingFile, refreshAll } from "../../lib/stores/graph";
   import { diffPanelRatio, sidebarWidth, sidebarOpen, stagingWidth, currentView } from "../../lib/stores/ui";
-  import { loadSettings, settings, flushSettings } from "../../lib/stores/settings";
+  import { loadSettings, settings, flushSettings, applyRemoteSettings } from "../../lib/stores/settings";
   import { initAutoFetch } from "../../lib/stores/autofetch";
   import { initCiWatch } from "../../lib/ciWatch";
+  import { onWindowClosing, openNewWindow, restoreSavedWindows } from "../../lib/windows";
   import { installKeybindings, onAction } from "../../lib/keybindings";
   import { togglePalette } from "../../lib/palette";
   import { installBuiltinPaletteProviders } from "../../lib/paletteProviders";
-  import { loadRepoHistory, toggleFavoriteRepo, isFavoriteRepo } from "../../lib/stores/repoHistory";
+  import { loadRepoHistory, toggleFavoriteRepo, isFavoriteRepo, applyRemoteHistory } from "../../lib/stores/repoHistory";
   import { trackOperation } from "../../lib/stores/operations";
   import { toast, toastError } from "../../lib/stores/toasts";
   import { updater, checkForUpdates, ensureUpdaterSupport } from "../../lib/stores/updater";
@@ -84,6 +85,8 @@
       .then(() => tauri.onOpenPaths(() => void drainPaths()))
       .then(async (unlisten) => {
         await drainPaths();
+        // Main window: reopen the other windows from last time.
+        void restoreSavedWindows();
         return unlisten;
       })
       .catch((err) => {
@@ -100,6 +103,7 @@
     const unsubs = [
       onAction("open_repo", openRepoWithDialog),
       onAction("repo_dashboard", () => openDashboard(null)),
+      onAction("new_window", () => void openNewWindow()),
       onAction("lfs_manage", () => {
         if ($activeRepoPath) lfsPanelOpen.set(true);
       }),
@@ -237,8 +241,14 @@
     });
 
     // Settings saves are debounced; don't lose a change made right before quit.
+    // Other windows' saved settings / history.
+    const unlistenSync = tauri.onSync((kind, payload) => {
+      if (kind === "repo-history") applyRemoteHistory(payload);
+      else applyRemoteSettings(kind, payload);
+    });
     const unlistenClose = getCurrentWindow().onCloseRequested(async () => {
       await flushSettings().catch(() => {});
+      await onWindowClosing();
     });
 
     return () => {
@@ -246,6 +256,7 @@
       uninstallPalette();
       unlisten.then((fn) => fn());
       unlistenClose.then((fn) => fn());
+      unlistenSync.then((fn) => fn());
       stopAutoFetch();
       stopCiWatch();
       stopOpenPaths.then((unlisten) => unlisten());

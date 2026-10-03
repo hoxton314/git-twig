@@ -13,7 +13,14 @@ use tauri::{Emitter, Manager};
 
 use crate::error::TwigError;
 
-static PENDING_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// Queued paths and the window that should open them (`None`: whichever
+/// window asks first, i.e. the main window at startup).
+static PENDING_PATHS: Mutex<Vec<(Option<String>, String)>> = Mutex::new(Vec::new());
+
+/// `--new-window` (or `-n`): open the paths in a new window.
+pub(crate) fn wants_new_window(args: &[String]) -> bool {
+    args.iter().skip(1).take_while(|a| a.as_str() != "--").any(|a| a == "--new-window" || a == "-n")
+}
 
 /// Paths given on a command line (`argv[0]` excluded). Options (`-…`) are
 /// ignored until a `--`, after which every argument is a path. Relative
@@ -41,17 +48,28 @@ pub(crate) fn paths_from_args(args: &[String], cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-fn queue(paths: Vec<String>) {
+fn queue(target: Option<String>, paths: Vec<String>) {
     if let Ok(mut pending) = PENDING_PATHS.lock() {
-        pending.extend(paths);
+        pending.extend(paths.into_iter().map(|p| (target.clone(), p)));
     }
+}
+
+/// Take the queued paths for `window` (and untargeted ones).
+pub(crate) fn take_for(window: &str) -> Vec<String> {
+    let Ok(mut pending) = PENDING_PATHS.lock() else {
+        return Vec::new();
+    };
+    let (mine, rest): (Vec<_>, Vec<_>) =
+        std::mem::take(&mut *pending).into_iter().partition(|(t, _)| t.as_deref().map_or(true, |t| t == window));
+    *pending = rest;
+    mine.into_iter().map(|(_, p)| p).collect()
 }
 
 /// Queue this process's own command-line paths for the frontend.
 pub(crate) fn record_startup_args() {
     let args: Vec<String> = std::env::args().collect();
     let cwd = std::env::current_dir().unwrap_or_default();
-    queue(paths_from_args(&args, &cwd));
+    queue(None, paths_from_args(&args, &cwd));
 }
 
 /// Another `twig …` was started: focus this window and hand it the paths.
@@ -61,31 +79,63 @@ pub(crate) fn record_startup_args() {
 /// the main loop and would otherwise keep the second process alive).
 pub(crate) fn on_second_instance(app: &tauri::AppHandle, args: Vec<String>, cwd: String) {
     let paths = paths_from_args(&args, Path::new(&cwd));
-    let has_paths = !paths.is_empty();
-    queue(paths);
+    let new_window = wants_new_window(&args);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
+        if new_window {
+            match crate::commands::session::create_window(&app, None) {
+                // The new window drains its paths once it has loaded.
+                Ok(label) => queue(Some(label), paths),
+                Err(e) => log::warn!("could not open a new window: {e}"),
+            }
+            return;
         }
+        // The focused window (else the main one) opens the paths.
+        let windows = app.webview_windows();
+        let target = windows
+            .values()
+            .find(|w| w.is_focused().unwrap_or(false))
+            .or_else(|| windows.get("main"))
+            .or_else(|| windows.values().next())
+            .cloned();
+        let Some(window) = target else { return };
+        let has_paths = !paths.is_empty();
+        queue(Some(window.label().to_string()), paths);
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
         if has_paths {
-            // A ping: the frontend drains the queue when it is ready.
-            let _ = app.emit("open-paths", ());
+            // A ping: that window drains the queue when it is ready.
+            let _ = window.emit("open-paths", ());
         }
     });
 }
 
 /// Drain the queued command-line paths (startup and forwarded launches).
 #[tauri::command]
-pub async fn take_pending_paths() -> Result<Vec<String>, TwigError> {
-    let mut paths = PENDING_PATHS.lock().map_err(|_| TwigError::Lock)?;
-    Ok(std::mem::take(&mut *paths))
+pub async fn take_pending_paths(window: tauri::Window) -> Result<Vec<String>, TwigError> {
+    Ok(take_for(window.label()))
 }
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn paths_go_to_their_window_and_new_window_is_parsed() {
+        let args = |a: &[&str]| -> Vec<String> { std::iter::once("twig").chain(a.iter().copied()).map(String::from).collect() };
+        assert!(wants_new_window(&args(&["--new-window", "x"])));
+        assert!(wants_new_window(&args(&["-n"])));
+        assert!(!wants_new_window(&args(&["--", "--new-window"])), "a path after --");
+        assert!(!wants_new_window(&args(&["x"])));
+
+        queue(None, vec!["/any".into()]);
+        queue(Some("win-2".into()), vec!["/two".into()]);
+        queue(Some("main".into()), vec!["/main".into()]);
+        assert_eq!(take_for("win-2"), ["/any", "/two"]);
+        assert_eq!(take_for("win-2"), Vec::<String>::new());
+        assert_eq!(take_for("main"), ["/main"]);
+    }
+
     use super::*;
 
     #[test]

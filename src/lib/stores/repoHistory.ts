@@ -39,7 +39,11 @@ function persist() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
-    tauri.saveRepoHistory(get(repoHistory)).catch((e) => console.error("Failed to save repo history:", e));
+    const value = get(repoHistory);
+    tauri
+      .saveRepoHistory(value)
+      .then(() => tauri.emitSync("repo-history", value))
+      .catch((e) => console.error("Failed to save repo history:", e));
   }, 300);
 }
 
@@ -166,4 +170,10 @@ export function removeRepoFromGroup(id: string, path: string) {
 
 export function findGroup(id: string): RepoGroup | undefined {
   return get(repoHistory).groups.find((g) => g.id === id);
+}
+
+/** Take the history another window just saved (not re-saved). */
+export function applyRemoteHistory(payload: unknown) {
+  const h = payload as RepoHistory;
+  repoHistory.set({ recent: h.recent ?? [], favorites: h.favorites ?? [], groups: h.groups ?? [] });
 }

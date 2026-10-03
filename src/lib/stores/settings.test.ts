@@ -7,6 +7,7 @@ const tauri = vi.hoisted(() => ({
   loadRepoSettings: vi.fn(async () => ({ "/a": { context_lines: 9, theme: "light" }, "/b": { bogus: 1 } })),
   saveRepoSettings: vi.fn(async () => {}),
   setDiffReadDefaults: vi.fn(),
+  emitSync: vi.fn(),
 }));
 vi.mock("../tauri", () => tauri);
 vi.stubGlobal("document", {
@@ -63,6 +64,20 @@ describe("per-repository settings store", () => {
     vi.advanceTimersByTime(1000);
     vi.useRealTimers();
     expect(tauri.saveRepoSettings).not.toHaveBeenCalled();
+  });
+
+  it("takes another window's saved settings without saving or echoing them", async () => {
+    vi.useFakeTimers();
+    tauri.saveSettings.mockClear();
+    tauri.emitSync.mockClear();
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), tab_size: 7 });
+    s.applyRemoteSettings("repo-settings", { "/r": { context_lines: 1 } });
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
+    expect(get(s.globalSettings).tab_size).toBe(7);
+    expect(get(s.repoOverrides)).toEqual({ "/r": { context_lines: 1 } });
+    expect(tauri.saveSettings).not.toHaveBeenCalled();
+    expect(tauri.emitSync).not.toHaveBeenCalled();
   });
 
   it("clears overrides back to the global value", () => {

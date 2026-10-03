@@ -126,13 +126,30 @@ function persistRepoOverrides() {
   if (repoSaveTimeout) clearTimeout(repoSaveTimeout);
   repoSaveTimeout = setTimeout(() => {
     repoSaveTimeout = null;
-    tauri.saveRepoSettings(get(repoOverrides) as Record<string, Record<string, unknown>>).catch((e) => {
+    const value = get(repoOverrides) as Record<string, Record<string, unknown>>;
+    tauri.saveRepoSettings(value).then(() => tauri.emitSync("repo-settings", value)).catch((e) => {
       console.error("Failed to save repository settings:", e);
     });
   }, 300);
 }
 
-repoOverrides.subscribe(() => persistRepoOverrides());
+/** Set while applying another window's saved value (no re-save / echo). */
+let applyingRemote = false;
+
+repoOverrides.subscribe(() => {
+  if (!applyingRemote) persistRepoOverrides();
+});
+
+/** Take settings / overrides another window just saved. */
+export function applyRemoteSettings(kind: "settings" | "repo-settings", payload: unknown) {
+  applyingRemote = true;
+  try {
+    if (kind === "settings") globalSettings.set({ ...defaults, ...(payload as AppSettings) });
+    else repoOverrides.set(payload as RepoOverrides);
+  } finally {
+    applyingRemote = false;
+  }
+}
 
 /** Override `key` for repository `path` (starting from the current effective value). */
 export function setRepoOverride<K extends OverridableKey>(path: string, key: K, value: AppSettings[K]) {
@@ -166,7 +183,8 @@ function persistSettings() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     saveTimeout = null;
-    tauri.saveSettings(get(globalSettings)).catch((e) => {
+    const value = get(globalSettings);
+    tauri.saveSettings(value).then(() => tauri.emitSync("settings", value)).catch((e) => {
       console.error("Failed to save settings:", e);
     });
   }, 300);
@@ -182,11 +200,17 @@ export async function flushSettings(): Promise<void> {
     saveTimeout = null;
   }
   if (!loaded) return;
-  await tauri.saveSettings(get(globalSettings));
+  const value = get(globalSettings);
+  await tauri.saveSettings(value);
+  tauri.emitSync("settings", value);
   if (repoSaveTimeout) {
     clearTimeout(repoSaveTimeout);
     repoSaveTimeout = null;
-    if (repoLoaded) await tauri.saveRepoSettings(get(repoOverrides) as Record<string, Record<string, unknown>>);
+    if (repoLoaded) {
+      const overrides = get(repoOverrides) as Record<string, Record<string, unknown>>;
+      await tauri.saveRepoSettings(overrides);
+      tauri.emitSync("repo-settings", overrides);
+    }
   }
 }
 
@@ -234,7 +258,9 @@ function applyFontFamily(root: HTMLElement, prop: string, value: string | undefi
   else root.style.removeProperty(prop);
 }
 
-globalSettings.subscribe(() => persistSettings());
+globalSettings.subscribe(() => {
+  if (!applyingRemote) persistSettings();
+});
 
 settings.subscribe((s) => {
   applyVisualSettings(s);

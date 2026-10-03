@@ -14,3 +14,4 @@ export * from "./api/history";
 export * from "./api/workspace";
 export * from "./api/hosting";
 export * from "./api/lfs";
+export * from "./api/sync";

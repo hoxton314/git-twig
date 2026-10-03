@@ -67,8 +67,24 @@ export function saveSession(
   });
 }
 
+/** The calling window's saved tabs. */
 export function loadSession(): Promise<Session> {
   return invoke<Session>("load_session");
+}
+
+/** Drop the calling window's saved tabs (it's closing while others stay). */
+export function forgetWindowSession(): Promise<void> {
+  return invoke<void>("forget_window_session");
+}
+
+/** Labels of the extra windows saved last time. */
+export function savedWindows(): Promise<string[]> {
+  return invoke<string[]>("saved_windows");
+}
+
+/** Open another window (`label` reopens a saved one); resolves to its label. */
+export function openNewWindow(label: string | null): Promise<string> {
+  return invoke<string>("open_new_window", { label });
 }
 
 // ── Window ────────────────────────────────────────────────────────────
