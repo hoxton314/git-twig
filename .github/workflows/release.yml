@@ -61,6 +61,33 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Code signing is used only when its secrets exist (docs/SIGNING.md);
+      # otherwise these steps do nothing and the builds stay unsigned.
+      - name: Configure macOS code signing
+        if: matrix.os == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash .github/scripts/signing-macos.sh
+
+      - name: Configure Windows code signing
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ vars.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ vars.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_TRUSTED_SIGNING_PROFILE: ${{ vars.AZURE_TRUSTED_SIGNING_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: ./.github/scripts/signing-windows.ps1
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -81,7 +108,8 @@ jobs:
             **Windows**: Download the `.exe` installer
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          # TWIG_SIGN_ARGS: the Windows signing config overlay, when configured.
+          args: ${{ matrix.args }} ${{ env.TWIG_SIGN_ARGS }}
 
       - name: Upload AUR assets (desktop entry + icon)
         if: matrix.os == 'ubuntu-22.04'
