@@ -4,6 +4,7 @@ import { setOverrides } from "../keybindings";
 import { diffViewMode } from "./ui";
 import * as tauri from "../tauri";
 import { activeRepoPath } from "./repos";
+import { CUSTOM_PREFIX, isColor } from "../themes";
 import {
   effectiveSettings,
   sanitizeOverride,
@@ -61,6 +62,7 @@ const defaults: AppSettings = {
   // Notifications
   notify_new_commits: "current",
   notify_ci: "all",
+  custom_themes: [],
 };
 
 /** Default values for every setting (used by reset/import). */
@@ -242,10 +244,27 @@ export async function flushSettings(): Promise<void> {
   }
 }
 
+/** Colour tokens set by the current custom theme (cleared on switch). */
+let appliedThemeTokens: string[] = [];
+
 /** Apply visual settings to CSS custom properties. */
 function applyVisualSettings(s: AppSettings) {
   const root = document.documentElement;
-  root.setAttribute("data-theme", s.theme);
+  const custom = s.theme.startsWith(CUSTOM_PREFIX)
+    ? s.custom_themes?.find((t) => `${CUSTOM_PREFIX}${t.id}` === s.theme)
+    : undefined;
+  root.setAttribute("data-theme", custom ? custom.base : s.theme.startsWith(CUSTOM_PREFIX) ? "dark" : s.theme);
+  for (const token of appliedThemeTokens) root.style.removeProperty(token);
+  appliedThemeTokens = [];
+  if (custom) {
+    for (const [token, value] of Object.entries(custom.colors)) {
+      // Validated on import / edit; checked again since settings.json is user-editable.
+      if (value && isColor(value)) {
+        root.style.setProperty(token, value);
+        appliedThemeTokens.push(token);
+      }
+    }
+  }
   root.style.setProperty("--color-accent", s.accent_color);
   root.style.setProperty("font-size", `${s.font_size}px`);
   root.style.setProperty("--diff-font-size", `${s.diff_font_size}px`);
@@ -312,6 +331,14 @@ export function updateSettings(patch: Partial<AppSettings>) {
   if (path && Object.keys(repo).length > 0) {
     changeOverrides((all) => ({ ...all, [path]: { ...(all[path] ?? {}), ...repo } }));
   }
+}
+
+/**
+ * Like `updateGlobalSettings`, but computed from the current value, so the
+ * change also merges correctly over another window's save (lists, maps).
+ */
+export function updateGlobalSettingsWith(fn: (s: AppSettings) => Partial<AppSettings>) {
+  changeGlobal((s) => ({ ...s, ...fn(s) }));
 }
 
 /** Update the global settings only (the Settings screen edits these). */

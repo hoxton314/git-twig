@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Check } from "lucide-svelte";
+  import CustomThemes from "./CustomThemes.svelte";
   import { globalSettings, updateGlobalSettings, cssFontFamily, UI_FONT_FALLBACK, MONO_FONT_FALLBACK } from "../../lib/stores/settings";
 
   const s = $derived($globalSettings);
@@ -60,13 +61,18 @@
         <select
           id="theme-select"
           value={s.theme}
-          onchange={(e) => updateGlobalSettings({ theme: e.currentTarget.value as "dark" | "light" })}
+          onchange={(e) => updateGlobalSettings({ theme: e.currentTarget.value })}
         >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
+          {#each s.custom_themes ?? [] as t (t.id)}
+            <option value="custom:{t.id}">{t.name}</option>
+          {/each}
         </select>
       </div>
     </div>
+
+    <CustomThemes />
 
     <div class="setting-row">
       <div class="setting-label">

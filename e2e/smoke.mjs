@@ -184,7 +184,7 @@ try {
       throw new Error(`unexpected history: ${JSON.stringify(log)}`);
     }
     // Only the pre-modified big.txt (used by the next step) is left.
-    const status = git("status", "--porcelain").replace(/\n$/, "");
+    const status = git("--no-optional-locks", "status", "--porcelain").replace(/\n$/, "");
     if (status !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status: ${JSON.stringify(status)}`);
   });
 
@@ -243,19 +243,21 @@ try {
       [el(box)],
     );
     await session.click(await session.findByText("button[type=submit]", "Squash 2 Commits"));
-    await until(() => git("log", "--format=%s").trim() === "add notes from e2e", "squashed history");
-    // Autostash put the working changes back.
-    await until(() => git("status", "--porcelain").replace(/\n$/, "") === " M big.txt\n M scattered.txt", "restored changes");
-    if (!existsSync(join(repo, "notes.txt"))) throw new Error("notes.txt lost in the squash");
-    // The dialog closes once the app has refreshed; global shortcuts wait for it.
-    const closeBy = Date.now() + 15_000;
+    // Wait for the app to finish (the dialog closes) before touching the repo:
+    // a plain `git status` mid-rebase takes index.lock and can make git fail
+    // to re-apply the autostash (it then parks it in the stash list).
+    const closeBy = Date.now() + 60_000;
     while (Date.now() < closeBy && (await session.execute("return !!document.querySelector('[aria-modal=\"true\"]');"))) {
       await new Promise((r) => setTimeout(r, 100));
     }
     if (await session.execute("return !!document.querySelector('[aria-modal=\"true\"]');")) {
       throw new Error("squash dialog did not close");
     }
-    const after = git("status", "--porcelain").replace(/\n$/, "");
+    const log = git("log", "--format=%s").trim();
+    if (log !== "add notes from e2e") throw new Error(`unexpected history after squash: ${JSON.stringify(log)}`);
+    if (!existsSync(join(repo, "notes.txt"))) throw new Error("notes.txt lost in the squash");
+    // Autostash put the working changes back.
+    const after = git("--no-optional-locks", "status", "--porcelain").replace(/\n$/, "");
     if (after !== " M big.txt\n M scattered.txt") throw new Error(`unexpected status after squash: ${JSON.stringify(after)}`);
     const stashes = git("stash", "list").trim();
     if (stashes) throw new Error(`squash left a stash entry: ${stashes}`);

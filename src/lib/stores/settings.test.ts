@@ -10,9 +10,8 @@ const tauri = vi.hoisted(() => ({
   emitSync: vi.fn(),
 }));
 vi.mock("../tauri", () => tauri);
-vi.stubGlobal("document", {
-  documentElement: { setAttribute: vi.fn(), style: { setProperty: vi.fn(), removeProperty: vi.fn() } },
-});
+const root = vi.hoisted(() => ({ setAttribute: vi.fn(), style: { setProperty: vi.fn(), removeProperty: vi.fn() } }));
+vi.stubGlobal("document", { documentElement: root });
 
 const s = await import("./settings");
 const { activeRepoPath } = await import("./repos");
@@ -94,6 +93,35 @@ describe("per-repository settings store", () => {
     // Once saved, a later remote value applies as is.
     s.applyRemoteSettings("settings", { ...get(s.globalSettings), tab_size: 5 });
     expect(get(s.globalSettings).tab_size).toBe(5);
+  });
+
+  it("applies a custom theme's colours over its base and removes them on switch", () => {
+    root.setAttribute.mockClear();
+    root.style.setProperty.mockClear();
+    root.style.removeProperty.mockClear();
+    s.updateGlobalSettings({
+      custom_themes: [{ id: "x", name: "X", base: "light", colors: { "--color-bg": "#fafafa", "--color-border": "url(evil)" } }],
+      theme: "custom:x",
+    });
+    expect(root.setAttribute).toHaveBeenLastCalledWith("data-theme", "light");
+    expect(root.style.setProperty).toHaveBeenCalledWith("--color-bg", "#fafafa");
+    expect(root.style.setProperty).not.toHaveBeenCalledWith("--color-border", "url(evil)");
+    s.updateGlobalSettings({ theme: "dark" });
+    expect(root.setAttribute).toHaveBeenLastCalledWith("data-theme", "dark");
+    expect(root.style.removeProperty).toHaveBeenCalledWith("--color-bg");
+    // A theme id that no longer exists falls back to dark.
+    s.updateGlobalSettings({ theme: "custom:gone" });
+    expect(root.setAttribute).toHaveBeenLastCalledWith("data-theme", "dark");
+  });
+
+  it("merges list edits made from the latest value over another window's save", () => {
+    vi.useFakeTimers();
+    const theme = (id: string) => ({ id, name: id, base: "dark" as const, colors: {} });
+    s.updateGlobalSettingsWith((cur) => ({ custom_themes: [...(cur.custom_themes ?? []), theme("mine")] }));
+    s.applyRemoteSettings("settings", { ...get(s.globalSettings), custom_themes: [theme("theirs")] });
+    expect(get(s.globalSettings).custom_themes.map((t) => t.id)).toEqual(["theirs", "mine"]);
+    vi.advanceTimersByTime(1000);
+    vi.useRealTimers();
   });
 
   it("clears overrides back to the global value", () => {

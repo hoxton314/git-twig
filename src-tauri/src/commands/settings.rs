@@ -137,6 +137,22 @@ pub struct AppSettings {
     /// "off" | "failures" | "all".
     #[serde(default = "default_notify_ci")]
     pub notify_ci: String,
+    // ── Appearance: custom themes ────────────────────────────────────
+    /// User themes (`theme` = "custom:<id>" selects one). Validated by the
+    /// frontend; only applied as CSS colour values.
+    #[serde(default)]
+    pub custom_themes: Vec<CustomTheme>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CustomTheme {
+    pub id: String,
+    pub name: String,
+    /// "dark" | "light"
+    #[serde(default = "default_theme")]
+    pub base: String,
+    #[serde(default)]
+    pub colors: std::collections::BTreeMap<String, String>,
 }
 
 fn default_notify_ci() -> String {
@@ -246,6 +262,7 @@ impl Default for AppSettings {
             syntax_highlighting: true,
             notify_new_commits: default_notify_new_commits(),
             notify_ci: default_notify_ci(),
+            custom_themes: Vec::new(),
         }
     }
 }

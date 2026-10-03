@@ -11,13 +11,16 @@ export interface AppSettings {
   confirm_destructive_ops: boolean;
   restore_tabs_on_startup: boolean;
   // Appearance
-  theme: "dark" | "light";
+  /** "dark" | "light" | "custom:<id>" (one of `custom_themes`). */
+  theme: string;
   // Diff viewer: syntax highlighting
   syntax_highlighting: boolean;
   /** System notification for new upstream commits after auto-fetch. */
   notify_new_commits: "off" | "current" | "all";
   /** System notification when CI finishes on an open repository's HEAD. */
   notify_ci: "off" | "failures" | "all";
+  /** User colour themes. */
+  custom_themes: import("../../themes").CustomTheme[];
   // Hosting integrations
   github_https_auth: boolean;
   github_host: string;

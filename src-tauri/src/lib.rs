@@ -216,6 +216,8 @@ pub fn run() {
             commands::app_shell::open_settings_folder,
             commands::app_shell::export_settings,
             commands::app_shell::import_settings,
+            commands::app_shell::export_theme_file,
+            commands::app_shell::import_theme_file,
             // Hosting integrations (PRs, CI, OAuth device flow, GitLab/Gitea)
             commands::hosting::hosting_list_remotes,
             commands::hosting::hosting_info,

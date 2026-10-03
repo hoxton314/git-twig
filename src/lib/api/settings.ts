@@ -26,6 +26,16 @@ export function saveRepoSettings(overrides: Record<string, Record<string, unknow
   return invoke<void>("save_repo_settings", { overrides });
 }
 
+/** Write a theme document (JSON text) to `path`. */
+export function exportThemeFile(path: string, contents: string): Promise<void> {
+  return invoke<void>("export_theme_file", { path, contents });
+}
+
+/** Read a theme file as JSON (validate with `parseTheme`). */
+export function importThemeFile(path: string): Promise<unknown> {
+  return invoke<unknown>("import_theme_file", { path });
+}
+
 // ── Git Config ───────────────────────────────────────────────────────
 
 export function getGitConfig(): Promise<GitConfig> {
