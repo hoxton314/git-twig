@@ -5,6 +5,7 @@
  */
 import { writable } from "svelte/store";
 import type { RepoHistory } from "./types/git";
+import { tr } from "./i18n";
 
 /** Open dashboard: a group's repositories, or (null) every known one. */
 export const dashboardScope = writable<{ groupId: string | null } | null>(null);
@@ -48,10 +49,10 @@ export async function runPool<T>(
 
 /** "3 min ago" style age of a unix-seconds timestamp (null → "never"). */
 export function fetchAge(unixSeconds: number | null, nowMs = Date.now()): string {
-  if (unixSeconds === null) return "never";
+  if (unixSeconds === null) return tr("dashboard.never");
   const s = Math.max(0, nowMs / 1000 - unixSeconds);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
+  if (s < 60) return tr("time.justNow");
+  if (s < 3600) return tr("time.minutesAgo", { count: Math.floor(s / 60) });
+  if (s < 86400) return tr("time.hoursAgo", { count: Math.floor(s / 3600) });
+  return tr("time.daysAgo", { count: Math.floor(s / 86400) });
 }

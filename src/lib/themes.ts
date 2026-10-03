@@ -5,6 +5,7 @@
  */
 
 /** Every colour token a theme can set (kept in sync with app.css by a test). */
+import { tr } from "./i18n";
 export const THEME_TOKENS = [
   "--color-bg",
   "--color-surface",
@@ -152,7 +153,7 @@ export function contrastWarnings(colors: Partial<Record<ThemeToken, string>>): s
   ];
   for (const [fg, bg, min] of pairs) {
     const c = colors[fg] && colors[bg] ? contrast(colors[fg]!, colors[bg]!) : null;
-    if (c !== null && c < min) out.push(`${tokenLabel(fg)} on ${tokenLabel(bg)}: contrast ${c.toFixed(1)}:1 (aim for ${min}:1)`);
+    if (c !== null && c < min) out.push(tr("settings.themes.lowContrast", { fg: tokenLabel(fg), bg: tokenLabel(bg), ratio: c.toFixed(1), min }));
   }
   return out;
 }
@@ -162,21 +163,21 @@ export function contrastWarnings(colors: Partial<Record<ThemeToken, string>>): s
  * invalid colour, name or base rejects the file with a reason.
  */
 export function parseTheme(json: unknown, id: string): { theme: CustomTheme } | { error: string } {
-  if (!json || typeof json !== "object") return { error: "The file isn't a theme (expected a JSON object)." };
+  if (!json || typeof json !== "object") return { error: tr("settings.themes.errNotTheme") };
   const o = json as Record<string, unknown>;
   const name = typeof o.name === "string" ? o.name.trim().slice(0, 60) : "";
-  if (!name) return { error: "The theme has no name." };
+  if (!name) return { error: tr("settings.themes.errNoName") };
   const base = o.base === "light" ? "light" : o.base === "dark" || o.base === undefined ? "dark" : null;
-  if (!base) return { error: `Unknown base theme "${String(o.base)}" (use "dark" or "light").` };
-  if (!o.colors || typeof o.colors !== "object") return { error: "The theme has no colors." };
+  if (!base) return { error: tr("settings.themes.errBase", { base: String(o.base) }) };
+  if (!o.colors || typeof o.colors !== "object") return { error: tr("settings.themes.errNoColors") };
   const colors: Partial<Record<ThemeToken, string>> = {};
   const known = new Set<string>(THEME_TOKENS);
   for (const [k, v] of Object.entries(o.colors as Record<string, unknown>)) {
     if (!known.has(k)) continue;
-    if (typeof v !== "string" || !isColor(v)) return { error: `${k} is not a valid colour: ${JSON.stringify(v)}` };
+    if (typeof v !== "string" || !isColor(v)) return { error: tr("settings.themes.errColor", { token: k, value: JSON.stringify(v) }) };
     colors[k as ThemeToken] = v.trim();
   }
-  if (Object.keys(colors).length === 0) return { error: "The theme sets none of Twig's colour tokens." };
+  if (Object.keys(colors).length === 0) return { error: tr("settings.themes.errNoTokens") };
   return { theme: { id, name, base, colors } };
 }
 

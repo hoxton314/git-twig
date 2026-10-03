@@ -18,6 +18,7 @@
   import { onAction, shortcutLabels, withShortcut } from "../../lib/keybindings";
   import { onMount } from "svelte";
   import { trackOperation } from "../../lib/stores/operations";
+  import { t, tr } from "../../lib/i18n";
   // Force push (with lease)
   import ContextMenu from "../shared/ContextMenu.svelte";
   import { forcePush } from "../../lib/stores/operation";
@@ -46,16 +47,16 @@
       const info = await tauri.getRepoInfo(repoPath);
       const branch = info.head_name ?? "HEAD";
       const path = repoPath;
-      const result = await trackOperation(path, "push", `Pushing ${branch}…`, () =>
+      const result = await trackOperation(path, "push", tr("staging.pushing", { branch }), () =>
         tauri.pushBranch(path, branch, undefined, true),
       );
       if (result.success) {
         await refreshAll();
       } else {
-        await message(result.message, { title: "Push Failed", kind: "error" });
+        await message(result.message, { title: tr("staging.pushFailed"), kind: "error" });
       }
     } catch (err) {
-      await message(String(err), { title: "Push Failed", kind: "error" });
+      await message(String(err), { title: tr("staging.pushFailed"), kind: "error" });
     } finally {
       pushLoading = false;
     }
@@ -66,15 +67,15 @@
     pullLoading = true;
     try {
       const path = repoPath;
-      const result = await trackOperation(path, "pull", "Pulling…", () => tauri.pull(path));
+      const result = await trackOperation(path, "pull", tr("staging.pulling"), () => tauri.pull(path));
       await refreshAll();
       if (!result.success) {
-        await message(result.message, { title: "Pull Failed", kind: "error" });
+        await message(result.message, { title: tr("staging.pullFailed"), kind: "error" });
       } else if (result.message.includes("conflicts")) {
-        await message(result.message, { title: "Pull — Stash Conflicts", kind: "warning" });
+        await message(result.message, { title: tr("staging.pullStashConflicts"), kind: "warning" });
       }
     } catch (err) {
-      await message(String(err), { title: "Pull Failed", kind: "error" });
+      await message(String(err), { title: tr("staging.pullFailed"), kind: "error" });
     } finally {
       pullLoading = false;
     }
@@ -91,27 +92,27 @@
       class="toolbar-btn"
       onclick={handlePull}
       disabled={pullLoading}
-      title={withShortcut("Pull", $shortcutLabels["pull"])}
+      title={withShortcut($t("staging.pull"), $shortcutLabels["pull"])}
     >
       {#if pullLoading}
         <Loader2 size={14} class="spinner" />
       {:else}
         <ArrowDownToLine size={14} />
       {/if}
-      <span>Pull</span>
+      <span>{$t("staging.pull")}</span>
     </button>
     <button
       class="toolbar-btn"
       onclick={handlePush}
       disabled={pushLoading}
-      title={withShortcut("Push", $shortcutLabels["push"])}
+      title={withShortcut($t("staging.push"), $shortcutLabels["push"])}
     >
       {#if pushLoading}
         <Loader2 size={14} class="spinner" />
       {:else}
         <ArrowUpFromLine size={14} />
       {/if}
-      <span>Push</span>
+      <span>{$t("staging.push")}</span>
     </button>
     <!-- Force push (with lease) menu -->
     <button
@@ -121,8 +122,8 @@
         pushMenu = { x: r.left, y: r.bottom + 2 };
       }}
       disabled={pushLoading}
-      title="More push options"
-      aria-label="More push options"
+      title={$t("staging.morePushOptions")}
+      aria-label={$t("staging.morePushOptions")}
       aria-haspopup="menu"
     >
       <ChevronDown size={12} />
@@ -132,8 +133,8 @@
         x={pushMenu.x}
         y={pushMenu.y}
         items={[
-          { label: "Push", action: handlePush },
-          { label: "Force push (with lease)…", action: () => { forcePush(); }, danger: true },
+          { label: $t("staging.push"), action: handlePush },
+          { label: $t("staging.forcePush"), action: () => { forcePush(); }, danger: true },
         ]}
         onclose={() => (pushMenu = null)}
       />
@@ -141,15 +142,15 @@
     <button
       class="toolbar-btn"
       onclick={() => (showPrModal = true)}
-      title="Create Pull Request"
+      title={$t("staging.createPr")}
     >
       <GitPullRequest size={14} />
-      <span>PR</span>
+      <span>{$t("staging.pr")}</span>
     </button>
     <button
       class="toolbar-btn icon-only"
       onclick={() => refreshStatus()}
-      title="Refresh"
+      title={$t("common.refresh")}
     >
       <RefreshCw size={14} />
     </button>

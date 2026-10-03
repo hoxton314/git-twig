@@ -9,6 +9,11 @@
   import { settings } from "../../lib/stores/settings";
   import { toast } from "../../lib/stores/toasts";
   import { newRepoDialog, cloneFolderName, joinPath } from "../../lib/newRepo";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
+
+  /** Example remotes shown in the URL field (not translated). */
+  const URL_EXAMPLES = "https://… , git@host:owner/repo.git , ssh://… , /path/to/repo";
+  const DEFAULT_BRANCH = "main";
 
   const mode = $derived($newRepoDialog);
 
@@ -62,10 +67,10 @@
     return typeof picked === "string" ? picked : null;
   }
 
-  function opened(info: Awaited<ReturnType<typeof tauri.openRepo>>, verb: string) {
+  function opened(info: Awaited<ReturnType<typeof tauri.openRepo>>, doneKey: MessageKey) {
     addRepo(info);
     $currentView = "repos";
-    toast("success", `${verb} ${info.name}`);
+    toast("success", tr(doneKey, { name: info.name }));
     busy = false;
     newRepoDialog.set(null);
   }
@@ -75,14 +80,14 @@
     if (busy || !url.trim() || !destination) return;
     busy = true;
     error = null;
-    progress = "Starting…";
+    progress = tr("app.cloneStarting");
     const opId = nextOp++;
     let unlisten: (() => void) | null = null;
     try {
       unlisten = await tauri.onCloneProgress((p) => {
         if (p.op_id === opId) progress = p.line;
       });
-      opened(await tauri.cloneRepository(url.trim(), destination, opId), "Cloned");
+      opened(await tauri.cloneRepository(url.trim(), destination, opId), "app.cloned");
     } catch (err) {
       error = String(err);
       busy = false;
@@ -97,7 +102,7 @@
     busy = true;
     error = null;
     try {
-      opened(await tauri.initRepository(initDir.trim(), initialBranch.trim() || null), "Initialized");
+      opened(await tauri.initRepository(initDir.trim(), initialBranch.trim() || null), "app.initialized");
     } catch (err) {
       error = String(err);
       busy = false;
@@ -107,34 +112,34 @@
 
 <Modal
   open={mode !== null}
-  title={mode === "clone" ? "Clone Repository" : "Initialize Repository"}
+  title={mode === "clone" ? $t("app.cloneTitle") : $t("app.initTitle")}
   onclose={close}
   width="520px"
 >
   {#if mode === "clone"}
     <form class="dialog" onsubmit={submitClone}>
       <label class="field">
-        <span>Repository URL</span>
+        <span>{$t("app.repoUrl")}</span>
         <input
           type="text"
           bind:value={url}
-          placeholder="https://… , git@host:owner/repo.git , ssh://… , /path/to/repo"
+          placeholder={URL_EXAMPLES}
           spellcheck="false"
           autocomplete="off"
           disabled={busy}
         />
       </label>
       <div class="field">
-        <span>Clone into</span>
+        <span>{$t("app.cloneInto")}</span>
         <div class="row">
-          <input type="text" bind:value={parentDir} placeholder="Parent folder" spellcheck="false" disabled={busy} aria-label="Parent folder" />
+          <input type="text" bind:value={parentDir} placeholder={$t("app.parentFolder")} spellcheck="false" disabled={busy} aria-label={$t("app.parentFolder")} />
           <button
             type="button"
             class="icon-btn"
-            title="Choose folder"
-            aria-label="Choose parent folder"
+            title={$t("app.chooseFolder")}
+            aria-label={$t("app.chooseParentFolder")}
             disabled={busy}
-            onclick={async () => { const d = await pickFolder("Clone into folder"); if (d) parentDir = d; }}
+            onclick={async () => { const d = await pickFolder(tr("app.cloneIntoFolder")); if (d) parentDir = d; }}
           >
             <FolderOpen size={14} />
           </button>
@@ -143,49 +148,49 @@
           type="text"
           bind:value={folderName}
           oninput={() => (nameEdited = true)}
-          placeholder="Folder name"
+          placeholder={$t("app.folderName")}
           spellcheck="false"
           disabled={busy}
-          aria-label="Folder name"
+          aria-label={$t("app.folderName")}
         />
         {#if destination}<span class="hint">{destination}</span>{/if}
       </div>
       {#if busy && progress}<p class="progress" aria-live="polite">{progress}</p>{/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="actions">
-        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>Cancel</button>
+        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>{$t("common.cancel")}</button>
         <button type="submit" class="btn-primary" disabled={busy || !url.trim() || !destination}>
-          {busy ? "Cloning…" : "Clone"}
+          {busy ? $t("app.cloning") : $t("app.clone")}
         </button>
       </div>
     </form>
   {:else if mode === "init"}
     <form class="dialog" onsubmit={submitInit}>
       <div class="field">
-        <span>Folder (created if missing)</span>
+        <span>{$t("app.initFolder")}</span>
         <div class="row">
-          <input type="text" bind:value={initDir} placeholder="/path/to/new-project" spellcheck="false" disabled={busy} aria-label="Repository folder" />
+          <input type="text" bind:value={initDir} placeholder={$t("app.initFolderPlaceholder")} spellcheck="false" disabled={busy} aria-label={$t("app.repoFolder")} />
           <button
             type="button"
             class="icon-btn"
-            title="Choose folder"
-            aria-label="Choose folder"
+            title={$t("app.chooseFolder")}
+            aria-label={$t("app.chooseFolder")}
             disabled={busy}
-            onclick={async () => { const d = await pickFolder("Initialize repository in folder"); if (d) initDir = d; }}
+            onclick={async () => { const d = await pickFolder(tr("app.initInFolder")); if (d) initDir = d; }}
           >
             <FolderOpen size={14} />
           </button>
         </div>
       </div>
       <label class="field">
-        <span>Initial branch</span>
-        <input type="text" bind:value={initialBranch} placeholder="main" spellcheck="false" autocomplete="off" disabled={busy} />
+        <span>{$t("app.initialBranch")}</span>
+        <input type="text" bind:value={initialBranch} placeholder={DEFAULT_BRANCH} spellcheck="false" autocomplete="off" disabled={busy} />
       </label>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="actions">
-        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>Cancel</button>
+        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>{$t("common.cancel")}</button>
         <button type="submit" class="btn-primary" disabled={busy || !initDir.trim()}>
-          {busy ? "Initializing…" : "Initialize"}
+          {busy ? $t("app.initializing") : $t("app.initialize")}
         </button>
       </div>
     </form>

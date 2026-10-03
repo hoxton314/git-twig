@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Music, Loader2 } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     oldData: string | null;
@@ -48,12 +49,12 @@
   {#if loading}
     <div class="audio-loading">
       <Loader2 size={18} class="spinner" />
-      <span>Loading preview...</span>
+      <span>{$t("diff.loadingPreview")}</span>
     </div>
   {:else if !hasOld && !hasNew}
     <div class="audio-loading">
       <Music size={16} />
-      <span>No audio data available</span>
+      <span>{$t("diff.noAudioData")}</span>
     </div>
   {:else}
     <div class="players" class:two-up={isModified}>
@@ -61,7 +62,7 @@
         <div class="player-panel" class:removed={!hasNew}>
           <div class="panel-label">
             <span class="label-text {!hasNew ? 'label-removed' : 'label-old'}">
-              {!hasNew ? "Deleted" : "Previous"}
+              {!hasNew ? $t("diff.deleted") : $t("diff.previous")}
             </span>
             <span class="meta">{formatSize(oldSrc)}</span>
           </div>
@@ -72,7 +73,7 @@
         <div class="player-panel">
           <div class="panel-label">
             <span class="label-text {!hasOld ? 'label-added' : 'label-new'}">
-              {!hasOld ? "Added" : "Current"}
+              {!hasOld ? $t("diff.added") : $t("diff.current")}
             </span>
             <span class="meta">{formatSize(newSrc)}</span>
           </div>

@@ -7,6 +7,7 @@ import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import * as tauri from "./tauri";
 import { toastError } from "./stores/toasts";
 import { stopSessionSaving } from "./stores/repos";
+import { tr } from "./i18n";
 
 export const MAIN_WINDOW = "main";
 
@@ -27,7 +28,7 @@ export async function openNewWindow(): Promise<void> {
   try {
     await tauri.openNewWindow(null);
   } catch (err) {
-    toastError("Could not open a window", err);
+    toastError(tr("windows.openFailed"), err);
   }
 }
 

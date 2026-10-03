@@ -6,6 +6,7 @@
   import { worktrees, refreshRepoTools, openAsTab, addWorktreeOpen } from "../../lib/stores/repotools";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
+  import { t, tr } from "../../lib/i18n";
   import { FolderOpen, Loader2 } from "lucide-svelte";
 
   const isOpen = $derived($addWorktreeOpen);
@@ -64,7 +65,7 @@
     const picked = await openDialog({
       directory: true,
       multiple: false,
-      title: "Choose a parent folder for the worktree",
+      title: $t("worktrees.chooseParent"),
       defaultPath: parentDir || undefined,
     });
     if (typeof picked !== "string") return;
@@ -85,42 +86,42 @@
           ? await tauri.worktreeAdd(repoPath, path, { newBranch: newBranch.trim(), commitish: base || undefined })
           : await tauri.worktreeAdd(repoPath, path, { commitish: existing });
       if (!res.success) {
-        error = res.message.trim() || "git worktree add failed";
+        error = res.message.trim() || tr("worktrees.addFailedFallback");
         return;
       }
       $addWorktreeOpen = false;
-      toast("success", `Worktree created at ${path}`);
+      toast("success", tr("worktrees.created", { path }));
       await refreshRepoTools(repoPath);
       refreshAll(repoPath);
       if (openAfter) await openAsTab(path);
     } catch (err) {
-      toastError("Add worktree failed", err);
+      toastError(tr("worktrees.addFailed"), err);
     } finally {
       busy = false;
     }
   }
 </script>
 
-<Modal open={isOpen} title="Add worktree" onclose={() => ($addWorktreeOpen = false)} width="520px">
+<Modal open={isOpen} title={$t("worktrees.addTitle")} onclose={() => ($addWorktreeOpen = false)} width="520px">
   <form class="form" onsubmit={submit}>
-    <div class="seg" role="radiogroup" aria-label="Branch">
+    <div class="seg" role="radiogroup" aria-label={$t("worktrees.branch")}>
       <label class:active={mode === "new"}>
-        <input type="radio" bind:group={mode} value="new" /> New branch
+        <input type="radio" bind:group={mode} value="new" /> {$t("worktrees.newBranch")}
       </label>
       <label class:active={mode === "existing"}>
-        <input type="radio" bind:group={mode} value="existing" /> Existing branch
+        <input type="radio" bind:group={mode} value="existing" /> {$t("worktrees.existingBranch")}
       </label>
     </div>
 
     {#if mode === "new"}
       <label class="field">
-        <span>Branch name</span>
-        <input type="text" bind:value={newBranch} placeholder="feature/my-work" spellcheck="false" />
+        <span>{$t("worktrees.branchName")}</span>
+        <input type="text" bind:value={newBranch} placeholder={$t("worktrees.branchPlaceholder")} spellcheck="false" />
       </label>
       <label class="field">
-        <span>Start from</span>
+        <span>{$t("worktrees.startFrom")}</span>
         <select bind:value={base}>
-          <option value="">HEAD ({$activeRepo?.head_name ?? "current"})</option>
+          <option value="">HEAD ({$activeRepo?.head_name ?? $t("worktrees.current")})</option>
           {#each $branches as b (b.name)}
             <option value={b.name}>{b.name}</option>
           {/each}
@@ -128,38 +129,38 @@
       </label>
     {:else}
       <label class="field">
-        <span>Branch</span>
+        <span>{$t("worktrees.branch")}</span>
         <select bind:value={existing}>
-          <option value="" disabled>Select a branch…</option>
+          <option value="" disabled>{$t("worktrees.selectBranch")}</option>
           {#each available as b (b.name)}
             <option value={b.name}>{b.name}</option>
           {/each}
         </select>
         {#if available.length === 0}
-          <small>All local branches are already checked out in a worktree.</small>
+          <small>{$t("worktrees.allCheckedOut")}</small>
         {/if}
       </label>
     {/if}
 
     <label class="field">
-      <span>Location</span>
+      <span>{$t("worktrees.location")}</span>
       <div class="path-row">
         <input
           type="text"
           bind:value={dir}
           oninput={() => (dirTouched = true)}
-          placeholder="/path/to/new/worktree"
+          placeholder={$t("worktrees.locationPlaceholder")}
           spellcheck="false"
         />
-        <button type="button" class="btn" onclick={browse} title="Choose parent folder">
+        <button type="button" class="btn" onclick={browse} title={$t("worktrees.chooseParentShort")}>
           <FolderOpen size={14} />
         </button>
       </div>
-      <small>Must be a new or empty directory (absolute path).</small>
+      <small>{$t("worktrees.locationHint")}</small>
     </label>
 
     <label class="check">
-      <input type="checkbox" bind:checked={openAfter} /> Open in a new tab
+      <input type="checkbox" bind:checked={openAfter} /> {$t("worktrees.openInTab")}
     </label>
 
     {#if error}
@@ -167,10 +168,10 @@
     {/if}
 
     <div class="buttons">
-      <button type="button" class="btn" onclick={() => ($addWorktreeOpen = false)}>Cancel</button>
+      <button type="button" class="btn" onclick={() => ($addWorktreeOpen = false)}>{$t("common.cancel")}</button>
       <button type="submit" class="btn primary" disabled={!valid || busy}>
         {#if busy}<Loader2 size={13} class="spinner" />{/if}
-        Create worktree
+        {$t("worktrees.create")}
       </button>
     </div>
   </form>

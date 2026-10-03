@@ -5,17 +5,18 @@
   import { submodules, openAsTab, updateSubmodules, syncSubmodules } from "../../lib/stores/repotools";
   import { toast, toastError } from "../../lib/stores/toasts";
   import type { SubmoduleInfo } from "../../lib/types/git";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
 
   const list = $derived($submodules);
   let expanded = $state(true);
   let busy = $state<string | null>(null);
   let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
-  const STATUS_LABEL: Record<SubmoduleInfo["status"], string> = {
-    uninitialized: "not initialized",
-    out_of_date: "commit differs",
-    dirty: "local changes",
-    up_to_date: "up to date",
+  const STATUS_LABEL: Record<SubmoduleInfo["status"], MessageKey> = {
+    uninitialized: "submodules.statusUninitialized",
+    out_of_date: "submodules.statusOutOfDate",
+    dirty: "submodules.statusDirty",
+    up_to_date: "submodules.statusUpToDate",
   };
 
   const needsUpdate = $derived(list.some((s) => s.status === "uninitialized" || s.status === "out_of_date"));
@@ -27,11 +28,11 @@
   function tooltip(s: SubmoduleInfo): string {
     return [
       s.path,
-      s.url ? `URL: ${s.url}` : null,
-      s.branch ? `Branch: ${s.branch}` : null,
-      `Recorded: ${short(s.head_oid)}  Checked out: ${short(s.workdir_oid)}`,
-      `Status: ${STATUS_LABEL[s.status]}`,
-      s.status === "uninitialized" ? "Click to initialize" : "Click to open in a new tab",
+      s.url ? $t("submodules.tipUrl", { url: s.url }) : null,
+      s.branch ? $t("submodules.tipBranch", { branch: s.branch }) : null,
+      $t("submodules.tipOids", { recorded: short(s.head_oid), checkedOut: short(s.workdir_oid) }),
+      $t("submodules.tipStatus", { status: $t(STATUS_LABEL[s.status]) }),
+      s.status === "uninitialized" ? $t("submodules.tipInitialize") : $t("submodules.tipOpen"),
     ]
       .filter(Boolean)
       .join("\n");
@@ -58,23 +59,23 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Open in new tab", action: () => openAsTab(s.abs_path), disabled: s.status === "uninitialized" },
+        { label: tr("submodules.openInNewTab"), action: () => openAsTab(s.abs_path), disabled: s.status === "uninitialized" },
         {
-          label: s.status === "uninitialized" ? "Initialize & update" : "Update to recorded commit",
+          label: s.status === "uninitialized" ? tr("submodules.initUpdate") : tr("submodules.updateToRecorded"),
           action: () => run(s.path, () => updateSubmodules(s.path)),
           disabled: busy !== null,
         },
-        { label: "Sync URL from .gitmodules", action: () => run(s.path, () => syncSubmodules(s.path)) },
+        { label: tr("submodules.syncUrl"), action: () => run(s.path, () => syncSubmodules(s.path)) },
         { separator: true },
         {
-          label: "Copy URL",
+          label: tr("submodules.copyUrl"),
           disabled: !s.url,
           action: async () => {
             try {
               await navigator.clipboard.writeText(s.url ?? "");
-              toast("success", "URL copied");
+              toast("success", tr("submodules.urlCopied"));
             } catch (err) {
-              toastError("Copy failed", err);
+              toastError(tr("submodules.copyFailed"), err);
             }
           },
         },
@@ -88,7 +89,7 @@
     <div class="section-header">
       <button class="title-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
         {#if expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-        <span class="section-title">Submodules</span>
+        <span class="section-title">{$t("submodules.title")}</span>
         <span class="count">{list.length}</span>
       </button>
       <div class="actions">
@@ -97,8 +98,8 @@
           class:attention={needsUpdate}
           onclick={() => run("__all__", () => updateSubmodules())}
           disabled={busy !== null}
-          title="Update all (init, recursive)"
-          aria-label="Update all submodules"
+          title={$t("submodules.updateAllTitle")}
+          aria-label={$t("submodules.updateAll")}
         >
           <Download size={13} />
         </button>
@@ -106,8 +107,8 @@
           class="icon-btn"
           onclick={() => run("__sync__", () => syncSubmodules())}
           disabled={busy !== null}
-          title="Sync URLs from .gitmodules"
-          aria-label="Sync submodule URLs"
+          title={$t("submodules.syncUrlsTitle")}
+          aria-label={$t("submodules.syncUrls")}
         >
           <RefreshCw size={13} class={busy === "__sync__" ? "spinner" : ""} />
         </button>
@@ -130,7 +131,7 @@
           {#if busy === s.path || busy === "__all__"}
             <RefreshCw size={11} class="spinner" />
           {/if}
-          <span class="status status-{s.status}">{STATUS_LABEL[s.status]}</span>
+          <span class="status status-{s.status}">{$t(STATUS_LABEL[s.status])}</span>
         </div>
       {/each}
     {/if}

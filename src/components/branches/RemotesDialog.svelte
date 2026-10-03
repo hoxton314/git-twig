@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
   import { get } from "svelte/store";
   import Modal from "../shared/Modal.svelte";
+  import { t, tr } from "../../lib/i18n";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { refreshAll } from "../../lib/stores/graph";
   import { settings } from "../../lib/stores/settings";
@@ -87,12 +88,12 @@
     const fetchUrl = editFetch.trim();
     const pushUrl = editPush.trim();
     if (!name || !fetchUrl) {
-      toast("warning", "Name and fetch URL are required.");
+      toast("warning", tr("branches.nameUrlRequired"));
       return;
     }
     let current = r.name;
     if (name !== r.name) {
-      const ok = await run(r.name, "Rename Remote Failed", (p) => tauri.renameRemote(p, r.name, name));
+      const ok = await run(r.name, tr("branches.renameRemoteFailed"), (p) => tauri.renameRemote(p, r.name, name));
       if (!ok) return;
       current = name;
     }
@@ -100,7 +101,7 @@
     if (fetchUrl !== (r.fetch_url ?? "") || pushUrl !== oldPush) {
       const ok = await run(
         current,
-        "Update Remote Failed",
+        tr("branches.updateRemoteFailed"),
         (p) => tauri.setRemoteUrls(p, current, fetchUrl, pushUrl || null),
         false,
       );
@@ -112,33 +113,33 @@
   async function removeRemote(r: RemoteInfo) {
     if ($settings.confirm_destructive_ops) {
       const ok = await ask(
-        `Remove remote "${r.name}"? Its remote-tracking branches will be deleted locally and branches tracking it lose their upstream. Nothing on the server is changed.`,
-        { title: "Remove Remote", kind: "warning" },
+        tr("branches.removeRemoteConfirm", { name: r.name }),
+        { title: tr("branches.removeRemoteTitle"), kind: "warning" },
       );
       if (!ok) return;
     }
-    await run(r.name, "Remove Remote Failed", (p) => tauri.removeRemote(p, r.name));
+    await run(r.name, tr("branches.removeRemoteFailed"), (p) => tauri.removeRemote(p, r.name));
   }
 
   async function addRemote() {
     const name = newName.trim();
     const url = newUrl.trim();
     if (!name || !url) return;
-    const ok = await run("", "Add Remote Failed", (p) => tauri.addRemote(p, name, url), false);
+    const ok = await run("", tr("branches.addRemoteFailed"), (p) => tauri.addRemote(p, name, url), false);
     if (!ok) return;
     newName = "";
     newUrl = "";
     // Fetch right away so the new remote's branches show up.
-    await run(name, "Fetch Failed", (p) => tauri.fetchRemote(p, name));
+    await run(name, tr("branches.fetchFailed"), (p) => tauri.fetchRemote(p, name));
   }
 
   async function copyUrl(url: string | null) {
     if (!url) return;
     try {
       await copyText(url);
-      toast("info", "URL copied", { duration: 1500 });
+      toast("info", tr("branches.urlCopied"), { duration: 1500 });
     } catch (err) {
-      toastError("Copy Failed", err);
+      toastError(tr("branches.copyFailed"), err);
     }
   }
 
@@ -161,10 +162,10 @@
   }
 </script>
 
-<Modal open={$remotesDialogOpen} title="Remotes" onclose={close} width="600px">
+<Modal open={$remotesDialogOpen} title={$t("branches.remotesTitle")} onclose={close} width="600px">
   <div class="remotes">
     {#if list.length === 0}
-      <p class="empty">No remotes configured. Add one below to push, pull and fetch.</p>
+      <p class="empty">{$t("branches.noRemotesConfigured")}</p>
     {:else}
       <ul class="remote-list">
         {#each list as r (r.name)}
@@ -172,37 +173,37 @@
             {#if editing === r.name}
               <div class="edit-form">
                 <label>
-                  <span>Name</span>
+                  <span>{$t("branches.remoteNameField")}</span>
                   <input bind:value={editName} onkeydown={(e) => onEditKeydown(e, r)} spellcheck="false" />
                 </label>
                 <label>
-                  <span>Fetch URL</span>
+                  <span>{$t("branches.fetchUrl")}</span>
                   <input bind:value={editFetch} onkeydown={(e) => onEditKeydown(e, r)} spellcheck="false" />
                 </label>
                 <label>
-                  <span>Push URL</span>
+                  <span>{$t("branches.pushUrl")}</span>
                   <input
                     bind:value={editPush}
                     onkeydown={(e) => onEditKeydown(e, r)}
-                    placeholder="Same as fetch URL"
+                    placeholder={$t("branches.sameAsFetch")}
                     spellcheck="false"
                   />
                 </label>
                 <div class="form-actions">
-                  <button class="btn-primary" onclick={() => saveEdit(r)} disabled={busy !== null}>Save</button>
-                  <button class="btn-secondary" onclick={() => (editing = null)} disabled={busy !== null}>Cancel</button>
+                  <button class="btn-primary" onclick={() => saveEdit(r)} disabled={busy !== null}>{$t("common.save")}</button>
+                  <button class="btn-secondary" onclick={() => (editing = null)} disabled={busy !== null}>{$t("common.cancel")}</button>
                 </div>
               </div>
             {:else}
               <div class="remote-info">
                 <span class="remote-name">{r.name}</span>
-                <button class="url" onclick={() => copyUrl(r.fetch_url)} title="Copy fetch URL">
-                  <span class="url-text">{r.fetch_url ?? "(no URL)"}</span>
+                <button class="url" onclick={() => copyUrl(r.fetch_url)} title={$t("branches.copyFetchUrl")}>
+                  <span class="url-text">{r.fetch_url ?? $t("branches.noUrl")}</span>
                   <Copy size={11} />
                 </button>
                 {#if r.has_separate_push_url}
-                  <button class="url" onclick={() => copyUrl(r.push_url)} title="Copy push URL">
-                    <span class="url-kind">push</span>
+                  <button class="url" onclick={() => copyUrl(r.push_url)} title={$t("branches.copyPushUrl")}>
+                    <span class="url-kind">{$t("branches.pushKind")}</span>
                     <span class="url-text">{r.push_url}</span>
                     <Copy size={11} />
                   </button>
@@ -211,19 +212,19 @@
               <div class="remote-actions">
                 <button
                   class="icon-btn"
-                  onclick={() => run(r.name, "Fetch Failed", (p) => tauri.fetchRemote(p, r.name))}
+                  onclick={() => run(r.name, $t("branches.fetchFailed"), (p) => tauri.fetchRemote(p, r.name))}
                   disabled={busy !== null}
-                  title="Fetch {r.name}"
-                  aria-label="Fetch {r.name}"
+                  title={$t("branches.fetchRemote", { name: r.name })}
+                  aria-label={$t("branches.fetchRemote", { name: r.name })}
                 >
                   <RefreshCw size={13} class={busy === r.name ? "spin" : ""} />
                 </button>
                 <button
                   class="icon-btn"
-                  onclick={() => run(r.name, "Prune Failed", (p) => tauri.pruneRemote(p, r.name))}
+                  onclick={() => run(r.name, $t("branches.pruneFailed"), (p) => tauri.pruneRemote(p, r.name))}
                   disabled={busy !== null}
-                  title="Prune stale remote-tracking branches"
-                  aria-label="Prune {r.name}"
+                  title={$t("branches.pruneStaleTracking")}
+                  aria-label={$t("branches.pruneNamed", { name: r.name })}
                 >
                   <Scissors size={13} />
                 </button>
@@ -231,8 +232,8 @@
                   class="icon-btn"
                   onclick={() => startEdit(r)}
                   disabled={busy !== null}
-                  title="Edit name and URLs"
-                  aria-label="Edit {r.name}"
+                  title={$t("branches.editRemoteTitle")}
+                  aria-label={$t("branches.editNamed", { name: r.name })}
                 >
                   <Pencil size={13} />
                 </button>
@@ -240,8 +241,8 @@
                   class="icon-btn danger"
                   onclick={() => removeRemote(r)}
                   disabled={busy !== null}
-                  title="Remove remote"
-                  aria-label="Remove {r.name}"
+                  title={$t("branches.removeRemote")}
+                  aria-label={$t("branches.removeNamed", { name: r.name })}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -253,22 +254,22 @@
     {/if}
 
     <div class="add-form">
-      <div class="add-title">Add remote</div>
+      <div class="add-title">{$t("branches.addRemote")}</div>
       <div class="add-row">
         <input
           class="name-input"
           bind:value={newName}
           onkeydown={onAddKeydown}
-          placeholder="Name"
-          aria-label="Remote name"
+          placeholder={$t("branches.remoteNameField")}
+          aria-label={$t("branches.remoteName")}
           spellcheck="false"
         />
         <input
           class="url-input"
           bind:value={newUrl}
           onkeydown={onAddKeydown}
-          placeholder="URL (https://… or git@…)"
-          aria-label="Remote URL"
+          placeholder={$t("branches.remoteUrlPlaceholder")}
+          aria-label={$t("branches.remoteUrl")}
           spellcheck="false"
         />
         <button
@@ -277,7 +278,7 @@
           disabled={busy !== null || !newName.trim() || !newUrl.trim()}
         >
           <Plus size={13} />
-          {busy === "" ? "Adding…" : "Add"}
+          {busy === "" ? $t("branches.adding") : $t("common.add")}
         </button>
       </div>
     </div>

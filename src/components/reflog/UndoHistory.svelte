@@ -13,6 +13,7 @@
   import { confirmDestructive, restoreHeadAction } from "../../lib/commitActions";
   import * as tauri from "../../lib/tauri";
   import type { ReflogEntry } from "../../lib/types/git";
+  import { t, tr } from "../../lib/i18n";
 
   const open = $derived($undoHistoryOpen);
   const repoPath = $derived($activeRepoPath);
@@ -55,20 +56,19 @@
   }
 
   function plan(e: ReflogEntry): string {
-    if (e.checkout_branch) return `Check out ${e.checkout_branch}`;
-    if (currentBranch) return `Reset ${currentBranch} to ${e.short_new_oid}`;
-    return `Check out ${e.short_new_oid} (detached)`;
+    if (e.checkout_branch) return $t("reflog.checkOut", { target: e.checkout_branch });
+    if (currentBranch) return $t("reflog.resetTo", { branch: currentBranch, oid: e.short_new_oid });
+    return $t("reflog.checkOutDetached", { oid: e.short_new_oid });
   }
 
   async function restore(e: ReflogEntry) {
     const path = repoPath;
     if (!path || restoring !== null) return;
     if (dirty && !autoStash) return;
-    const extra = dirty ? "\n\nYour uncommitted changes will be stashed first." : "";
     const ok = await confirmDestructive(
-      `${plan(e)}?\n\nThis returns HEAD to the state after “${e.message}”.${extra}`,
-      "Restore to This Point",
-      "Restore",
+      tr(dirty ? "reflog.restoreConfirmDirty" : "reflog.restoreConfirm", { plan: plan(e), message: e.message }),
+      tr("reflog.restoreTitle"),
+      tr("reflog.restore"),
     );
     if (!ok) return;
     restoring = e.index;
@@ -83,12 +83,12 @@
   function relTime(ts: number): string {
     const diff = Math.max(0, Date.now() - ts * 1000);
     const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
+    if (m < 1) return $t("reflog.justNow");
+    if (m < 60) return $t("reflog.minutesAgo", { count: m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
+    if (h < 24) return $t("reflog.hoursAgo", { count: h });
     const d = Math.floor(h / 24);
-    if (d < 30) return `${d}d ago`;
+    if (d < 30) return $t("reflog.daysAgo", { count: d });
     return new Date(ts * 1000).toLocaleDateString();
   }
 
@@ -99,14 +99,14 @@
   }
 </script>
 
-<Modal open={open && !!repoPath} title="Undo History" onclose={close} width="640px">
+<Modal open={open && !!repoPath} title={$t("reflog.title")} onclose={close} width="640px">
   <div class="undo-history">
     <div class="toolbar">
       <p class="hint">
         <History size={13} />
-        Recent HEAD movements. Restore returns the repository to the state right after that step.
+        {$t("reflog.hint")}
       </p>
-      <button class="icon-btn" onclick={load} disabled={loading} title="Refresh" aria-label="Refresh history">
+      <button class="icon-btn" onclick={load} disabled={loading} title={$t("common.refresh")} aria-label={$t("reflog.refreshHistory")}>
         <RefreshCw size={14} />
       </button>
     </div>
@@ -114,29 +114,29 @@
     {#if dirty}
       <label class="dirty">
         <input type="checkbox" bind:checked={autoStash} />
-        <span>You have uncommitted changes — stash them automatically before restoring</span>
+        <span>{$t("reflog.autoStash")}</span>
       </label>
     {/if}
 
     {#if loading && entries.length === 0}
-      <div class="state"><Loader2 size={16} class="spin" /> Loading history…</div>
+      <div class="state"><Loader2 size={16} class="spin" /> {$t("reflog.loading")}</div>
     {:else if error}
       <div class="state error" role="alert">{error}</div>
     {:else if entries.length === 0}
-      <div class="state">No HEAD history recorded yet.</div>
+      <div class="state">{$t("reflog.empty")}</div>
     {:else}
       <ul class="list">
         {#each entries as e (e.index)}
           {@const missing = e.commit_summary === null}
           <li class="entry" class:current={e.index === 0}>
-            <span class="badge badge-{e.action}">{e.action || "other"}</span>
+            <span class="badge badge-{e.action}">{e.action || $t("reflog.other")}</span>
             <button
               class="main"
               onclick={() => {
                 if (!missing && revealCommit(e.new_oid)) close();
               }}
               disabled={missing}
-              title={missing ? "The commit no longer exists" : "Show in graph"}
+              title={missing ? $t("reflog.missing") : $t("reflog.showInGraph")}
             >
               <span class="msg">{detail(e)}</span>
               <span class="sub">
@@ -146,16 +146,16 @@
             </button>
             <span class="time" title={new Date(e.timestamp * 1000).toLocaleString()}>{relTime(e.timestamp)}</span>
             {#if e.index === 0}
-              <span class="now">Current</span>
+              <span class="now">{$t("reflog.current")}</span>
             {:else}
               <button
                 class="restore"
                 onclick={() => restore(e)}
                 disabled={missing || restoring !== null || (dirty && !autoStash)}
                 title={missing
-                  ? "The commit no longer exists"
+                  ? $t("reflog.missing")
                   : dirty && !autoStash
-                    ? "Commit or stash your changes first"
+                    ? $t("reflog.stashFirst")
                     : plan(e)}
               >
                 {#if restoring === e.index}
@@ -163,7 +163,7 @@
                 {:else}
                   <RotateCcw size={12} />
                 {/if}
-                Restore
+                {$t("reflog.restore")}
               </button>
             {/if}
           </li>

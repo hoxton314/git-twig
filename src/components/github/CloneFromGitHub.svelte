@@ -5,6 +5,7 @@
   import Modal from "../shared/Modal.svelte";
   import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
+  import { t } from "../../lib/i18n";
   import type { GitHubRepo } from "../../lib/types/github";
   import type { RepoInfo } from "../../lib/types/git";
   import type { ProviderKind } from "../../lib/types/hosting";
@@ -128,7 +129,7 @@
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "Clone destination",
+      title: $t("github.cloneDestination"),
     });
     if (selected) {
       destination = selectedRepo
@@ -167,15 +168,15 @@
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (days === 0) return "today";
-    if (days === 1) return "yesterday";
-    if (days < 30) return `${days}d ago`;
-    if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-    return `${Math.floor(days / 365)}y ago`;
+    if (days === 0) return $t("github.updatedToday");
+    if (days === 1) return $t("github.updatedYesterday");
+    if (days < 30) return $t("github.updatedDaysAgo", { count: days });
+    if (days < 365) return $t("github.updatedMonthsAgo", { count: Math.floor(days / 30) });
+    return $t("github.updatedYearsAgo", { count: Math.floor(days / 365) });
   }
 </script>
 
-<Modal open={isOpen} title="Clone from {PROVIDER_LABEL[provider]}" onclose={handleClose} width="560px">
+<Modal open={isOpen} title={$t("github.cloneFrom", { provider: PROVIDER_LABEL[provider] })} onclose={handleClose} width="560px">
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -185,17 +186,17 @@
     <div class="clone-form">
       <div class="selected-repo">
         <span class="repo-full-name">{selectedRepo.full_name}</span>
-        <button class="btn-link" onclick={() => (selectedRepo = null)}>Change</button>
+        <button class="btn-link" onclick={() => (selectedRepo = null)}>{$t("github.change")}</button>
       </div>
 
       <label class="field-label">
-        Destination
+        {$t("github.destination")}
         <div class="dest-row">
           <input
             type="text"
             class="dest-input"
             bind:value={destination}
-            placeholder="/path/to/clone"
+            placeholder={$t("github.destinationPlaceholder")}
           />
           <button class="btn-secondary" onclick={pickDestination}>
             <FolderOpen size={14} />
@@ -205,7 +206,7 @@
 
       <label class="ssh-toggle">
         <input type="checkbox" bind:checked={useSsh} />
-        <span>Clone over SSH <code>{selectedRepo.ssh_url}</code></span>
+        <span>{$t("github.cloneOverSsh")} <code>{selectedRepo.ssh_url}</code></span>
       </label>
 
       <button
@@ -215,9 +216,9 @@
       >
         {#if cloning}
           <Loader2 size={14} class="spinner" />
-          <span>Cloning...</span>
+          <span>{$t("github.cloning")}</span>
         {:else}
-          <span>Clone</span>
+          <span>{$t("github.clone")}</span>
         {/if}
       </button>
     </div>
@@ -237,7 +238,7 @@
       <input
         type="text"
         class="search-input"
-        placeholder="Filter repositories..."
+        placeholder={$t("github.filterRepos")}
         bind:value={searchQuery}
       />
     </div>
@@ -245,7 +246,7 @@
     {#if loading}
       <div class="loading-state">
         <Loader2 size={20} class="spinner" />
-        <span>Loading repositories...</span>
+        <span>{$t("github.loadingRepos")}</span>
       </div>
     {:else}
       <div class="repo-list">
@@ -255,10 +256,10 @@
               <span class="repo-name">{repo.full_name}</span>
               <div class="repo-badges">
                 {#if repo.private}
-                  <span class="badge private"><Lock size={10} /> Private</span>
+                  <span class="badge private"><Lock size={10} /> {$t("github.private")}</span>
                 {/if}
                 {#if repo.fork}
-                  <span class="badge fork"><GitFork size={10} /> Fork</span>
+                  <span class="badge fork"><GitFork size={10} /> {$t("github.fork")}</span>
                 {/if}
               </div>
             </div>
@@ -269,13 +270,13 @@
               {#if repo.stargazers_count > 0}
                 <span class="meta-item"><Star size={11} /> {repo.stargazers_count}</span>
               {/if}
-              <span class="meta-item">Updated {formatDate(repo.updated_at)}</span>
+              <span class="meta-item">{formatDate(repo.updated_at)}</span>
             </div>
           </button>
         {/each}
 
         {#if filteredRepos.length === 0 && !loading}
-          <div class="empty-state">No repositories found</div>
+          <div class="empty-state">{$t("github.noRepos")}</div>
         {/if}
       </div>
 
@@ -287,9 +288,9 @@
         >
           {#if loadingMore}
             <Loader2 size={14} class="spinner" />
-            Loading...
+            {$t("github.loadingShort")}
           {:else}
-            Load more
+            {$t("github.loadMore")}
           {/if}
         </button>
       {/if}

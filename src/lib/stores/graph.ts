@@ -11,6 +11,7 @@ import * as tauri from "../tauri";
 import { activeRepoPath, updateRepo } from "./repos";
 import { settings } from "./settings";
 import { toastError } from "./toasts";
+import { tr } from "../i18n";
 import { EMPTY_SELECTION, effectiveSelection, pruneSelection, type Selection } from "../graphSelection";
 
 /** Graph page size ("commits per page" setting). */
@@ -294,7 +295,7 @@ export function loadMoreCommits(count?: number): Promise<void> {
         total_lanes: Math.max(g.total_lanes, page.total_lanes),
       });
     } catch (err) {
-      if (stillActive(p)) toastError("Failed to load more commits", err);
+      if (stillActive(p)) toastError(tr("graph.loadMoreFailed"), err);
     } finally {
       graphLoadingMore.set(false);
       moreInFlight = null;

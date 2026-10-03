@@ -13,6 +13,7 @@
   import * as tauri from "../../lib/tauri";
   import type { LfsLock } from "../../lib/types/git";
   import { Loader2, Lock, LockOpen, RefreshCw, Trash2 } from "lucide-svelte";
+  import { t, tr } from "../../lib/i18n";
 
   const open = $derived($lfsPanelOpen);
   const st = $derived($lfsStatus);
@@ -68,7 +69,7 @@
       lockable = false;
       await refreshLfsStatus(p);
       await refreshAll(p);
-      toast("success", `Tracking ${pat} with LFS. Commit .gitattributes to share it.`);
+      toast("success", tr("lfs.tracking", { pattern: pat }));
     });
 
   const untrack = (pat: string) =>
@@ -77,10 +78,10 @@
       await refreshLfsStatus(p);
       await refreshAll(p);
       if ($lfsStatus?.patterns.some((x) => x.pattern === pat && x.source === ".gitattributes")) {
-        toast("warning", `${pat} is still tracked; check .gitattributes for another line matching it.`);
+        toast("warning", tr("lfs.stillTracked", { pattern: pat }));
         return;
       }
-      toast("success", `Stopped tracking ${pat}. Commit .gitattributes to share it.`);
+      toast("success", tr("lfs.stoppedTracking", { pattern: pat }));
     });
 
   const lockFile = () =>
@@ -90,43 +91,45 @@
       await tauri.lfsLock(p, f);
       lockPath = "";
       await loadLocks(p);
-      toast("success", `Locked ${f}`);
+      toast("success", tr("lfs.locked", { path: f }));
     });
 
   const unlock = (l: LfsLock) =>
     run(`unlock:${l.id}`, async (p) => {
       if (!l.ours) {
         const ok = await ask(
-          `${l.path} is locked by ${l.owner || "someone else"}. Force-unlock it? They may lose work they haven't pushed.`,
-          { title: "Force Unlock", kind: "warning", okLabel: "Force Unlock" },
+          tr("lfs.forceUnlockConfirm", { path: l.path, owner: l.owner || tr("lfs.someoneElse") }),
+          { title: tr("lfs.forceUnlock"), kind: "warning", okLabel: tr("lfs.forceUnlock") },
         );
         if (!ok) return;
       }
       await tauri.lfsUnlock(p, l.id, !l.ours);
       await loadLocks(p);
-      toast("success", `Unlocked ${l.path}`);
+      toast("success", tr("lfs.unlocked", { path: l.path }));
     });
 
   const fetchObjects = (all: boolean) =>
     run(all ? "fetch-all" : "fetch", async (p) => {
       await tauri.lfsFetch(p, all);
-      toast("success", all ? "Fetched LFS objects for all refs" : "Fetched LFS objects for the current checkout");
+      toast("success", all ? tr("lfs.fetchedAll") : tr("lfs.fetchedCurrent"));
     });
 
   const prune = () =>
     run("prune", async (p) => {
       const dry = pruneSummary(await tauri.lfsPrune(p, true));
       if (dry.count === 0) {
-        toast("info", "Nothing to prune: every local LFS object is still needed.");
+        toast("info", tr("lfs.nothingToPrune"));
         return;
       }
       const ok = await ask(
-        `Delete ${dry.count} local LFS object${dry.count === 1 ? "" : "s"}${dry.size ? ` (${dry.size})` : ""} that no recent commit needs? They can be fetched again from the server.`,
-        { title: "Prune LFS Objects", kind: "warning", okLabel: "Prune" },
+        dry.size
+          ? tr("lfs.pruneConfirmSize", { count: dry.count, size: dry.size })
+          : tr("lfs.pruneConfirm", { count: dry.count }),
+        { title: tr("lfs.pruneTitle"), kind: "warning", okLabel: tr("lfs.pruneOk") },
       );
       if (!ok) return;
       await tauri.lfsPrune(p, false);
-      toast("success", `Pruned ${dry.count} LFS object${dry.count === 1 ? "" : "s"}`);
+      toast("success", tr("lfs.pruned", { count: dry.count }));
     });
 
   function when(iso: string): string {
@@ -140,67 +143,67 @@
     <div class="lfs">
       {#if st && !st.version}
         <p class="notice">
-          git-lfs is not installed. Install it (e.g. from git-lfs.com or your package manager) and run
-          <code>git lfs install</code> once, then reopen this panel.
+          {$t("lfs.notInstalledBefore")}
+          <code>{"git lfs install"}</code> {$t("lfs.notInstalledAfter")}
         </p>
       {:else if !st && $lfsError}
-        <p class="error">Couldn't read the LFS setup: {$lfsError}</p>
-        <div><button class="btn" onclick={() => refreshLfsStatus()}>Retry</button></div>
+        <p class="error">{$t("lfs.readFailed", { error: $lfsError })}</p>
+        <div><button class="btn" onclick={() => refreshLfsStatus()}>{$t("common.retry")}</button></div>
       {:else if !st}
-        <p class="muted"><Loader2 size={13} class="spinner" /> Loading…</p>
+        <p class="muted"><Loader2 size={13} class="spinner" /> {$t("common.loading")}</p>
       {:else}
         <p class="muted version">{st.version}</p>
 
         <section>
-          <h3>Tracked patterns</h3>
+          <h3>{$t("lfs.trackedPatterns")}</h3>
           {#if st.patterns.length === 0}
-            <p class="muted">No files are tracked with LFS in this repository yet.</p>
+            <p class="muted">{$t("lfs.noPatterns")}</p>
           {:else}
             <ul class="rows">
               {#each st.patterns as p, i (i)}
                 <li class="row">
                   <code class="grow">{p.pattern}</code>
-                  {#if p.lockable}<span class="badge" title="Read-only unless locked">lockable</span>{/if}
+                  {#if p.lockable}<span class="badge" title={$t("lfs.lockableTitle")}>{$t("lfs.lockableBadge")}</span>{/if}
                   <span class="muted small">{p.source}</span>
                   {#if p.source === ".gitattributes"}
-                    <button class="icon-btn" onclick={() => untrack(p.pattern)} disabled={!!busy} title="Stop tracking {p.pattern}" aria-label="Untrack {p.pattern}">
+                    <button class="icon-btn" onclick={() => untrack(p.pattern)} disabled={!!busy} title={$t("lfs.stopTracking", { pattern: p.pattern })} aria-label={$t("lfs.untrack", { pattern: p.pattern })}>
                       <Trash2 size={13} />
                     </button>
                   {:else}
-                    <span class="icon-btn placeholder" title="Defined in {p.source}; edit that file to change it"></span>
+                    <span class="icon-btn placeholder" title={$t("lfs.definedIn", { source: p.source })}></span>
                   {/if}
                 </li>
               {/each}
             </ul>
           {/if}
           <form class="add" onsubmit={(e) => { e.preventDefault(); track(); }}>
-            <input bind:value={pattern} placeholder="Pattern to track, e.g. *.psd" spellcheck="false" autocomplete="off" aria-label="Pattern to track" />
-            <label class="check" title="Read-only in the working copy unless locked"><input type="checkbox" bind:checked={lockable} /> Lockable</label>
-            <button class="btn" type="submit" disabled={!!busy || !pattern.trim()}>Track</button>
+            <input bind:value={pattern} placeholder={$t("lfs.patternPlaceholder")} spellcheck="false" autocomplete="off" aria-label={$t("lfs.patternLabel")} />
+            <label class="check" title={$t("lfs.lockableCheckTitle")}><input type="checkbox" bind:checked={lockable} /> {$t("lfs.lockable")}</label>
+            <button class="btn" type="submit" disabled={!!busy || !pattern.trim()}>{$t("lfs.track")}</button>
           </form>
-          <p class="muted small">Tracking changes <code>.gitattributes</code>; commit it so others use LFS for these files too.</p>
+          <p class="muted small">{$t("lfs.trackingNoteBefore")} <code>{".gitattributes"}</code>{$t("lfs.trackingNoteAfter")}</p>
         </section>
 
         <section>
           <h3>
-            Locks
-            <button class="icon-btn" onclick={() => loadLocks()} disabled={!!busy} title="Reload locks from the server" aria-label="Reload locks"><RefreshCw size={12} /></button>
+            {$t("lfs.locks")}
+            <button class="icon-btn" onclick={() => loadLocks()} disabled={!!busy} title={$t("lfs.reloadLocksTitle")} aria-label={$t("lfs.reloadLocks")}><RefreshCw size={12} /></button>
           </h3>
           {#if locksError}
             <p class="error">{locksError}</p>
           {:else if locks === null}
-            <p class="muted"><Loader2 size={13} class="spinner" /> Loading locks…</p>
+            <p class="muted"><Loader2 size={13} class="spinner" /> {$t("lfs.loadingLocks")}</p>
           {:else if locks.length === 0}
-            <p class="muted">No files are locked.</p>
+            <p class="muted">{$t("lfs.noLocks")}</p>
           {:else}
             <ul class="rows">
               {#each locks as l (l.id)}
                 <li class="row">
                   <Lock size={12} />
                   <code class="grow">{l.path}</code>
-                  <span class="small" class:mine={l.ours}>{l.ours ? "you" : l.owner}</span>
+                  <span class="small" class:mine={l.ours}>{l.ours ? $t("lfs.you") : l.owner}</span>
                   <span class="muted small">{when(l.locked_at)}</span>
-                  <button class="icon-btn" onclick={() => unlock(l)} disabled={!!busy} title={l.ours ? "Unlock" : `Force-unlock ${l.owner}'s lock`} aria-label="Unlock {l.path}">
+                  <button class="icon-btn" onclick={() => unlock(l)} disabled={!!busy} title={l.ours ? $t("lfs.unlock") : $t("lfs.forceUnlockTitle", { owner: l.owner })} aria-label={$t("lfs.unlockLabel", { path: l.path })}>
                     <LockOpen size={13} />
                   </button>
                 </li>
@@ -208,22 +211,22 @@
             </ul>
           {/if}
           <form class="add" onsubmit={(e) => { e.preventDefault(); lockFile(); }}>
-            <input bind:value={lockPath} placeholder="File to lock, e.g. art/cover.psd" spellcheck="false" autocomplete="off" aria-label="File to lock" />
-            <button class="btn" type="submit" disabled={!!busy || !lockPath.trim()}>Lock</button>
+            <input bind:value={lockPath} placeholder={$t("lfs.lockPlaceholder")} spellcheck="false" autocomplete="off" aria-label={$t("lfs.lockLabel")} />
+            <button class="btn" type="submit" disabled={!!busy || !lockPath.trim()}>{$t("lfs.lock")}</button>
           </form>
         </section>
 
         <section>
-          <h3>Objects</h3>
+          <h3>{$t("lfs.objects")}</h3>
           <div class="actions">
-            <button class="btn" onclick={() => fetchObjects(false)} disabled={!!busy} title="git lfs fetch">
-              {#if busy === "fetch"}<Loader2 size={12} class="spinner" />{/if} Fetch
+            <button class="btn" onclick={() => fetchObjects(false)} disabled={!!busy} title={"git lfs fetch"}>
+              {#if busy === "fetch"}<Loader2 size={12} class="spinner" />{/if} {$t("lfs.fetch")}
             </button>
-            <button class="btn" onclick={() => fetchObjects(true)} disabled={!!busy} title="git lfs fetch --all">
-              {#if busy === "fetch-all"}<Loader2 size={12} class="spinner" />{/if} Fetch all refs
+            <button class="btn" onclick={() => fetchObjects(true)} disabled={!!busy} title={"git lfs fetch --all"}>
+              {#if busy === "fetch-all"}<Loader2 size={12} class="spinner" />{/if} {$t("lfs.fetchAll")}
             </button>
-            <button class="btn" onclick={prune} disabled={!!busy} title="Delete local LFS objects no recent commit needs (git lfs prune)">
-              {#if busy === "prune"}<Loader2 size={12} class="spinner" />{/if} Prune…
+            <button class="btn" onclick={prune} disabled={!!busy} title={$t("lfs.pruneTitleHint")}>
+              {#if busy === "prune"}<Loader2 size={12} class="spinner" />{/if} {$t("lfs.prune")}
             </button>
           </div>
         </section>

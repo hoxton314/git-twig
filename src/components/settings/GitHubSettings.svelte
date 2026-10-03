@@ -9,6 +9,9 @@
   import { clearCi } from "../../lib/stores/ci";
   import { toast } from "../../lib/stores/toasts";
   import ProviderTokenSettings from "./ProviderTokenSettings.svelte";
+  import { t, tr } from "../../lib/i18n";
+
+  const GITEA_TITLE = "Gitea / Forgejo";
 
   let tokenInput = $state("");
   // The token lives in the OS keyring and is never sent to the UI; we only
@@ -135,7 +138,7 @@
       status = "connected";
       errorMsg = "";
       clearCi();
-      toast("success", `Signed in as @${u.login}`);
+      toast("success", tr("hosting.signedInAs", { login: u.login }));
     } catch (err) {
       if (!deviceCancelled) deviceError = String(err);
     } finally {
@@ -152,7 +155,7 @@
   function copyCode() {
     if (!device) return;
     navigator.clipboard.writeText(device.user_code).then(
-      () => toast("success", "Code copied"),
+      () => toast("success", tr("hosting.codeCopied")),
       () => {},
     );
   }
@@ -190,29 +193,29 @@
     {#if info?.github_oauth_available}
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Sign in with GitHub</span>
-          <span class="label-hint">Authorize Twig in your browser; no token to copy around.</span>
+          <span class="label-text">{$t("hosting.signInWithGitHub")}</span>
+          <span class="label-hint">{$t("hosting.signInHint")}</span>
         </div>
         <div class="setting-control">
           {#if device}
             <div class="device-box">
-              <span class="device-hint">Enter this code on GitHub:</span>
+              <span class="device-hint">{$t("hosting.enterCode")}</span>
               <div class="device-code-row">
                 <code class="device-code">{device.user_code}</code>
-                <button class="icon-btn" onclick={copyCode} title="Copy code" aria-label="Copy code"><Copy size={13} /></button>
+                <button class="icon-btn" onclick={copyCode} title={$t("hosting.copyCode")} aria-label={$t("hosting.copyCode")}><Copy size={13} /></button>
               </div>
               <div class="device-actions">
                 <button class="btn-secondary" onclick={() => device && openUrl(device.verification_uri)}>
-                  <ExternalLink size={12} /> Open {device.verification_uri.replace(/^https?:\/\//, "")}
+                  <ExternalLink size={12} /> {$t("hosting.openUrl", { url: device.verification_uri.replace(/^https?:\/\//, "") })}
                 </button>
-                <button class="btn-ghost" onclick={cancelDeviceFlow}>Cancel</button>
+                <button class="btn-ghost" onclick={cancelDeviceFlow}>{$t("common.cancel")}</button>
               </div>
-              <span class="device-wait"><Loader2 size={12} class="spinner" /> Waiting for authorization…</span>
+              <span class="device-wait"><Loader2 size={12} class="spinner" /> {$t("hosting.waiting")}</span>
             </div>
           {:else}
             <button class="btn-primary" onclick={startDeviceFlow} disabled={deviceBusy}>
               <LogIn size={14} />
-              <span>{hasToken ? "Sign in again" : "Sign in with GitHub"}</span>
+              <span>{hasToken ? $t("hosting.signInAgain") : $t("hosting.signInWithGitHub")}</span>
             </button>
           {/if}
           {#if deviceError}
@@ -224,13 +227,13 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Personal Access Token</span>
+        <span class="label-text">{$t("hosting.pat")}</span>
         <span class="label-hint">
-          Create a token at
+          {$t("hosting.patHintBefore")}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <span class="link" role="link" tabindex="0" onclick={() => openUrl(tokensUrl)} onkeydown={(e) => e.key === "Enter" && openUrl(tokensUrl)}>{host}/settings/tokens</span>
-          with <code>repo</code> scope. Stored in your system keyring.
+          <span class="link" role="link" tabindex="0" onclick={() => openUrl(tokensUrl)} onkeydown={(e) => e.key === "Enter" && openUrl(tokensUrl)}>{`${host}/settings/tokens`}</span>
+          {$t("hosting.patHintMiddle")} <code>{"repo"}</code>{$t("hosting.patHintAfter")}
         </span>
       </div>
       <div class="setting-control token-control">
@@ -239,32 +242,32 @@
           class="token-input"
           autocomplete="off"
           spellcheck="false"
-          aria-label="GitHub personal access token"
-          placeholder={hasToken ? "Saved in system keyring — paste to replace" : "ghp_..."}
+          aria-label={$t("hosting.patLabel")}
+          placeholder={hasToken ? $t("hosting.tokenSavedPlaceholder") : "ghp_..."}
           bind:value={tokenInput}
           onkeydown={(e) => e.key === "Enter" && handleSave()}
         />
-        <button class="btn-secondary" onclick={handleSave} disabled={!tokenInput.trim()}>Save</button>
+        <button class="btn-secondary" onclick={handleSave} disabled={!tokenInput.trim()}>{$t("common.save")}</button>
         {#if hasToken}
-          <button class="btn-ghost" onclick={handleClear}>Clear</button>
+          <button class="btn-ghost" onclick={handleClear}>{$t("common.clear")}</button>
         {/if}
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Connection status</span>
+        <span class="label-text">{$t("hosting.connectionStatus")}</span>
       </div>
       <div class="setting-control">
         {#if status === "loading"}
           <div class="status-badge loading">
             <Loader2 size={14} class="spinner" />
-            <span>Verifying...</span>
+            <span>{$t("hosting.verifying")}</span>
           </div>
         {:else if status === "connected" && user}
           <div class="status-badge connected">
             <Check size={14} />
-            <span>Connected as <strong>@{user.login}</strong></span>
+            <span>{$t("hosting.connectedAs")} <strong>@{user.login}</strong></span>
           </div>
         {:else if status === "error"}
           <div class="status-badge error" title={errorMsg}>
@@ -273,7 +276,7 @@
           </div>
         {:else}
           <div class="status-badge idle">
-            <span>Not configured</span>
+            <span>{$t("hosting.notConfigured")}</span>
           </div>
         {/if}
       </div>
@@ -281,15 +284,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Use token for HTTPS fetch, pull and push</span>
+        <span class="label-text">{$t("hosting.httpsAuth")}</span>
         <span class="label-hint">
-          Sends the token only to <code>https://{host}/</code> remotes, via environment-only git config
-          (never written to disk). Turn off to rely on your git credential helper.
+          {$t("hosting.httpsAuthHintBefore")} <code>https://{host}/</code>{$t("hosting.httpsAuthHintAfter")}
         </span>
       </div>
       <div class="setting-control">
         <label class="toggle">
-          <input type="checkbox" checked={s.github_https_auth} onchange={toggleHttpsAuth} aria-label="Use token for HTTPS git operations" />
+          <input type="checkbox" checked={s.github_https_auth} onchange={toggleHttpsAuth} aria-label={$t("hosting.httpsAuthLabel")} />
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -297,9 +299,9 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">GitHub host</span>
+        <span class="label-text">{$t("hosting.githubHost")}</span>
         <span class="label-hint">
-          <code>github.com</code>, or your GitHub Enterprise Server hostname.
+          <code>{"github.com"}</code>{$t("hosting.githubHostHint")}
         </span>
       </div>
       <div class="setting-control">
@@ -307,8 +309,8 @@
           type="text"
           class="text-input"
           spellcheck="false"
-          placeholder="github.com"
-          aria-label="GitHub host"
+          placeholder={"github.com"}
+          aria-label={$t("hosting.githubHost")}
           bind:value={hostInput}
           onblur={saveHost}
           onkeydown={(e) => e.key === "Enter" && saveHost()}
@@ -319,9 +321,9 @@
     {#if hostInput.trim() && hostInput.trim().toLowerCase() !== "github.com"}
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">API URL (optional)</span>
+          <span class="label-text">{$t("hosting.apiUrl")}</span>
           <span class="label-hint">
-            Defaults to <code>{info?.github_api_base ?? `https://${hostInput.trim()}/api/v3`}</code>.
+            {$t("hosting.apiUrlDefaults")} <code>{info?.github_api_base ?? `https://${hostInput.trim()}/api/v3`}</code>.
           </span>
         </div>
         <div class="setting-control">
@@ -329,8 +331,8 @@
             type="text"
             class="text-input"
             spellcheck="false"
-            placeholder="https://{hostInput.trim()}/api/v3"
-            aria-label="GitHub API URL"
+            placeholder={`https://${hostInput.trim()}/api/v3`}
+            aria-label={$t("hosting.apiUrlLabel")}
             bind:value={apiInput}
             onblur={saveHost}
             onkeydown={(e) => e.key === "Enter" && saveHost()}
@@ -345,15 +347,15 @@
     title="GitLab"
     urlPlaceholder="https://gitlab.com"
     tokenPath="/-/user_settings/personal_access_tokens"
-    scopesHint="the api scope"
+    scopesHint={$t("hosting.gitlabScopes")}
   />
 
   <ProviderTokenSettings
     provider="gitea"
-    title="Gitea / Forgejo"
+    title={GITEA_TITLE}
     urlPlaceholder="https://codeberg.org"
     tokenPath="/user/settings/applications"
-    scopesHint="repository and user read/write permissions"
+    scopesHint={$t("hosting.giteaScopes")}
   />
 </div>
 

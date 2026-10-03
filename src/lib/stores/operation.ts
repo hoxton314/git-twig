@@ -14,6 +14,7 @@ import { activeRepoPath } from "./repos";
 import { workingStatus, refreshAll } from "./graph";
 import { settings } from "./settings";
 import { toast, toastError } from "./toasts";
+import { tr } from "../i18n";
 
 /** Operation state of the active repo (`null` until loaded). */
 export const operationState = writable<RepoOperationState | null>(null);
@@ -60,19 +61,19 @@ workingStatus.subscribe(() => {
 export function operationLabel(kind: string): string {
   switch (kind) {
     case "merge":
-      return "Merge";
+      return tr("operation.kind.merge");
     case "rebase":
-      return "Rebase";
+      return tr("operation.kind.rebase");
     case "cherry_pick":
-      return "Cherry-pick";
+      return tr("operation.kind.cherryPick");
     case "revert":
-      return "Revert";
+      return tr("operation.kind.revert");
     case "am":
-      return "Patch application";
+      return tr("operation.kind.am");
     case "bisect":
-      return "Bisect";
+      return tr("operation.kind.bisect");
     default:
-      return "Operation";
+      return tr("operation.kind.other");
   }
 }
 
@@ -98,8 +99,12 @@ async function runOp(
     if (res.success) {
       if (st && st.kind !== "none") {
         // e.g. the rebase continued and stopped at the next conflict/edit.
-        const what = st.conflicts.length > 0 ? "conflicts" : "a stop";
-        toast("warning", `${operationLabel(st.kind)} paused at ${what}. Resolve and continue.`, {
+        const name = operationLabel(st.kind);
+        const text =
+          st.conflicts.length > 0
+            ? tr("operation.pausedAtConflicts", { name })
+            : tr("operation.pausedAtStop", { name });
+        toast("warning", text, {
           title: label,
         });
       } else {
@@ -108,15 +113,15 @@ async function runOp(
       return true;
     }
     if (st && st.kind !== "none" && st.conflicts.length > 0) {
-      toast("warning", `${st.conflicts.length} conflicted file(s). Resolve them, then continue.`, {
-        title: `${label}: conflicts`,
+      toast("warning", tr("operation.conflictedFiles", { count: st.conflicts.length }), {
+        title: tr("operation.labelConflicts", { label }),
       });
     } else {
-      toastError(`${label} failed`, res.message || "Unknown error");
+      toastError(tr("operation.failed", { label }), res.message || tr("operation.unknownError"));
     }
     return false;
   } catch (err) {
-    toastError(`${label} failed`, err);
+    toastError(tr("operation.failed", { label }), err);
     return false;
   } finally {
     operationBusy.set(null);
@@ -140,8 +145,8 @@ export function requestContinue() {
   const st = get(operationState);
   if (!st || st.kind === "none") return;
   if (st.conflicts.length > 0) {
-    toast("warning", `Resolve ${st.conflicts.length} conflicted file(s) first.`, {
-      title: `Continue ${operationLabel(st.kind).toLowerCase()}`,
+    toast("warning", tr("operation.resolveFirst", { count: st.conflicts.length }), {
+      title: tr("operation.continue", { name: operationLabel(st.kind).toLowerCase() }),
     });
     return;
   }
@@ -159,40 +164,50 @@ export function requestContinue() {
 
 export function continueOperation(message: string | null): Promise<boolean> {
   const st = get(operationState);
-  const label = `Continue ${operationLabel(st?.kind ?? "").toLowerCase()}`;
-  return runOp(label, (p) => tauri.continueOperation(p, message), `${operationLabel(st?.kind ?? "")} completed`);
+  const label = tr("operation.continue", { name: operationLabel(st?.kind ?? "").toLowerCase() });
+  return runOp(
+    label,
+    (p) => tauri.continueOperation(p, message),
+    tr("operation.completed", { name: operationLabel(st?.kind ?? "") }),
+  );
 }
 
 export async function abortOperation(): Promise<boolean> {
   const st = get(operationState);
   if (!st || st.kind === "none") return false;
   if (st.kind === "bisect") {
-    const ok = await confirmDestructive(
-      "End the bisect? HEAD goes back to where it was when the bisect started.",
-      "Reset Bisect",
-    );
+    const ok = await confirmDestructive(tr("operation.endBisectConfirm"), tr("operation.resetBisectTitle"));
     if (!ok) return false;
-    return runOp("Reset bisect", tauri.bisectReset, "Bisect ended");
+    return runOp(tr("operation.resetBisect"), tauri.bisectReset, tr("operation.bisectEnded"));
   }
   const name = operationLabel(st.kind).toLowerCase();
   const ok = await confirmDestructive(
-    `Abort the ${name}? Your branch returns to its state before the ${name} started and any conflict resolutions are lost.`,
-    `Abort ${operationLabel(st.kind)}`,
+    tr("operation.abortConfirm", { name }),
+    tr("operation.abort", { name: operationLabel(st.kind) }),
   );
   if (!ok) return false;
-  return runOp(`Abort ${name}`, tauri.abortOperation, `${operationLabel(st.kind)} aborted`);
+  return runOp(
+    tr("operation.abort", { name }),
+    tauri.abortOperation,
+    tr("operation.aborted", { name: operationLabel(st.kind) }),
+  );
 }
 
 export async function skipOperation(): Promise<boolean> {
   const st = get(operationState);
   if (!st || !st.can_skip) return false;
-  const subject = st.current_subject ? ` "${st.current_subject}"` : "";
   const ok = await confirmDestructive(
-    `Skip the current commit${subject}? Its changes will not be applied.`,
-    "Skip Commit",
+    st.current_subject
+      ? tr("operation.skipConfirmNamed", { subject: st.current_subject })
+      : tr("operation.skipConfirm"),
+    tr("operation.skipCommitTitle"),
   );
   if (!ok) return false;
-  return runOp("Skip commit", tauri.skipOperation, `${operationLabel(st.kind)} completed`);
+  return runOp(
+    tr("operation.skipCommit"),
+    tauri.skipOperation,
+    tr("operation.completed", { name: operationLabel(st.kind) }),
+  );
 }
 
 // ── Conflicts ────────────────────────────────────────────────────────
@@ -204,7 +219,7 @@ export function openConflictResolver(file?: string) {
   const st = get(operationState);
   const target = file ?? st?.conflicts[0]?.path ?? null;
   if (!target) {
-    toast("info", "There are no conflicted files.");
+    toast("info", tr("operation.noConflictedFiles"));
     return;
   }
   conflictResolverFile.set(target);
@@ -241,9 +256,9 @@ export function openInteractiveRebase(base: string | null = "") {
 /** Rebase the current branch onto `target` (no dialog). */
 export async function rebaseOnto(target: string, autostash = true): Promise<boolean> {
   return runOp(
-    "Rebase",
+    tr("operation.rebase"),
     (p) => tauri.rebaseOnto(p, target, autostash),
-    `Rebased onto ${target}`,
+    tr("operation.rebasedOnto", { target }),
   );
 }
 
@@ -257,19 +272,18 @@ export async function forcePush(): Promise<boolean> {
   try {
     branch = (await tauri.getRepoInfo(path)).head_name;
   } catch (err) {
-    toastError("Force push failed", err);
+    toastError(tr("operation.forcePushFailed"), err);
     return false;
   }
   if (!branch) {
-    toastError("Force push failed", "No branch is checked out.");
+    toastError(tr("operation.forcePushFailed"), tr("operation.noBranch"));
     return false;
   }
   const ok = await confirmDestructive(
-    `Force push "${branch}"?\n\nThis overwrites the remote branch with your local history. ` +
-      `--force-with-lease refuses if someone else pushed commits you have not seen.`,
-    "Force Push (with lease)",
+    tr("operation.forcePushConfirm", { branch }),
+    tr("operation.forcePushTitle"),
   );
   if (!ok) return false;
   const b = branch;
-  return runOp("Force push", (p) => tauri.forcePushWithLease(p, b), `Force pushed ${b}`);
+  return runOp(tr("operation.forcePush"), (p) => tauri.forcePushWithLease(p, b), tr("operation.forcePushed", { branch: b }));
 }

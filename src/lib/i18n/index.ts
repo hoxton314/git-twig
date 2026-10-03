@@ -10,12 +10,11 @@
  * of `Intl.PluralRules` categories (`one`, `few`, `many`, `other`, …) and
  * picks by the `count` parameter.
  */
-import { derived, writable, get } from "svelte/store";
+import { derived, writable, fromStore } from "svelte/store";
 import { en, type MessageKey } from "./en";
 import { pl } from "./pl";
-
-export type Plural = Partial<Record<Intl.LDMLPluralRule, string>> & { other: string };
-export type Message = string | Plural;
+import type { Message } from "./types";
+export type { Plural, Message } from "./types";
 export type Catalog = Record<MessageKey, Message>;
 export type { MessageKey };
 
@@ -65,9 +64,24 @@ export function translate(loc: Locale, key: MessageKey, params: Params = {}): st
 /** Reactive translator: `$t("key", params)`. */
 export const t = derived(locale, (loc) => (key: MessageKey, params?: Params) => translate(loc, key, params));
 
-/** Non-reactive translation for plain TS modules (toasts etc.). */
+const currentLocale = fromStore(locale);
+
+/**
+ * Translation for plain TS modules and helpers. Reading the locale through
+ * `fromStore` makes markup and `$derived` values that call it (directly or
+ * via a helper) re-run when the language changes; elsewhere it is a plain read.
+ */
 export function tr(key: MessageKey, params?: Params): string {
-  return translate(get(locale), key, params);
+  return translate(currentLocale.current, key, params);
+}
+
+/**
+ * Split a translated message at its `{name}` placeholders, for markup that
+ * wraps a value (`<strong>{branch}</strong>`): odd indices are placeholder
+ * names, even indices plain text.
+ */
+export function splitMessage(msg: string): string[] {
+  return msg.split(/\{(\w+)\}/);
 }
 
 /** Placeholder names used by a message (all plural forms). */

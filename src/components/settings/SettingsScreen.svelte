@@ -9,18 +9,19 @@
   import AboutSettings from "./AboutSettings.svelte";
   import RepoSettings from "./RepoSettings.svelte";
   import { currentView } from "../../lib/stores/ui";
+  import { t, type MessageKey } from "../../lib/i18n";
 
   type Section = "general" | "repo" | "appearance" | "editor" | "git" | "github" | "keybindings" | "about";
 
-  const sections: { id: Section; label: string }[] = [
-    { id: "general", label: "General" },
-    { id: "repo", label: "This repository" },
-    { id: "appearance", label: "Appearance" },
-    { id: "editor", label: "Editor & Diff" },
-    { id: "git", label: "Git Configuration" },
-    { id: "github", label: "Hosting" },
-    { id: "keybindings", label: "Keybindings" },
-    { id: "about", label: "About & Updates" },
+  const sections: { id: Section; key: MessageKey }[] = [
+    { id: "general", key: "settings.nav.general" },
+    { id: "repo", key: "settings.nav.repo" },
+    { id: "appearance", key: "settings.nav.appearance" },
+    { id: "editor", key: "settings.nav.editor" },
+    { id: "git", key: "settings.nav.git" },
+    { id: "github", key: "settings.nav.github" },
+    { id: "keybindings", key: "settings.nav.keybindings" },
+    { id: "about", key: "settings.nav.about" },
   ];
 
   let activeSection = $state<Section>("general");
@@ -31,13 +32,13 @@
 </script>
 
 <div class="settings-screen">
-  <nav class="settings-nav" aria-label="Settings sections">
+  <nav class="settings-nav" aria-label={$t("settings.sectionsLabel")}>
     <button class="back-btn" onclick={goBack}>
       <ArrowLeft size={16} />
-      <span>Back</span>
+      <span>{$t("settings.back")}</span>
     </button>
 
-    <h2 class="nav-title">Settings</h2>
+    <h2 class="nav-title">{$t("settings.title")}</h2>
 
     <div class="nav-sections">
       {#each sections as section (section.id)}
@@ -47,7 +48,7 @@
           aria-current={activeSection === section.id ? "page" : undefined}
           onclick={() => (activeSection = section.id)}
         >
-          {section.label}
+          {$t(section.key)}
         </button>
       {/each}
     </div>

@@ -5,6 +5,7 @@
   import { showFileHistory, showInGraph } from "../../lib/stores/fileviews";
   import { settings } from "../../lib/stores/settings";
   import { toast } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
   import { relativeTime, fullDate, copyText } from "./format";
   import { Loader2, ArrowLeft, GitCommitHorizontal, History, ChevronsDown } from "lucide-svelte";
@@ -153,14 +154,14 @@
       `${h.author_name} <${h.author_email}>`,
       fullDate(h.timestamp),
     ];
-    if (h.orig_path !== (current?.path ?? path)) lines.push(`from ${h.orig_path}`);
-    lines.push("Click to select · right-click for actions");
+    if (h.orig_path !== (current?.path ?? path)) lines.push($t("blame.fromPath", { path: h.orig_path }));
+    lines.push($t("blame.gutterHint"));
     return lines.join("\n");
   }
 
   function blamePrevious(h: BlameHunk) {
     if (!h.has_parent) {
-      toast("info", "These lines were introduced in the root commit; there is no earlier revision.");
+      toast("info", tr("blame.rootCommit"));
       return;
     }
     stack = [...stack, { path: h.orig_path, rev: `${h.oid}^` }];
@@ -181,14 +182,14 @@
       x: ev.clientX,
       y: ev.clientY,
       items: [
-        { label: "Show commit in graph", action: () => { showInGraph(h.oid); } },
-        { label: "Blame previous revision", action: () => blamePrevious(h), disabled: !h.has_parent },
-        { label: "File history", action: () => showFileHistory(current?.path ?? path) },
+        { label: tr("blame.showCommitInGraph"), action: () => { showInGraph(h.oid); } },
+        { label: tr("blame.blamePreviousRevision"), action: () => blamePrevious(h), disabled: !h.has_parent },
+        { label: tr("blame.fileHistory"), action: () => showFileHistory(current?.path ?? path) },
         { separator: true },
         {
-          label: "Copy commit SHA",
+          label: tr("history.copySha"),
           action: async () => {
-            if (await copyText(h.oid)) toast("success", `Copied ${h.short_oid}`);
+            if (await copyText(h.oid)) toast("success", tr("history.copied", { sha: h.short_oid }));
           },
         },
       ],
@@ -206,55 +207,55 @@
 
 <div class="blame">
   <div class="toolbar">
-    <button class="icon-btn" onclick={back} disabled={stack.length <= 1} title="Back to newer revision" aria-label="Back">
+    <button class="icon-btn" onclick={back} disabled={stack.length <= 1} title={$t("blame.backTitle")} aria-label={$t("blame.back")}>
       <ArrowLeft size={14} />
     </button>
     <span class="where">
       <span class="mono path">{current?.path ?? path}</span>
       {#if result}
-        <span class="at">at</span>
+        <span class="at">{$t("blame.at")}</span>
         <span class="oid" title={result.rev_oid}>{current?.rev ? result.rev_short : `HEAD (${result.rev_short})`}</span>
         {#if current?.rev?.endsWith("^")}
-          <span class="muted">parent of {current.rev.slice(0, 7)}</span>
+          <span class="muted">{$t("blame.parentOf", { oid: current.rev.slice(0, 7) })}</span>
         {/if}
       {/if}
     </span>
     <span class="legend" aria-hidden="true">
-      older <span class="legend-bar"></span> newer
+      {$t("blame.older")} <span class="legend-bar"></span> {$t("blame.newer")}
     </span>
   </div>
 
   {#if selectedHunk}
     <div class="selected-bar">
       <div class="sel-meta">
-        <div class="sel-summary">{selectedHunk.summary || "(no message)"}</div>
+        <div class="sel-summary">{selectedHunk.summary || $t("history.noMessage")}</div>
         <div class="sel-sub">
           <span class="oid">{selectedHunk.short_oid}</span>
           · {selectedHunk.author_name}
           · <span title={fullDate(selectedHunk.timestamp)}>{relativeTime(selectedHunk.timestamp)}</span>
-          · {selectedLines} line{selectedLines === 1 ? "" : "s"}
+          · {$t("blame.lineCount", { count: selectedLines })}
         </div>
       </div>
-      <button class="btn" onclick={jumpToNext} title="Jump to the next block from this commit">
-        <ChevronsDown size={13} /> Next
+      <button class="btn" onclick={jumpToNext} title={$t("blame.nextTitle")}>
+        <ChevronsDown size={13} /> {$t("blame.next")}
       </button>
       <button class="btn" onclick={() => showInGraph(selectedHunk.oid)}>
-        <GitCommitHorizontal size={13} /> Show in graph
+        <GitCommitHorizontal size={13} /> {$t("history.showInGraph")}
       </button>
       <button class="btn" onclick={() => blamePrevious(selectedHunk)} disabled={!selectedHunk.has_parent}
-        title="Re-blame the file at this commit's parent">
-        <History size={13} /> Blame previous
+        title={$t("blame.blamePreviousTitle")}>
+        <History size={13} /> {$t("blame.blamePrevious")}
       </button>
     </div>
   {/if}
 
   <div class="code" bind:this={scrollEl} style="tab-size: {tabSize}">
     {#if loading && !result}
-      <div class="empty"><Loader2 size={14} class="spinner" /> Computing blame…</div>
+      <div class="empty"><Loader2 size={14} class="spinner" /> {$t("blame.computing")}</div>
     {:else if error}
       <div class="empty error">{error}</div>
     {:else if result && result.lines.length === 0}
-      <div class="empty">Empty file</div>
+      <div class="empty">{$t("blame.emptyFile")}</div>
     {:else if result}
       {#if loading}
         <div class="reloading"><Loader2 size={12} class="spinner" /></div>

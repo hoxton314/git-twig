@@ -1,6 +1,7 @@
 <!-- Commits ahead/behind between the current branch and another branch. -->
 <script lang="ts">
   import Modal from "../shared/Modal.svelte";
+  import { t, splitMessage } from "../../lib/i18n";
   import * as tauri from "../../lib/tauri";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { selectedCommitOid } from "../../lib/stores/graph";
@@ -47,6 +48,7 @@
     onclose();
   }
 
+
   function when(ts: number) {
     return new Date(ts * 1000).toLocaleDateString();
   }
@@ -56,12 +58,12 @@
   <section class="side">
     <h3>{title} <span class="count">{total}</span></h3>
     {#if total === 0}
-      <p class="none">No commits.</p>
+      <p class="none">{$t("branches.noCommits")}</p>
     {:else}
       <ul>
         {#each list as c (c.oid)}
           <li>
-            <button class="commit" onclick={() => show(c)} title="Show {c.short_oid} in the graph">
+            <button class="commit" onclick={() => show(c)} title={$t("branches.showInGraph", { oid: c.short_oid })}>
               <span class="sha">{c.short_oid}</span>
               <span class="summary">{c.summary}</span>
               <span class="meta">{c.author_name} · {when(c.timestamp)}</span>
@@ -70,26 +72,26 @@
         {/each}
       </ul>
       {#if total > list.length}
-        <p class="none">…and {total - list.length} more</p>
+        <p class="none">{$t("branches.andMore", { count: total - list.length })}</p>
       {/if}
     {/if}
   </section>
 {/snippet}
 
-<Modal open={!!pair} title="Compare Branches" {onclose} width="640px">
+<Modal open={!!pair} title={$t("branches.compareTitle")} {onclose} width="640px">
   {#if pair}
     <div class="compare">
-      <p class="desc"><strong>{pair.other}</strong> compared with <strong>{pair.base}</strong></p>
+      <p class="desc">{#each splitMessage($t("branches.comparedWith")) as part, i}{#if i % 2}<strong>{part === "other" ? pair.other : pair.base}</strong>{:else}{part}{/if}{/each}</p>
       {#if loading}
-        <p class="none">Comparing…</p>
+        <p class="none">{$t("branches.comparing")}</p>
       {:else if error}
         <p class="err">{error}</p>
       {:else if result}
         {#if result.ahead_count === 0 && result.behind_count === 0}
-          <p class="none">The branches point at the same history.</p>
+          <p class="none">{$t("branches.sameHistory")}</p>
         {:else}
-          {@render commitList(`Only on ${pair.other}`, result.ahead, result.ahead_count)}
-          {@render commitList(`Only on ${pair.base}`, result.behind, result.behind_count)}
+          {@render commitList($t("branches.onlyOn", { name: pair.other }), result.ahead, result.ahead_count)}
+          {@render commitList($t("branches.onlyOn", { name: pair.base }), result.behind, result.behind_count)}
         {/if}
       {/if}
     </div>

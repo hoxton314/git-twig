@@ -1,5 +1,6 @@
 <script lang="ts">
   import { clampColWidth, type GraphColumn } from "./graphLayout";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     /** Width of the lanes column, so labels line up with the rows. */
@@ -69,7 +70,12 @@
     onresizeend(col, clampColWidth(w));
   }
 
-  const LABELS: Record<GraphColumn, string> = { author: "Author", sha: "SHA", date: "Date" };
+  const LABEL_KEYS = { author: "graph.colAuthor", sha: "graph.colSha", date: "graph.colDate" } as const;
+  const LABELS = $derived({
+    author: $t(LABEL_KEYS.author),
+    sha: $t(LABEL_KEYS.sha),
+    date: $t(LABEL_KEYS.date),
+  } satisfies Record<GraphColumn, string>);
   const columns = $derived(
     (["author", "sha", "date"] as GraphColumn[]).filter((c) =>
       c === "author" ? showAuthor : c === "sha" ? showSha : showDate,
@@ -82,8 +88,8 @@
   class:dragging={dragging !== null}
   style="padding-right: {12 + rightInset}px"
 >
-  <span class="graph-col" style="width: {graphWidth}px">Graph</span>
-  <span class="desc-col">Description</span>
+  <span class="graph-col" style="width: {graphWidth}px">{$t("graph.colGraph")}</span>
+  <span class="desc-col">{$t("graph.colDescription")}</span>
   {#each columns as col (col)}
     <span class="fixed-col col-{col}" style="width: var(--graph-col-{col})">
       <!-- A focusable separator is a widget (arrow keys resize it). -->
@@ -93,10 +99,10 @@
         class:active={dragging === col}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize {LABELS[col]} column"
+        aria-label={$t("graph.resizeColumn", { column: LABELS[col] })}
         aria-valuenow={widths[col]}
         tabindex="0"
-        title="Drag to resize, double-click to reset"
+        title={$t("graph.resizeHint")}
         onpointerdown={(e) => onPointerDown(col, e)}
         onpointermove={onPointerMove}
         onpointerup={onPointerUp}

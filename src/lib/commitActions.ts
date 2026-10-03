@@ -11,13 +11,14 @@ import type { CommitOpResult, PickManyResult, ResetMode } from "./types/git";
 import { refreshAll } from "./stores/graph";
 import { settings } from "./stores/settings";
 import { toast, toastError } from "./stores/toasts";
+import { tr } from "./i18n";
 
 const short = (oid: string) => oid.slice(0, 7);
 
 /** Confirmation that respects the "confirm destructive operations" setting. */
-export async function confirmDestructive(text: string, title: string, okLabel = "OK"): Promise<boolean> {
+export async function confirmDestructive(text: string, title: string, okLabel = tr("common.ok")): Promise<boolean> {
   if (!get(settings).confirm_destructive_ops) return true;
-  return ask(text, { title, kind: "warning", okLabel, cancelLabel: "Cancel" });
+  return ask(text, { title, kind: "warning", okLabel, cancelLabel: tr("common.cancel") });
 }
 
 /** Copy text to the clipboard, falling back to execCommand for older WebKit. */
@@ -39,15 +40,15 @@ export async function copyText(text: string, what: string) {
     const ok = document.execCommand("copy");
     ta.remove();
     if (!ok) {
-      toast("error", `Could not copy ${what} to the clipboard.`);
+      toast("error", tr("commits.copyFailed", { what }));
       return;
     }
   }
-  toast("success", `Copied ${what}`, { duration: 2000 });
+  toast("success", tr("commits.copied", { what }), { duration: 2000 });
 }
 
 function stashNote(r: CommitOpResult): string {
-  return r.stash_oid ? " Your uncommitted changes were saved to the stash list." : "";
+  return r.stash_oid ? ` ${tr("commits.stashNote")}` : "";
 }
 
 /** Run an operation that may move HEAD; refresh and report. */
@@ -64,7 +65,7 @@ async function runHeadOp<T extends CommitOpResult>(
     await refreshAll(path);
     if (r.success) onSuccess(r);
     else if (onFailure) onFailure(r);
-    else if (!r.conflicted) toast("error", r.message.trim() || "Git reported an error.", { title });
+    else if (!r.conflicted) toast("error", r.message.trim() || tr("commits.gitError"), { title });
     return r;
   } catch (err) {
     await refreshAll(path);
@@ -80,7 +81,7 @@ async function undoTo(path: string, r: CommitOpResult, how: "checkout" | ResetMo
   if (how === "checkout") {
     await runHeadOp(
       path,
-      "Undo Failed",
+      tr("commits.undoFailed"),
       async () => {
         if (r.previous_branch) {
           const res = await tauri.checkoutBranch(path, r.previous_branch);
@@ -88,50 +89,51 @@ async function undoTo(path: string, r: CommitOpResult, how: "checkout" | ResetMo
         }
         return tauri.checkoutCommit(path, prev);
       },
-      () => toast("success", `Back on ${r.previous_branch ?? short(prev)}`),
+      () => toast("success", tr("commits.backOn", { target: r.previous_branch ?? short(prev) })),
     );
     return;
   }
   await runHeadOp(
     path,
-    "Undo Failed",
+    tr("commits.undoFailed"),
     () => tauri.resetToCommit(path, prev, how),
-    (u) => toast("success", `Restored ${r.previous_branch ?? "HEAD"} to ${short(prev)}.${stashNote(u)}`),
+    (u) =>
+      toast("success", tr("commits.restoredTo", { target: r.previous_branch ?? "HEAD", sha: short(prev) }) + stashNote(u)),
   );
 }
 
 export async function checkoutCommitAction(path: string, oid: string) {
   const ok = await confirmDestructive(
-    `Check out ${short(oid)} with a detached HEAD?\n\nNew commits made there won't belong to any branch unless you create one.`,
-    "Checkout Commit",
-    "Checkout",
+    tr("commits.checkoutConfirm", { sha: short(oid) }),
+    tr("commits.checkoutTitle"),
+    tr("commits.checkoutOk"),
   );
   if (!ok) return;
-  await runHeadOp(path, "Checkout Failed", () => tauri.checkoutCommit(path, oid), (r) =>
-    toast("success", `HEAD is now detached at ${short(oid)}`, {
-      action: r.previous_head ? { label: "Undo", run: () => undoTo(path, r, "checkout") } : undefined,
+  await runHeadOp(path, tr("commits.checkoutFailed"), () => tauri.checkoutCommit(path, oid), (r) =>
+    toast("success", tr("commits.detachedAt", { sha: short(oid) }), {
+      action: r.previous_head ? { label: tr("commits.undo"), run: () => undoTo(path, r, "checkout") } : undefined,
     }),
   );
 }
 
 async function applyCommit(path: string, oid: string, kind: "cherry-pick" | "revert") {
-  const verb = kind === "revert" ? "Revert" : "Cherry-pick";
+  const revert = kind === "revert";
   const r = await runHeadOp(
     path,
-    `${verb} Failed`,
-    () => (kind === "revert" ? tauri.revertCommit(path, oid) : tauri.cherryPickCommit(path, oid)),
+    tr(revert ? "commits.revertFailed" : "commits.cherryPickFailed"),
+    () => (revert ? tauri.revertCommit(path, oid) : tauri.cherryPickCommit(path, oid)),
     (res) =>
-      toast("success", `${verb === "Revert" ? "Reverted" : "Cherry-picked"} ${short(oid)}`, {
+      toast("success", tr(revert ? "commits.reverted" : "commits.cherryPicked", { sha: short(oid) }), {
         action: res.previous_head
-          ? { label: "Undo", run: () => undoTo(path, res, "keep") }
+          ? { label: tr("commits.undo"), run: () => undoTo(path, res, "keep") }
           : undefined,
       }),
   );
   if (r?.conflicted) {
     toast(
       "warning",
-      `${verb} of ${short(oid)} stopped with conflicts. Resolve them, then continue or abort from the banner above the graph.`,
-      { title: "Conflicts", duration: 0 },
+      tr(revert ? "commits.revertConflicts" : "commits.cherryPickConflicts", { sha: short(oid) }),
+      { title: tr("commits.conflicts"), duration: 0 },
     );
   }
 }
@@ -146,38 +148,39 @@ export async function cherryPickRangeAction(path: string, oids: string[]) {
   if (oids.length === 1) return cherryPickAction(path, oids[0]);
   const ordered = [...oids].reverse();
   const undo = (res: PickManyResult) =>
-    res.previous_head ? { label: "Undo", run: () => undoTo(path, res, "keep") } : undefined;
+    res.previous_head ? { label: tr("commits.undo"), run: () => undoTo(path, res, "keep") } : undefined;
   await runHeadOp(
     path,
-    "Cherry-pick Failed",
+    tr("commits.cherryPickFailed"),
     () => tauri.cherryPickCommits(path, ordered),
     (res) => {
       const skipped = res.skipped.length;
-      const note = skipped > 0 ? ` (${skipped} already on HEAD, skipped)` : "";
-      toast("success", `Cherry-picked ${res.picked} commit${res.picked === 1 ? "" : "s"}${note}`, {
+      const text =
+        skipped > 0
+          ? tr("commits.cherryPickedManySkipped", { count: res.picked, skipped })
+          : tr("commits.cherryPickedMany", { count: res.picked });
+      toast("success", text, {
         action: undo(res),
       });
     },
     (res) => {
       const total = ordered.length - res.skipped.length;
-      const done = `after ${res.picked} of ${total} commits`;
+      const counts = { picked: res.picked, total, count: total };
       if (res.conflicted) {
-        toast(
-          "warning",
-          `Cherry-pick stopped with conflicts ${done}. Resolve them, then continue (the rest of the range follows), skip or abort from the banner above the graph.`,
-          { title: "Conflicts", duration: 0 },
-        );
+        toast("warning", tr("commits.pickRangeConflicts", counts), {
+          title: tr("commits.conflicts"),
+          duration: 0,
+        });
       } else if (res.empty) {
-        toast(
-          "warning",
-          `Cherry-pick stopped ${done}: the next commit's changes are already on HEAD. Skip it from the banner above the graph to go on with the rest, or abort.`,
-          { title: "Nothing to apply", duration: 0 },
-        );
+        toast("warning", tr("commits.pickRangeEmpty", counts), {
+          title: tr("commits.nothingToApply"),
+          duration: 0,
+        });
       } else {
         // The backend ended the sequence: what was applied stays applied.
-        const kept = res.picked > 0 ? ` ${res.picked} of ${total} commits were applied.` : "";
-        toast("error", `${res.message.trim() || "Git reported an error."}${kept}`, {
-          title: "Cherry-pick Failed",
+        const kept = res.picked > 0 ? ` ${tr("commits.pickRangeKept", counts)}` : "";
+        toast("error", `${res.message.trim() || tr("commits.gitError")}${kept}`, {
+          title: tr("commits.cherryPickFailed"),
           duration: 0,
           action: res.picked > 0 ? undo(res) : undefined,
         });
@@ -187,11 +190,11 @@ export async function cherryPickRangeAction(path: string, oids: string[]) {
 }
 export const revertAction = (path: string, oid: string) => applyCommit(path, oid, "revert");
 
-const RESET_TEXT: Record<Exclude<ResetMode, "keep">, string> = {
-  soft: "Changes from later commits stay staged.",
-  mixed: "Changes from later commits stay in the working tree, unstaged.",
-  hard: "The working tree and index are reset to that commit. Uncommitted changes to tracked files are saved to the stash list first.",
-};
+const RESET_KEYS = {
+  soft: { text: "commits.resetSoftText", mode: "commits.modeSoft" },
+  mixed: { text: "commits.resetMixedText", mode: "commits.modeMixed" },
+  hard: { text: "commits.resetHardText", mode: "commits.modeHard" },
+} as const;
 
 export async function resetAction(
   path: string,
@@ -200,16 +203,17 @@ export async function resetAction(
   branch: string | null,
 ) {
   const target = branch ?? "HEAD";
+  const params = { target, sha: short(oid), mode: tr(RESET_KEYS[mode].mode) };
   const ok = await confirmDestructive(
-    `Reset ${target} to ${short(oid)} (${mode})?\n\n${RESET_TEXT[mode]}`,
-    mode === "hard" ? "Hard Reset" : "Reset",
-    "Reset",
+    tr("commits.resetConfirm", { ...params, details: tr(RESET_KEYS[mode].text) }),
+    tr(mode === "hard" ? "commits.hardResetTitle" : "commits.resetTitle"),
+    tr("commits.resetOk"),
   );
   if (!ok) return;
-  await runHeadOp(path, "Reset Failed", () => tauri.resetToCommit(path, oid, mode), (r) =>
-    toast("success", `Reset ${target} to ${short(oid)} (${mode}).${stashNote(r)}`, {
+  await runHeadOp(path, tr("commits.resetFailed"), () => tauri.resetToCommit(path, oid, mode), (r) =>
+    toast("success", tr("commits.resetDone", params) + stashNote(r), {
       duration: 8000,
-      action: r.previous_head ? { label: "Undo", run: () => undoTo(path, r, mode) } : undefined,
+      action: r.previous_head ? { label: tr("commits.undo"), run: () => undoTo(path, r, mode) } : undefined,
     }),
   );
 }
@@ -223,20 +227,25 @@ export async function restoreHeadAction(
 ): Promise<boolean> {
   const r = await runHeadOp(
     path,
-    "Restore Failed",
+    tr("commits.restoreFailed"),
     () => tauri.restoreHead(path, oid, branch, autoStash),
     (res) =>
-      toast("success", `Restored to ${branch ?? short(oid)}.${stashNote(res)}`, {
+      toast("success", tr("commits.restoredHead", { target: branch ?? short(oid) }) + stashNote(res), {
         duration: 8000,
         action: res.previous_head
           ? {
-              label: "Undo",
+              label: tr("commits.undo"),
               run: () =>
                 runHeadOp(
                   path,
-                  "Undo Failed",
+                  tr("commits.undoFailed"),
                   () => tauri.restoreHead(path, res.previous_head as string, res.previous_branch, true),
-                  (u) => toast("success", `Back to ${res.previous_branch ?? short(res.previous_head as string)}.${stashNote(u)}`),
+                  (u) =>
+                    toast(
+                      "success",
+                      tr("commits.backTo", { target: res.previous_branch ?? short(res.previous_head as string) }) +
+                        stashNote(u),
+                    ),
                 ).then(() => {}),
             }
           : undefined,

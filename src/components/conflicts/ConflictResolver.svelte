@@ -32,6 +32,7 @@
     type Segment,
     type ConflictSegment,
   } from "../../lib/conflictMarkers";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
 
   type Tab = "result" | "ours" | "theirs" | "base";
 
@@ -64,10 +65,10 @@
   /** Why the versions can't be shown as editable text, if they can't. */
   const noTextReason = $derived.by(() => {
     if (!versions) return null;
-    if (versions.is_symlink) return "Symbolic link";
-    if (versions.is_binary) return "Binary file";
-    if (versions.not_utf8) return "Not UTF-8 text";
-    if (versions.too_large) return "File too large to display";
+    if (versions.is_symlink) return $t("conflicts.symlink");
+    if (versions.is_binary) return $t("conflicts.binary");
+    if (versions.not_utf8) return $t("conflicts.notUtf8");
+    if (versions.too_large) return $t("conflicts.tooLarge");
     return null;
   });
   const canEditResult = $derived(
@@ -151,8 +152,8 @@
 
   async function close() {
     if (dirty && !saving) {
-      const discard = await ask("Discard your unsaved resolution changes?", {
-        title: "Unsaved Changes",
+      const discard = await ask(tr("conflicts.discardConfirm"), {
+        title: tr("conflicts.unsavedTitle"),
         kind: "warning",
       });
       if (!discard) return;
@@ -169,7 +170,7 @@
       conflictResolverFile.set(remaining[0].path);
     } else {
       conflictResolverFile.set(null);
-      toast("success", "All conflicts resolved. Continue when ready.");
+      toast("success", tr("conflicts.allResolvedContinue"));
     }
   }
 
@@ -178,10 +179,10 @@
     if (!path || !file || saving) return;
     const text = currentText();
     if (stage && /^(<{7}|>{7})( |$)/m.test(text)) {
-      const ok = await ask(
-        "The file still contains conflict markers. Mark it as resolved anyway?",
-        { title: "Unresolved Conflicts", kind: "warning" },
-      );
+      const ok = await ask(tr("conflicts.markersConfirm"), {
+        title: tr("conflicts.markersTitle"),
+        kind: "warning",
+      });
       if (!ok) return;
     }
     saving = true;
@@ -189,18 +190,18 @@
     try {
       const res = await tauri.saveResolvedFile(path, f, text, stage);
       if (!res.success) {
-        toastError("Save failed", res.message);
+        toastError(tr("conflicts.saveFailed"), res.message);
         return;
       }
       if (stage) {
         await afterResolved(path, f);
       } else {
         dirty = false;
-        toast("success", `Saved ${f}`);
+        toast("success", tr("conflicts.saved", { file: f }));
         await refreshAll(path);
       }
     } catch (err) {
-      toastError("Save failed", err);
+      toastError(tr("conflicts.saveFailed"), err);
     } finally {
       saving = false;
     }
@@ -214,12 +215,12 @@
     try {
       const res = await tauri.resolveTakeSide(path, [f], side);
       if (!res.success) {
-        toastError(side === "ours" ? "Take ours" : "Take theirs", res.message);
+        toastError(tr(side === "ours" ? "conflicts.takeOurs" : "conflicts.takeTheirs"), res.message);
         return;
       }
       await afterResolved(path, f);
     } catch (err) {
-      toastError("Resolve failed", err);
+      toastError(tr("conflicts.resolveFailed"), err);
     } finally {
       saving = false;
     }
@@ -230,10 +231,10 @@
     if (!path || !file || saving) return;
     saving = true;
     const f = file;
-    toast("info", `Opening merge tool for ${f}… Close it when done.`);
+    toast("info", tr("conflicts.openingMergeTool", { file: f }));
     try {
       const res = await tauri.openMergeTool(path, f, $settings.external_merge_tool);
-      if (!res.success) toastError("Merge tool", res.message);
+      if (!res.success) toastError(tr("conflicts.mergeTool"), res.message);
       await refreshAll(path);
       await refreshOperation(path);
       if (!($operationState?.conflicts ?? []).some((c) => c.path === f)) {
@@ -242,7 +243,7 @@
         await load(path, f);
       }
     } catch (err) {
-      toastError("Merge tool", err);
+      toastError(tr("conflicts.mergeTool"), err);
     } finally {
       saving = false;
     }
@@ -269,69 +270,77 @@
   const sideText = $derived(
     tab === "ours" ? versions?.ours ?? null : tab === "theirs" ? versions?.theirs ?? null : versions?.base ?? null,
   );
-  const oursLabel = $derived(st?.ours_label ?? "Ours");
-  const theirsLabel = $derived(st?.theirs_label ?? "Theirs");
+  const oursLabel = $derived(st?.ours_label ?? $t("conflicts.ours"));
+  const theirsLabel = $derived(st?.theirs_label ?? $t("conflicts.theirs"));
+
+  const CHOICE_KEYS: Record<NonNullable<ConflictSegment["choice"]>, MessageKey> = {
+    ours: "conflicts.choice.ours",
+    theirs: "conflicts.choice.theirs",
+    both: "conflicts.choice.both",
+    "both-reversed": "conflicts.choice.bothReversed",
+    base: "conflicts.choice.base",
+  };
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
-<Modal open={file !== null} title={`Resolve conflict: ${file ?? ""}`} onclose={close} width="min(1200px, 94vw)">
+<Modal open={file !== null} title={$t("conflicts.resolveTitle", { file: file ?? "" })} onclose={close} width="min(1200px, 94vw)">
   <div class="resolver">
     <div class="toolbar">
       <div class="tabs" role="tablist">
-        <button role="tab" class="tab" class:active={tab === "result"} aria-selected={tab === "result"} onclick={() => (tab = "result")}>Result</button>
+        <button role="tab" class="tab" class:active={tab === "result"} aria-selected={tab === "result"} onclick={() => (tab = "result")}>{$t("conflicts.result")}</button>
         <button role="tab" class="tab" class:active={tab === "ours"} aria-selected={tab === "ours"} onclick={() => (tab = "ours")}>{oursLabel}</button>
         <button role="tab" class="tab" class:active={tab === "theirs"} aria-selected={tab === "theirs"} onclick={() => (tab = "theirs")}>{theirsLabel}</button>
-        <button role="tab" class="tab" class:active={tab === "base"} aria-selected={tab === "base"} onclick={() => (tab = "base")}>Base</button>
+        <button role="tab" class="tab" class:active={tab === "base"} aria-selected={tab === "base"} onclick={() => (tab = "base")}>{$t("conflicts.base")}</button>
       </div>
       <span class="spacer"></span>
       {#if tab === "result" && canEditResult && !editMode}
         <span class="counter">
           {#if conflictIdx.length === 0}
-            No conflict markers
+            {$t("conflicts.noMarkers")}
           {:else}
-            Conflict {current + 1} of {conflictIdx.length}
-            {#if unresolved > 0}<span class="unresolved">· {unresolved} unresolved</span>{/if}
+            {$t("conflicts.conflictOf", { n: current + 1, total: conflictIdx.length })}
+            {#if unresolved > 0}<span class="unresolved">{$t("conflicts.unresolvedCount", { count: unresolved })}</span>{/if}
           {/if}
         </span>
-        <button class="icon-btn" onclick={() => goTo(current - 1)} disabled={conflictIdx.length === 0} title="Previous conflict (Alt+Up)" aria-label="Previous conflict">
+        <button class="icon-btn" onclick={() => goTo(current - 1)} disabled={conflictIdx.length === 0} title={$t("conflicts.prevTitle")} aria-label={$t("conflicts.prev")}>
           <ChevronUp size={14} />
         </button>
-        <button class="icon-btn" onclick={() => goTo(current + 1)} disabled={conflictIdx.length === 0} title="Next conflict (Alt+Down)" aria-label="Next conflict">
+        <button class="icon-btn" onclick={() => goTo(current + 1)} disabled={conflictIdx.length === 0} title={$t("conflicts.nextTitle")} aria-label={$t("conflicts.next")}>
           <ChevronDown size={14} />
         </button>
       {/if}
       {#if tab === "result" && canEditResult}
-        <button class="btn small" onclick={toggleEdit} title={editMode ? "Back to conflict view" : "Edit the result as text"}>
-          {#if editMode}<Eye size={12} /> View{:else}<Pencil size={12} /> Edit text{/if}
+        <button class="btn small" onclick={toggleEdit} title={editMode ? $t("conflicts.backToView") : $t("conflicts.editAsText")}>
+          {#if editMode}<Eye size={12} /> {$t("conflicts.view")}{:else}<Pencil size={12} /> {$t("conflicts.editText")}{/if}
         </button>
       {/if}
     </div>
 
     <div class="content" bind:this={scroller}>
       {#if loading}
-        <div class="notice"><Loader2 size={14} class="spinner" /> Loading…</div>
+        <div class="notice"><Loader2 size={14} class="spinner" /> {$t("common.loading")}</div>
       {:else if loadError}
         <div class="notice error">{loadError}</div>
       {:else if versions}
         {#if tab === "result"}
           {#if noTextReason}
             <div class="notice">
-              {noTextReason} — choose a side or use the merge tool.
+              {$t("conflicts.noTextChoose", { reason: noTextReason })}
             </div>
           {:else if versions.merged === null}
             <div class="notice">
               {#if conflictInfo?.kind === "deleted_by_us"}
-                The file was deleted on the "{oursLabel}" side and modified on the other.
+                {$t("conflicts.deletedOnSide", { side: oursLabel })}
               {:else if conflictInfo?.kind === "deleted_by_them"}
-                The file was deleted on the "{theirsLabel}" side and modified on the other.
+                {$t("conflicts.deletedOnSide", { side: theirsLabel })}
               {:else}
-                The file does not exist in the working tree.
+                {$t("conflicts.notInWorktree")}
               {/if}
-              Keep it by taking the side that has it, or delete it by taking the side that removed it.
+              {$t("conflicts.keepOrDelete")}
             </div>
           {:else if editMode}
-            <textarea class="editor" bind:value={editText} oninput={() => (dirty = true)} spellcheck="false" aria-label="Resolved file content"></textarea>
+            <textarea class="editor" bind:value={editText} oninput={() => (dirty = true)} spellcheck="false" aria-label={$t("conflicts.resolvedContent")}></textarea>
           {:else}
             <div class="code">
               {#each segments as seg, si (si)}
@@ -343,19 +352,19 @@
                   {@const ci = conflictIdx.indexOf(si)}
                   <div class="block" class:current={ci === current} class:resolved={seg.resolution !== null} data-conflict={ci}>
                     <div class="block-head">
-                      <span class="block-title">Conflict {ci + 1}</span>
+                      <span class="block-title">{$t("conflicts.conflictN", { n: ci + 1 })}</span>
                       {#if seg.resolution !== null}
-                        <span class="badge">resolved: {seg.choice}</span>
+                        <span class="badge">{$t("conflicts.resolvedAs", { choice: seg.choice ? $t(CHOICE_KEYS[seg.choice]) : "" })}</span>
                         <span class="spacer"></span>
-                        <button class="chip" onclick={() => undo(si)}><Undo2 size={11} /> Undo</button>
+                        <button class="chip" onclick={() => undo(si)}><Undo2 size={11} /> {$t("conflicts.undo")}</button>
                       {:else}
                         <span class="spacer"></span>
-                        <button class="chip ours" onclick={() => choose(si, "ours")} title={oursLabel}>Use ours</button>
-                        <button class="chip theirs" onclick={() => choose(si, "theirs")} title={theirsLabel}>Use theirs</button>
-                        <button class="chip" onclick={() => choose(si, "both")} title="Ours, then theirs">Both</button>
-                        <button class="chip" onclick={() => choose(si, "both-reversed")} title="Theirs, then ours">Both (theirs first)</button>
+                        <button class="chip ours" onclick={() => choose(si, "ours")} title={oursLabel}>{$t("conflicts.useOurs")}</button>
+                        <button class="chip theirs" onclick={() => choose(si, "theirs")} title={theirsLabel}>{$t("conflicts.useTheirs")}</button>
+                        <button class="chip" onclick={() => choose(si, "both")} title={$t("conflicts.bothTitle")}>{$t("conflicts.both")}</button>
+                        <button class="chip" onclick={() => choose(si, "both-reversed")} title={$t("conflicts.bothReversedTitle")}>{$t("conflicts.bothReversed")}</button>
                         {#if seg.base}
-                          <button class="chip" onclick={() => choose(si, "base")}>Base</button>
+                          <button class="chip" onclick={() => choose(si, "base")}>{$t("conflicts.base")}</button>
                         {/if}
                       {/if}
                     </div>
@@ -363,20 +372,20 @@
                       {#each seg.resolution as line, li (li)}
                         <div class="line res">{line || " "}</div>
                       {:else}
-                        <div class="line empty">(empty)</div>
+                        <div class="line empty">{$t("conflicts.empty")}</div>
                       {/each}
                     {:else}
-                      <div class="marker ours">{markerLabel(seg.markers.start) || "ours"} — {oursLabel}</div>
+                      <div class="marker ours">{markerLabel(seg.markers.start) || $t("conflicts.oursLower")} — {oursLabel}</div>
                       {#each seg.ours as line, li (li)}
                         <div class="line ours">{line || " "}</div>
                       {/each}
                       {#if seg.base}
-                        <div class="marker base">base</div>
+                        <div class="marker base">{$t("conflicts.baseLower")}</div>
                         {#each seg.base as line, li (li)}
                           <div class="line base">{line || " "}</div>
                         {/each}
                       {/if}
-                      <div class="marker theirs">{markerLabel(seg.markers.end) || "theirs"} — {theirsLabel}</div>
+                      <div class="marker theirs">{markerLabel(seg.markers.end) || $t("conflicts.theirsLower")} — {theirsLabel}</div>
                       {#each seg.theirs as line, li (li)}
                         <div class="line theirs">{line || " "}</div>
                       {/each}
@@ -389,7 +398,7 @@
         {:else if noTextReason}
           <div class="notice">{noTextReason}.</div>
         {:else if sideText === null}
-          <div class="notice">The file does not exist in this version.</div>
+          <div class="notice">{$t("conflicts.notInVersion")}</div>
         {:else}
           <div class="code numbered">
             {#each linesOf(sideText) as line, i (i)}
@@ -401,24 +410,24 @@
     </div>
 
     <div class="footer">
-      <button class="btn" onclick={() => takeSide("ours")} disabled={saving || !conflictInfo} title="Resolve the whole file with {oursLabel}">
-        {conflictInfo && !conflictInfo.has_ours ? "Take ours (delete)" : "Take ours"}
+      <button class="btn" onclick={() => takeSide("ours")} disabled={saving || !conflictInfo} title={$t("conflicts.resolveWholeWith", { side: oursLabel })}>
+        {conflictInfo && !conflictInfo.has_ours ? $t("conflicts.takeOursDelete") : $t("conflicts.takeOurs")}
       </button>
-      <button class="btn" onclick={() => takeSide("theirs")} disabled={saving || !conflictInfo} title="Resolve the whole file with {theirsLabel}">
-        {conflictInfo && !conflictInfo.has_theirs ? "Take theirs (delete)" : "Take theirs"}
+      <button class="btn" onclick={() => takeSide("theirs")} disabled={saving || !conflictInfo} title={$t("conflicts.resolveWholeWith", { side: theirsLabel })}>
+        {conflictInfo && !conflictInfo.has_theirs ? $t("conflicts.takeTheirsDelete") : $t("conflicts.takeTheirs")}
       </button>
-      <button class="btn" onclick={mergeTool} disabled={saving} title="Open in the external merge tool">
-        <Wrench size={12} /> Merge tool
+      <button class="btn" onclick={mergeTool} disabled={saving} title={$t("conflicts.openInTheExternalTool")}>
+        <Wrench size={12} /> {$t("conflicts.mergeTool")}
       </button>
       <span class="spacer"></span>
       {#if saving}<Loader2 size={14} class="spinner" />{/if}
-      <button class="btn" onclick={close}>Cancel</button>
+      <button class="btn" onclick={close}>{$t("common.cancel")}</button>
       {#if canEditResult}
         <button class="btn" onclick={() => save(false)} disabled={saving || !dirty}>
-          <Save size={12} /> Save
+          <Save size={12} /> {$t("common.save")}
         </button>
         <button class="btn primary" onclick={() => save(true)} disabled={saving}>
-          <CheckCircle2 size={12} /> Save & mark resolved
+          <CheckCircle2 size={12} /> {$t("conflicts.saveAndResolve")}
         </button>
       {/if}
     </div>

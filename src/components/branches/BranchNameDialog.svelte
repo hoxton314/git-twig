@@ -2,6 +2,7 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import Modal from "../shared/Modal.svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     open: boolean;
@@ -51,12 +52,12 @@
   /** Mirrors the most common `git check-ref-format` rules for instant feedback. */
   const error = $derived.by(() => {
     if (!trimmed) return "";
-    if (trimmed !== initial && existing.includes(trimmed)) return "A branch with this name already exists.";
-    if (/\s/.test(trimmed)) return "Branch names cannot contain spaces.";
-    if (trimmed.startsWith("-")) return "Branch names cannot start with '-'.";
-    if (/\.\.|[~^:?*[\\]|@\{/.test(trimmed)) return "Contains characters git does not allow (.. ~ ^ : ? * [ \\ @{).";
+    if (trimmed !== initial && existing.includes(trimmed)) return $t("branches.nameExists");
+    if (/\s/.test(trimmed)) return $t("branches.nameSpaces");
+    if (trimmed.startsWith("-")) return $t("branches.nameDash");
+    if (/\.\.|[~^:?*[\\]|@\{/.test(trimmed)) return $t("branches.nameChars");
     if (trimmed.endsWith("/") || trimmed.endsWith(".") || trimmed.endsWith(".lock") || trimmed.includes("//"))
-      return "Invalid branch name.";
+      return $t("branches.nameInvalid");
     return "";
   });
   const canSubmit = $derived(!!trimmed && !error && trimmed !== initial && !busy);
@@ -78,8 +79,8 @@
     <input
       bind:this={inputEl}
       bind:value={name}
-      placeholder="Branch name"
-      aria-label="Branch name"
+      placeholder={$t("branches.name")}
+      aria-label={$t("branches.name")}
       aria-invalid={!!error}
       spellcheck="false"
       autocomplete="off"
@@ -88,13 +89,13 @@
     {#if showCheckout}
       <label class="checkbox">
         <input type="checkbox" bind:checked={checkout} />
-        Check out after creating
+        {$t("branches.checkoutAfter")}
       </label>
     {/if}
     <div class="actions">
-      <button type="button" class="btn-secondary" onclick={onclose} disabled={busy}>Cancel</button>
+      <button type="button" class="btn-secondary" onclick={onclose} disabled={busy}>{$t("common.cancel")}</button>
       <button type="submit" class="btn-primary" disabled={!canSubmit}>
-        {busy ? "Working…" : confirmLabel}
+        {busy ? $t("branches.working") : confirmLabel}
       </button>
     </div>
   </form>

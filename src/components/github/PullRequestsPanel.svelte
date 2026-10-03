@@ -21,6 +21,7 @@
   import { toast, toastError } from "../../lib/stores/toasts";
   import type { HostedRemote, PrFilter, PrSummary } from "../../lib/types/hosting";
   import { relativeTime, reviewLabel } from "./prFormat";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
 
   let remotes = $state<HostedRemote[]>([]);
   let remoteName = $state<string | null>(null);
@@ -43,7 +44,7 @@
   const selectedPr = $derived(items.find((p) => p.number === selected) ?? null);
   const isGitLab = $derived(remote?.provider === "gitlab");
   const sign = $derived(isGitLab ? "!" : "#");
-  const title = $derived(isGitLab ? "Merge Requests" : "Pull Requests");
+  const title = $derived(isGitLab ? $t("prs.titleMr") : $t("prs.titlePr"));
 
   const filtered = $derived.by(() => {
     const q = query.trim().toLowerCase();
@@ -133,7 +134,7 @@
       items = [...items, ...page.items.filter((p) => !seen.has(p.number))];
       nextCursor = page.next_cursor;
     } catch (err) {
-      toastError("Loading more failed", err);
+      toastError(tr("prs.loadMoreFailed"), err);
     } finally {
       loadingMore = false;
     }
@@ -174,14 +175,14 @@
       refreshAll(repoPath);
       toast(res.success ? "success" : "error", res.message, { title: `${sign}${pr.number}` });
     } catch (err) {
-      toastError("Checkout failed", err);
+      toastError(tr("prs.checkoutFailed"), err);
     }
   }
 
-  function copy(text: string, what: string) {
+  function copy(text: string, copied: MessageKey) {
     navigator.clipboard.writeText(text).then(
-      () => toast("success", `${what} copied`),
-      (err) => toastError("Copy failed", err),
+      () => toast("success", tr(copied)),
+      (err) => toastError(tr("prs.copyFailed"), err),
     );
   }
 
@@ -192,12 +193,12 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Checkout locally", action: () => checkout(pr) },
-        { label: "Open in browser", action: () => openUrl(pr.html_url) },
+        { label: tr("prs.checkoutLocally"), action: () => checkout(pr) },
+        { label: tr("prs.openInBrowser"), action: () => openUrl(pr.html_url) },
         { separator: true },
-        { label: "Copy URL", action: () => copy(pr.html_url, "URL") },
-        { label: "Copy branch name", action: () => copy(pr.head_ref, "Branch name") },
-        { label: `Copy ${sign}${pr.number}`, action: () => copy(`${sign}${pr.number}`, "Reference") },
+        { label: tr("prs.copyUrl"), action: () => copy(pr.html_url, "prs.urlCopied") },
+        { label: tr("prs.copyBranchName"), action: () => copy(pr.head_ref, "prs.branchNameCopied") },
+        { label: tr("prs.copyRef", { ref: `${sign}${pr.number}` }), action: () => copy(`${sign}${pr.number}`, "prs.refCopied") },
       ],
     };
   }
@@ -215,19 +216,31 @@
     el?.scrollIntoView({ block: "nearest" });
   }
 
-  const FILTERS: { id: PrFilter; label: string }[] = [
-    { id: "open", label: "Open" },
-    { id: "closed", label: "Closed" },
-    { id: "merged", label: "Merged" },
-    { id: "all", label: "All" },
-  ];
+  const FILTERS = $derived<{ id: PrFilter; label: string }[]>([
+    { id: "open", label: $t("prs.filterOpen") },
+    { id: "closed", label: $t("prs.filterClosed") },
+    { id: "merged", label: $t("prs.filterMerged") },
+    { id: "all", label: $t("prs.filterAll") },
+  ]);
+
+  const EMPTY: Record<PrFilter, [MessageKey, MessageKey]> = {
+    open: ["prs.noOpenPrs", "prs.noOpenMrs"],
+    closed: ["prs.noClosedPrs", "prs.noClosedMrs"],
+    merged: ["prs.noMergedPrs", "prs.noMergedMrs"],
+    all: ["prs.noPrs", "prs.noMrs"],
+  };
+  const STATE_TITLE: Record<string, MessageKey> = {
+    open: "prs.stateTitleOpen",
+    closed: "prs.stateTitleClosed",
+    merged: "prs.stateTitleMerged",
+  };
 </script>
 
 <Modal open={isOpen && !!repoPath} {title} onclose={close} width="min(1180px, 96vw)">
   <div class="panel">
     <div class="toolbar">
       {#if remotes.length > 1}
-        <select class="remote-select" value={remoteName} onchange={(e) => setRemote(e.currentTarget.value)} aria-label="Remote">
+        <select class="remote-select" value={remoteName} onchange={(e) => setRemote(e.currentTarget.value)} aria-label={$t("prs.remote")}>
           {#each remotes as r (r.remote_name)}
             <option value={r.remote_name}>{r.remote_name} — {r.project_path}</option>
           {/each}
@@ -242,20 +255,20 @@
       </div>
       <label class="search">
         <Search size={13} />
-        <input type="text" placeholder="Filter by title, author, branch, number" bind:value={query} aria-label="Filter pull requests" />
+        <input type="text" placeholder={$t("prs.filterPlaceholder")} bind:value={query} aria-label={$t("prs.filterLabel")} />
       </label>
-      <button class="icon-btn" onclick={refresh} title="Refresh" aria-label="Refresh" disabled={loading}>
+      <button class="icon-btn" onclick={refresh} title={$t("common.refresh")} aria-label={$t("common.refresh")} disabled={loading}>
         <RefreshCw size={14} class={loading ? "spinner" : ""} />
       </button>
     </div>
 
     {#if loadingRemotes && !remotes.length}
-      <div class="empty"><Loader2 size={18} class="spinner" /> Detecting remotes…</div>
+      <div class="empty"><Loader2 size={18} class="spinner" /> {$t("prs.detectingRemotes")}</div>
     {:else if !remotes.length && !error}
       <div class="empty column">
-        <span>No GitHub, GitLab or Gitea remote found for this repository.</span>
-        <span class="hint">GitHub Enterprise, GitLab and Gitea hosts can be configured in Settings.</span>
-        <button class="btn" onclick={openSettings}><Settings size={13} /> Open settings</button>
+        <span>{$t("prs.noRemote")}</span>
+        <span class="hint">{$t("prs.noRemoteHint")}</span>
+        <button class="btn" onclick={openSettings}><Settings size={13} /> {$t("prs.openSettings")}</button>
       </div>
     {:else}
       <div class="split">
@@ -265,9 +278,9 @@
             <div class="error">{error}</div>
           {/if}
           {#if loading && !items.length}
-            <div class="empty"><Loader2 size={18} class="spinner" /> Loading…</div>
+            <div class="empty"><Loader2 size={18} class="spinner" /> {$t("common.loading")}</div>
           {:else if !filtered.length && !error}
-            <div class="empty">{query ? "No matches." : `No ${filter === "all" ? "" : filter + " "}${isGitLab ? "merge" : "pull"} requests.`}</div>
+            <div class="empty">{query ? $t("prs.noMatches") : $t(EMPTY[filter][isGitLab ? 1 : 0])}</div>
           {/if}
           {#each filtered as pr (pr.number)}
             <button
@@ -279,7 +292,7 @@
               onclick={() => (selected = pr.number)}
               oncontextmenu={(e) => openMenu(e, pr)}
             >
-              <span class="state-icon {pr.draft && pr.state === 'open' ? 'draft' : pr.state}" title={pr.draft ? "Draft" : pr.state}>
+              <span class="state-icon {pr.draft && pr.state === 'open' ? 'draft' : pr.state}" title={pr.draft ? $t("prs.draft") : STATE_TITLE[pr.state] ? $t(STATE_TITLE[pr.state]) : pr.state}>
                 {#if pr.state === "merged"}<GitMerge size={14} />
                 {:else if pr.state === "closed"}<GitPullRequestClosed size={14} />
                 {:else if pr.draft}<GitPullRequestDraft size={14} />
@@ -309,11 +322,11 @@
                 {/if}
                 {#if pr.review_state}
                   <span class="review {pr.review_state}" title={reviewLabel(pr.review_state)}>
-                    {pr.review_state === "approved" ? "✓ Approved" : pr.review_state === "changes_requested" ? "± Changes" : "Review"}
+                    {pr.review_state === "approved" ? `✓ ${$t("prs.badgeApproved")}` : pr.review_state === "changes_requested" ? `± ${$t("prs.badgeChanges")}` : $t("prs.badgeReview")}
                   </span>
                 {/if}
                 {#if pr.comments > 0}
-                  <span class="comments" title="{pr.comments} comments"><MessageSquare size={11} /> {pr.comments}</span>
+                  <span class="comments" title={$t("prs.commentCount", { count: pr.comments })}><MessageSquare size={11} /> {pr.comments}</span>
                 {/if}
               </span>
             </button>
@@ -321,7 +334,7 @@
           {#if nextCursor && !query}
             <button class="load-more" onclick={loadMore} disabled={loadingMore}>
               {#if loadingMore}<Loader2 size={13} class="spinner" />{/if}
-              Load more
+              {$t("github.loadMore")}
             </button>
           {/if}
         </div>
@@ -330,7 +343,7 @@
           {#if selectedPr && remote && repoPath}
             <PullRequestView {repoPath} {remote} summary={selectedPr} />
           {:else}
-            <div class="empty">Select a {isGitLab ? "merge" : "pull"} request.</div>
+            <div class="empty">{isGitLab ? $t("prs.selectMr") : $t("prs.selectPr")}</div>
           {/if}
         </div>
       </div>

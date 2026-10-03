@@ -1,3 +1,5 @@
+import { tr } from "../../lib/i18n";
+
 /** Short relative time for a unix timestamp (seconds). */
 export function relativeTime(ts: number): string {
   const date = new Date(ts * 1000);
@@ -5,11 +7,11 @@ export function relativeTime(ts: number): string {
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  if (minutes < 1) return tr("history.time.justNow");
+  if (minutes < 60) return tr("history.time.minutesAgo", { count: minutes });
+  if (hours < 24) return tr("history.time.hoursAgo", { count: hours });
+  if (days < 30) return tr("history.time.daysAgo", { count: days });
+  if (days < 365) return tr("history.time.monthsAgo", { count: Math.floor(days / 30) });
   return date.toLocaleDateString();
 }
 

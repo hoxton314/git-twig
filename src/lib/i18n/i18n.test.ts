@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { get } from "svelte/store";
-import { CATALOGS, LOCALES, languageSetting, placeholders, resolveLocale, t, translate, type Catalog } from "./index";
+import { CATALOGS, LOCALES, languageSetting, placeholders, resolveLocale, t, tr, translate, type Catalog } from "./index";
 import { en } from "./en";
+import { AREAS } from "./catalog";
 
 const keys = Object.keys(en).sort();
 
@@ -27,6 +28,12 @@ describe("catalogs", () => {
       }
     });
   }
+
+  it("area catalogs don't share keys and use their own prefixes", () => {
+    const all = Object.values(AREAS).flatMap((a) => Object.keys(a.en));
+    expect(all.length).toBe(new Set(all).size);
+    expect(all.length).toBe(keys.length);
+  });
 
   it("lists every catalog in LOCALES", () => {
     expect(LOCALES.map((l) => l.id).sort()).toEqual(Object.keys(CATALOGS).sort());
@@ -75,6 +82,7 @@ describe("t store", () => {
   it("follows the language setting", () => {
     languageSetting.set("pl");
     expect(get(t)("common.cancel")).toBe("Anuluj");
+    expect(tr("common.cancel")).toBe("Anuluj");
     languageSetting.set("en");
     expect(get(t)("common.cancel")).toBe("Cancel");
     languageSetting.set("system");

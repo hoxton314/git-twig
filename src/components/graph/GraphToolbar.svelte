@@ -28,6 +28,7 @@
   } from "../../lib/stores/graphSearch";
   import GraphViewOptions from "./GraphViewOptions.svelte";
   import GotoRefPopover from "./GotoRefPopover.svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     loadedCount: number;
@@ -71,17 +72,18 @@
   const hasQuery = $derived($searchQuery.trim() !== "");
 
   const countLabel = $derived.by(() => {
-    if ($searchError) return "Search failed";
+    if ($searchError) return $t("graph.searchFailed");
     if (!hasQuery) return "";
-    if (!result) return $searchBusy ? "Searching…" : $searchKind === "changes" ? "Enter to search" : "";
-    if (total === 0) return $searchKind === "changes" ? "No commits" : "No matches";
-    if ($searchKind === "changes" && $currentMatch < 0) {
-      const t = result.truncated ? `${SEARCH_MAX_RESULTS}+` : String(total);
-      return `${t} commit${total === 1 ? "" : "s"}`;
-    }
+    if (!result) return $searchBusy ? $t("graph.searching") : $searchKind === "changes" ? $t("graph.enterToSearch") : "";
+    if (total === 0) return $searchKind === "changes" ? $t("graph.noCommitsFound") : $t("graph.noMatchesShort");
     const totalText = result.truncated ? `${SEARCH_MAX_RESULTS}+` : String(total);
-    if ($searchMode === "filter") return `${totalText} ${total === 1 ? "match" : "matches"}`;
-    return $currentMatch >= 0 ? `${$currentMatch + 1} of ${totalText}` : `${totalText} ${total === 1 ? "match" : "matches"}`;
+    if ($searchKind === "changes" && $currentMatch < 0) {
+      return $t("graph.commitCount", { count: total, n: totalText });
+    }
+    if ($searchMode === "filter") return $t("graph.matchCount", { count: total, n: totalText });
+    return $currentMatch >= 0
+      ? $t("graph.matchOf", { current: $currentMatch + 1, total: totalText })
+      : $t("graph.matchCount", { count: total, n: totalText });
   });
 
   $effect(() => {
@@ -155,38 +157,38 @@
         class="search-input"
         type="text"
         placeholder={$searchKind === "changes"
-          ? ($changeOptions.regex ? "Regex for added/removed lines (git log -G)…" : "Text added or removed (git log -S)…")
-          : "Search message, author, email or SHA…"}
+          ? ($changeOptions.regex ? $t("graph.searchRegexPlaceholder") : $t("graph.searchTextPlaceholder"))
+          : $t("graph.searchPlaceholder")}
         spellcheck="false"
         autocomplete="off"
-        aria-label="Search commits"
+        aria-label={$t("graph.searchCommits")}
         title={$searchError ?? undefined}
         oninput={onInput}
         onkeydown={onSearchKeydown}
       />
       <span class="count" class:error={$searchError !== null} aria-live="polite">{countLabel}</span>
-      <div class="segmented" role="radiogroup" aria-label="Search in">
+      <div class="segmented" role="radiogroup" aria-label={$t("graph.searchIn")}>
         <button
           role="radio"
           aria-checked={$searchKind === "commits"}
           class:on={$searchKind === "commits"}
-          title="Search commit messages, authors and SHAs"
-          onclick={() => setKind("commits")}>Commits</button
+          title={$t("graph.searchKindCommitsTitle")}
+          onclick={() => setKind("commits")}>{$t("graph.searchKindCommits")}</button
         >
         <button
           role="radio"
           aria-checked={$searchKind === "changes"}
           class:on={$searchKind === "changes"}
-          title="Find commits whose changes add or remove the text (pickaxe)"
-          onclick={() => setKind("changes")}>Code</button
+          title={$t("graph.searchKindCodeTitle")}
+          onclick={() => setKind("changes")}>{$t("graph.searchKindCode")}</button
         >
       </div>
       {#if $searchKind === "changes"}
-        <label class="opt" title="Regular expression: commits whose added or removed lines match (git log -G)">
+        <label class="opt" title={$t("graph.searchRegexTitle")}>
           <input type="checkbox" bind:checked={$changeOptions.regex} onchange={changedOption} /> .*
         </label>
-        <label class="opt" title="Match case">
-          <input type="checkbox" bind:checked={$changeOptions.matchCase} onchange={changedOption} /> Aa
+        <label class="opt" title={$t("graph.searchMatchCase")}>
+          <input type="checkbox" bind:checked={$changeOptions.matchCase} onchange={changedOption} /> Aa <!-- i18n-ignore -->
         </label>
         <input
           class="paths-input"
@@ -194,33 +196,33 @@
           bind:value={$changeOptions.paths}
           oninput={changedOption}
           onkeydown={onSearchKeydown}
-          placeholder="paths"
+          placeholder={$t("graph.pathsPlaceholder")}
           spellcheck="false"
           autocomplete="off"
-          aria-label="Limit code search to paths"
-          title="Only commits touching these paths (e.g. src/ *.rs)"
+          aria-label={$t("graph.pathsLabel")}
+          title={$t("graph.pathsTitle")}
         />
       {/if}
-      <div class="segmented" role="radiogroup" aria-label="Search mode">
+      <div class="segmented" role="radiogroup" aria-label={$t("graph.searchModeLabel")}>
         <button
           role="radio"
           aria-checked={$searchMode === "highlight"}
           class:on={$searchMode === "highlight"}
-          title="Highlight matches and jump between them"
-          onclick={() => setMode("highlight")}>Highlight</button
+          title={$t("graph.modeHighlightTitle")}
+          onclick={() => setMode("highlight")}>{$t("graph.modeHighlight")}</button
         >
         <button
           role="radio"
           aria-checked={$searchMode === "filter"}
           class:on={$searchMode === "filter"}
-          title="Show only matching commits"
-          onclick={() => setMode("filter")}>Filter</button
+          title={$t("graph.modeFilterTitle")}
+          onclick={() => setMode("filter")}>{$t("graph.modeFilter")}</button
         >
       </div>
       <button
         class="icon-btn"
-        title="Previous match (Shift+Enter)"
-        aria-label="Previous match"
+        title={$t("graph.prevMatchTitle")}
+        aria-label={$t("graph.prevMatch")}
         disabled={total === 0}
         onclick={onprev}
       >
@@ -228,8 +230,8 @@
       </button>
       <button
         class="icon-btn"
-        title="Next match (Enter)"
-        aria-label="Next match"
+        title={$t("graph.nextMatchTitle")}
+        aria-label={$t("graph.nextMatch")}
         disabled={total === 0}
         onclick={onnext}
       >
@@ -237,8 +239,8 @@
       </button>
       <button
         class="icon-btn"
-        title="Close search (Esc)"
-        aria-label="Close search"
+        title={$t("graph.closeSearchTitle")}
+        aria-label={$t("graph.closeSearch")}
         onclick={() => {
           closeSearch();
           onexit();
@@ -248,27 +250,27 @@
       </button>
     </div>
   {:else}
-    <button class="tool-btn" title="Search commits (Ctrl+F)" onclick={openSearch}>
+    <button class="tool-btn" title={$t("graph.openSearchTitle")} onclick={openSearch}>
       <Search size={13} />
-      <span>Search</span>
+      <span>{$t("common.search")}</span>
     </button>
   {/if}
 
   <span class="spacer"></span>
 
-  <span class="status" title={hasMore ? "Scroll down to load more history" : "Entire history loaded"}>
+  <span class="status" title={hasMore ? $t("graph.scrollForMore") : $t("graph.allLoaded")}>
     {#if loadingMore}
       <Loader2 size={11} class="spinner" />
     {/if}
-    {loadedCount.toLocaleString()}{hasMore ? "+" : ""} commits
+    {$t("graph.commitCount", { count: loadedCount, n: `${loadedCount.toLocaleString()}${hasMore ? "+" : ""}` })}
   </span>
   {#if hasMore}
-    <button class="link-btn" title="Load the entire history" disabled={loadingMore} onclick={onloadall}>
-      Load all
+    <button class="link-btn" title={$t("graph.loadAllTitle")} disabled={loadingMore} onclick={onloadall}>
+      {$t("graph.loadAll")}
     </button>
   {/if}
 
-  <button class="icon-btn" title="Jump to HEAD" aria-label="Jump to HEAD" onclick={onjumphead}>
+  <button class="icon-btn" title={$t("graph.jumpHead")} aria-label={$t("graph.jumpHead")} onclick={onjumphead}>
     <Crosshair size={14} />
   </button>
   <div class="anchor">
@@ -276,8 +278,8 @@
       class="icon-btn"
       class:on={gotoOpen}
       data-popover-toggle
-      title="Go to branch, tag or commit"
-      aria-label="Go to branch, tag or commit"
+      title={$t("graph.gotoRef")}
+      aria-label={$t("graph.gotoRef")}
       aria-expanded={gotoOpen}
       onclick={() => {
         optionsOpen = false;
@@ -302,8 +304,8 @@
       class="icon-btn"
       class:on={optionsOpen}
       data-popover-toggle
-      title="View options"
-      aria-label="Graph view options"
+      title={$t("graph.viewOptions")}
+      aria-label={$t("graph.viewOptionsLabel")}
       aria-expanded={optionsOpen}
       onclick={() => {
         gotoOpen = false;

@@ -22,13 +22,14 @@
     openInteractiveRebase,
     forcePush,
   } from "../../lib/stores/operation";
+  import { tr } from "../../lib/i18n";
 
   function needsOperation(fn: () => void) {
     return () => {
       if (!get(activeRepoPath)) return;
       const st = get(operationState);
       if (!st || st.kind === "none") {
-        toast("info", "No merge, rebase, cherry-pick or revert is in progress.");
+        toast("info", tr("conflicts.noOperation"));
         return;
       }
       fn();

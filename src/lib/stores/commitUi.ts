@@ -6,6 +6,7 @@
 import { get, writable } from "svelte/store";
 import { commitGraph, selectedCommitOid } from "./graph";
 import { toast } from "./toasts";
+import { tr } from "../i18n";
 
 /** Open commit context menu (viewport coordinates). */
 export const commitMenu = writable<{ oid: string; x: number; y: number } | null>(null);
@@ -34,7 +35,7 @@ let revealSeq = 0;
 export function revealCommit(oid: string): boolean {
   const graph = get(commitGraph);
   if (!graph?.entries.some((e) => e.commit.oid === oid)) {
-    toast("info", "That commit is not in the loaded history (raise “max commits” in Settings to load more).");
+    toast("info", tr("staging.commitNotLoaded"));
     return false;
   }
   selectedCommitOid.set(oid);

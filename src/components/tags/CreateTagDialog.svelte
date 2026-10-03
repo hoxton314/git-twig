@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "../shared/Modal.svelte";
+  import { t, tr, splitMessage } from "../../lib/i18n";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { refreshAll } from "../../lib/stores/graph";
   import { createTagTarget } from "../../lib/stores/commitUi";
@@ -30,13 +31,14 @@
     if (!busy) $createTagTarget = null;
   }
 
+
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     const path = $activeRepoPath;
     const tag = name.trim();
     if (!path || !target || !tag || busy) return;
     if (annotated && !message.trim()) {
-      error = "Annotated tags need a message.";
+      error = tr("tags.needMessage");
       return;
     }
     busy = true;
@@ -44,54 +46,54 @@
     try {
       const res = await tauri.createTag(path, tag, target.oid, annotated ? message : undefined);
       if (!res.success) {
-        error = res.message.trim() || "Could not create the tag.";
+        error = res.message.trim() || tr("tags.couldNotCreate");
         return;
       }
       await Promise.all([refreshAll(path), refreshTags(path)]);
       if (push) {
         const pushed = await tauri.pushTag(path, tag);
-        if (pushed.success) toast("success", `Created tag ${tag} and ${pushed.message.toLowerCase()}`);
-        else toast("error", pushed.message.trim(), { title: `Created ${tag}, but push failed` });
+        if (pushed.success) toast("success", tr("tags.createdPushed", { name: tag, result: pushed.message.toLowerCase() }));
+        else toast("error", pushed.message.trim(), { title: tr("tags.createdPushFailed", { name: tag }) });
       } else {
-        toast("success", `Created tag ${tag} at ${target.label}`);
+        toast("success", tr("tags.createdAt", { name: tag, target: target.label }));
       }
       busy = false;
       close();
     } catch (err) {
-      toastError("Create Tag Failed", err);
+      toastError(tr("tags.createFailed"), err);
     } finally {
       busy = false;
     }
   }
 </script>
 
-<Modal open={!!target} title="Create Tag" onclose={close} width="420px">
+<Modal open={!!target} title={$t("tags.createTitle")} onclose={close} width="420px">
   {#if target}
     <form class="dialog" onsubmit={submit}>
-      <p class="desc">New tag at <code>{target.label}</code></p>
+      <p class="desc">{#each splitMessage($t("tags.newAt")) as part, i}{#if i % 2}<code>{target.label}</code>{:else}{part}{/if}{/each}</p>
       <label class="field">
-        <span>Name</span>
+        <span>{$t("tags.name")}</span>
         <input type="text" bind:value={name} placeholder="v1.0.0" spellcheck="false" autocomplete="off" />
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={annotated} />
-        <span>Annotated tag (with message)</span>
+        <span>{$t("tags.annotatedOption")}</span>
       </label>
       {#if annotated}
         <label class="field">
-          <span>Message</span>
-          <textarea rows="4" bind:value={message} placeholder="Release notes…"></textarea>
+          <span>{$t("tags.message")}</span>
+          <textarea rows="4" bind:value={message} placeholder={$t("tags.messagePlaceholder")}></textarea>
         </label>
       {/if}
       <label class="check">
         <input type="checkbox" bind:checked={push} />
-        <span>Push to remote after creating</span>
+        <span>{$t("tags.pushAfter")}</span>
       </label>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="actions">
-        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>Cancel</button>
+        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>{$t("common.cancel")}</button>
         <button type="submit" class="btn-primary" disabled={busy || !name.trim()}>
-          {busy ? "Creating…" : "Create Tag"}
+          {busy ? $t("tags.creating") : $t("tags.createTitle")}
         </button>
       </div>
     </form>

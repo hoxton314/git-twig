@@ -46,6 +46,7 @@
   } from "../../lib/patchActions";
   import { openRebaseDialog, openInteractiveRebase } from "../../lib/stores/operation";
   import type { CommitInfo } from "../../lib/types/git";
+  import { t, tr } from "../../lib/i18n";
 
   const menu = $derived($commitMenu);
   const currentBranch = $derived($branches.find((b) => !b.is_remote && b.is_head) ?? null);
@@ -69,57 +70,57 @@
     const resetTarget = branch ?? "HEAD";
     const label = `${c.short_oid} ${c.summary}`;
     return [
-      { label: "Checkout this commit (detached)", action: () => checkoutCommitAction(path, c.oid) },
+      { label: $t("commits.checkoutDetached"), action: () => checkoutCommitAction(path, c.oid) },
       {
-        label: "Create branch here…",
+        label: $t("commits.createBranchHere"),
         action: () => createBranchTarget.set({ oid: c.oid, label }),
       },
-      { label: "Create tag here…", action: () => createTagTarget.set({ oid: c.oid, label }) },
+      { label: $t("commits.createTagHere"), action: () => createTagTarget.set({ oid: c.oid, label }) },
       { separator: true },
-      { label: "Cherry-pick commit", disabled: isHead, action: () => cherryPickAction(path, c.oid) },
-      { label: "Revert commit", action: () => revertAction(path, c.oid) },
+      { label: $t("commits.cherryPick"), disabled: isHead, action: () => cherryPickAction(path, c.oid) },
+      { label: $t("commits.revert"), action: () => revertAction(path, c.oid) },
       { separator: true },
       {
-        label: `Rebase ${branch ?? "HEAD"} onto this commit…`,
+        label: $t("commits.rebaseOnto", { branch: branch ?? "HEAD" }),
         disabled: isHead,
         action: () => openRebaseDialog(c.oid),
       },
       {
-        label: "Interactive rebase from here…",
+        label: $t("commits.interactiveRebase"),
         // Base is exclusive: start at the parent so this commit is included.
         action: () => openInteractiveRebase(c.parent_oids.length > 0 ? `${c.oid}^` : null),
       },
       { separator: true },
       {
-        label: `Reset ${resetTarget} here — soft`,
+        label: $t("commits.resetSoft", { target: resetTarget }),
         disabled: isHead,
         action: () => resetAction(path, c.oid, "soft", branch),
       },
       {
-        label: `Reset ${resetTarget} here — mixed`,
+        label: $t("commits.resetMixed", { target: resetTarget }),
         disabled: isHead,
         action: () => resetAction(path, c.oid, "mixed", branch),
       },
       {
-        label: `Reset ${resetTarget} here — hard`,
+        label: $t("commits.resetHard", { target: resetTarget }),
         danger: true,
         action: () => resetAction(path, c.oid, "hard", branch),
       },
       { separator: true },
-      { label: "Copy SHA", action: () => copyText(c.oid, "SHA") },
-      { label: "Copy short SHA", action: () => copyText(c.short_oid, "short SHA") },
-      { label: "Copy message", action: () => copyText(fullMessage(c), "commit message") },
+      { label: $t("commits.copySha"), action: () => copyText(c.oid, tr("commits.whatSha")) },
+      { label: $t("commits.copyShortSha"), action: () => copyText(c.short_oid, tr("commits.whatShortSha")) },
+      { label: $t("commits.copyMessage"), action: () => copyText(fullMessage(c), tr("commits.whatMessage")) },
       {
-        label: "Save as patch…",
+        label: $t("patches.saveAsPatch"),
         disabled: c.parent_oids.length > 1,
         action: () => savePatchesAction(path, [c.oid], { defaultName: patchFileName(c.short_oid, c.summary) }),
       },
       { separator: true },
-      { label: "Search code at this commit…", action: () => openCodeSearch(c.oid, c.short_oid) },
+      { label: $t("commits.searchCode"), action: () => openCodeSearch(c.oid, c.short_oid) },
       ...bisectItems(c),
       { separator: true },
-      { label: "Apply patch file…", action: () => applyPatchAction(path) },
-      { label: "Undo history…", shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
+      { label: $t("patches.applyFile"), action: () => applyPatchAction(path) },
+      { label: $t("commits.undoHistory"), shortcut: "Ctrl+Shift+H", action: () => undoHistoryOpen.set(true) },
     ];
   }
 
@@ -129,15 +130,15 @@
     if ($operationState?.kind === "bisect" && b) {
       if (b.first_bad) return [];
       return [
-        { label: `Bisect: mark as ${b.term_good}`, action: () => markBisect("good", c.oid) },
-        { label: `Bisect: mark as ${b.term_bad}`, action: () => markBisect("bad", c.oid) },
-        { label: "Bisect: skip", action: () => markBisect("skip", c.oid) },
+        { label: $t("commits.bisectMark", { term: b.term_good }), action: () => markBisect("good", c.oid) },
+        { label: $t("commits.bisectMark", { term: b.term_bad }), action: () => markBisect("bad", c.oid) },
+        { label: $t("commits.bisectSkip"), action: () => markBisect("skip", c.oid) },
       ];
     }
     if ($operationState && $operationState.kind !== "none") return [];
     return [
-      { label: "Start bisect: this commit is bad", action: () => startBisect(c.oid, null) },
-      { label: "Start bisect: this commit is good", action: () => startBisect(null, c.oid) },
+      { label: $t("commits.bisectStartBad"), action: () => startBisect(c.oid, null) },
+      { label: $t("commits.bisectStartGood"), action: () => startBisect(null, c.oid) },
     ];
   }
 
@@ -150,41 +151,47 @@
     if (path) {
       items.push(
         {
-          label: `Cherry-pick ${oids.length} commits onto ${currentBranch?.name ?? "HEAD"}`,
+          label: $t("commits.cherryPickMany", { count: oids.length, branch: currentBranch?.name ?? "HEAD" }),
           action: () => cherryPickRangeAction(path, oids),
         },
-        { label: `Squash ${oids.length} commits…`, action: () => squashTarget.set([...oids]) },
+        { label: $t("commits.squashMany", { count: oids.length }), action: () => squashTarget.set([...oids]) },
         { separator: true },
       );
     }
     if (pair && $operationState?.kind === "none") {
       items.push({
-        label: `Start bisect: ${pair.to.slice(0, 7)} bad, ${pair.from.slice(0, 7)} good`,
+        label: $t("commits.bisectStartRange", { bad: pair.to.slice(0, 7), good: pair.from.slice(0, 7) }),
         action: () => startBisect(pair.to, pair.from),
       });
     }
     if (pair) {
       items.push(
-        { label: "Copy compared range (older..newer)", action: () => copyText(`${pair.from}..${pair.to}`, "range") },
+        {
+          label: $t("commits.copyRange"),
+          action: () => copyText(`${pair.from}..${pair.to}`, tr("commits.whatRange")),
+        },
         { separator: true },
       );
     }
     if (path) {
       items.push(
-        { label: `Save ${oids.length} commits as one patch file…`, action: () => savePatchesAction(path, oids) },
+        { label: $t("patches.saveManyOne", { count: oids.length }), action: () => savePatchesAction(path, oids) },
         {
-          label: `Save ${oids.length} commits as patch files…`,
+          label: $t("patches.saveManyFiles", { count: oids.length }),
           action: () => savePatchesAction(path, oids, { folder: true }),
         },
         { separator: true },
       );
     }
     items.push(
-      { label: `Copy ${oids.length} SHAs`, action: () => copyText(oids.join("\n"), "SHAs") },
-      { label: `Copy ${oids.length} short SHAs`, action: () => copyText(shorts.join("\n"), "short SHAs") },
+      { label: $t("commits.copyShas", { count: oids.length }), action: () => copyText(oids.join("\n"), tr("commits.whatShas")) },
+      {
+        label: $t("commits.copyShortShas", { count: oids.length }),
+        action: () => copyText(shorts.join("\n"), tr("commits.whatShortShas")),
+      },
       { separator: true },
       {
-        label: `Select only ${c.short_oid}`,
+        label: $t("commits.selectOnly", { sha: c.short_oid }),
         action: () => {
           commitSelection.set({ oids: [], anchor: c.oid });
           selectedCommitOid.set(c.oid);
@@ -254,7 +261,7 @@
         withSelected(() => {
           const oids = $selectedCommits;
           if (oids.length > 1) squashTarget.set([...oids]);
-          else toast("info", "Select two or more commits (Ctrl/Shift-click) to squash them.");
+          else toast("info", tr("commits.squashNeedsTwo"));
         }),
       ),
       onAction("revert_selected", withSelected((p, c) => revertAction(p, c.oid))),
@@ -262,8 +269,8 @@
         "copy_commit_sha",
         withSelected((_, c) => {
           const oids = $selectedCommits;
-          if (oids.length > 1) copyText(oids.join("\n"), "SHAs");
-          else copyText(c.oid, "SHA");
+          if (oids.length > 1) copyText(oids.join("\n"), tr("commits.whatShas"));
+          else copyText(c.oid, tr("commits.whatSha"));
         }),
       ),
       onAction(

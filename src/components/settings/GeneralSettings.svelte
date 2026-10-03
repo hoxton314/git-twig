@@ -3,17 +3,14 @@
   import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { FolderOpen, Download, Upload } from "lucide-svelte";
   import { openSettingsFolder, exportSettingsToFile, importSettingsFromFile } from "../../lib/appActions";
-  import { LOCALES } from "../../lib/i18n";
+  import { LOCALES, t, tr } from "../../lib/i18n";
 
   const s = $derived($globalSettings);
 
-  const fetchIntervalOptions = [
-    { value: 0, label: "Off" },
-    { value: 60, label: "1 minute" },
-    { value: 300, label: "5 minutes" },
-    { value: 600, label: "10 minutes" },
-    { value: 1800, label: "30 minutes" },
-  ];
+  const fetchIntervalOptions = $derived([
+    { value: 0, text: $t("settings.off") },
+    ...[1, 5, 10, 30].map((m) => ({ value: m * 60, text: $t("settings.general.minutes", { count: m }) })),
+  ]);
 
   /** Parse and clamp a numeric input; on invalid input restore the current value. */
   function commitNumber(
@@ -36,7 +33,7 @@
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "Default Repository Directory",
+      title: tr("settings.general.defaultDirDialog"),
       defaultPath: s.default_repo_dir ?? undefined,
     });
     if (selected) {
@@ -46,21 +43,21 @@
 </script>
 
 <div class="section">
-  <h1 class="section-heading">General</h1>
+  <h1 class="section-heading">{$t("settings.nav.general")}</h1>
 
   <div class="setting-group">
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Language</span>
-        <span class="label-hint">Language of the interface; System follows your operating system</span>
+        <span class="label-text">{$t("settings.general.language")}</span>
+        <span class="label-hint">{$t("settings.general.languageHint")}</span>
       </div>
       <div class="setting-control">
         <select
           value={s.language}
-          aria-label="Language"
+          aria-label={$t("settings.general.language")}
           onchange={(e) => updateGlobalSettings({ language: e.currentTarget.value })}
         >
-          <option value="system">System</option>
+          <option value="system">{$t("settings.general.languageSystem")}</option>
           {#each LOCALES as l (l.id)}
             <option value={l.id}>{l.name}</option>
           {/each}
@@ -70,22 +67,22 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Default repository directory</span>
-        <span class="label-hint">Pre-fills the directory picker when opening repos</span>
+        <span class="label-text">{$t("settings.general.defaultDir")}</span>
+        <span class="label-hint">{$t("settings.general.defaultDirHint")}</span>
       </div>
       <div class="setting-control path-control">
-        <span class="path-value">{s.default_repo_dir ?? "Not set"}</span>
-        <button class="btn-secondary" onclick={pickDefaultDir}>Browse</button>
+        <span class="path-value">{s.default_repo_dir ?? $t("settings.notSet")}</span>
+        <button class="btn-secondary" onclick={pickDefaultDir}>{$t("common.browse")}</button>
         {#if s.default_repo_dir}
-          <button class="btn-ghost" onclick={() => updateGlobalSettings({ default_repo_dir: null })}>Clear</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ default_repo_dir: null })}>{$t("common.clear")}</button>
         {/if}
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Auto-fetch interval</span>
-        <span class="label-hint">Periodically fetch from remotes for open repositories</span>
+        <span class="label-text">{$t("settings.general.autoFetch")}</span>
+        <span class="label-hint">{$t("settings.general.autoFetchHint")}</span>
       </div>
       <div class="setting-control">
         <select
@@ -93,7 +90,7 @@
           onchange={(e) => updateGlobalSettings({ auto_fetch_interval: Number(e.currentTarget.value) })}
         >
           {#each fetchIntervalOptions as opt (opt.value)}
-            <option value={opt.value}>{opt.label}</option>
+            <option value={opt.value}>{opt.text}</option>
           {/each}
         </select>
       </div>
@@ -101,44 +98,44 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Notify about new upstream commits</span>
-        <span class="label-hint">After an auto-fetch: a system notification when Twig is in the background, a toast otherwise</span>
+        <span class="label-text">{$t("settings.general.notifyCommits")}</span>
+        <span class="label-hint">{$t("settings.general.notifyCommitsHint")}</span>
       </div>
       <div class="setting-control">
         <select
           value={s.notify_new_commits}
           onchange={(e) => updateGlobalSettings({ notify_new_commits: e.currentTarget.value as "off" | "current" | "all" })}
-          aria-label="Notify about new upstream commits"
+          aria-label={$t("settings.general.notifyCommits")}
         >
-          <option value="current">Current branch</option>
-          <option value="all">All branches with an upstream</option>
-          <option value="off">Off</option>
+          <option value="current">{$t("settings.general.notifyCurrent")}</option>
+          <option value="all">{$t("settings.general.notifyAll")}</option>
+          <option value="off">{$t("settings.off")}</option>
         </select>
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Notify when CI finishes</span>
-        <span class="label-hint">For the checked-out commit of open repositories with a GitHub, GitLab or Gitea remote</span>
+        <span class="label-text">{$t("settings.general.notifyCi")}</span>
+        <span class="label-hint">{$t("settings.general.notifyCiHint")}</span>
       </div>
       <div class="setting-control">
         <select
           value={s.notify_ci}
           onchange={(e) => updateGlobalSettings({ notify_ci: e.currentTarget.value as "off" | "failures" | "all" })}
-          aria-label="Notify when CI finishes"
+          aria-label={$t("settings.general.notifyCi")}
         >
-          <option value="all">Passed or failed</option>
-          <option value="failures">Failures only</option>
-          <option value="off">Off</option>
+          <option value="all">{$t("settings.general.ciAll")}</option>
+          <option value="failures">{$t("settings.general.ciFailures")}</option>
+          <option value="off">{$t("settings.off")}</option>
         </select>
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Commits per page</span>
-        <span class="label-hint">How many commits the graph loads at a time; more load as you scroll</span>
+        <span class="label-text">{$t("settings.general.commitsPerPage")}</span>
+        <span class="label-hint">{$t("settings.general.commitsPerPageHint")}</span>
       </div>
       <div class="setting-control">
         <input
@@ -157,14 +154,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Confirm destructive operations</span>
-        <span class="label-hint">Warn before force-deleting branches, discarding changes, etc.</span>
+        <span class="label-text">{$t("settings.general.confirmDestructive")}</span>
+        <span class="label-hint">{$t("settings.general.confirmDestructiveHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
           <input
             type="checkbox"
-            aria-label="Confirm destructive operations"
+            aria-label={$t("settings.general.confirmDestructive")}
             checked={s.confirm_destructive_ops}
             onchange={() => updateGlobalSettings({ confirm_destructive_ops: !s.confirm_destructive_ops })}
           />
@@ -175,14 +172,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Restore tabs on startup</span>
-        <span class="label-hint">Reopen previously active repositories when launching</span>
+        <span class="label-text">{$t("settings.general.restoreTabs")}</span>
+        <span class="label-hint">{$t("settings.general.restoreTabsHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
           <input
             type="checkbox"
-            aria-label="Restore tabs on startup"
+            aria-label={$t("settings.general.restoreTabs")}
             checked={s.restore_tabs_on_startup}
             onchange={() => updateGlobalSettings({ restore_tabs_on_startup: !s.restore_tabs_on_startup })}
           />
@@ -194,8 +191,8 @@
     <!-- Staging panel -->
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Show changed files as a tree</span>
-        <span class="label-hint">Group staged and unstaged files by folder in the staging panel</span>
+        <span class="label-text">{$t("settings.general.treeView")}</span>
+        <span class="label-hint">{$t("settings.general.treeViewHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
@@ -210,31 +207,31 @@
     </div>
   </div>
 
-  <h2 class="group-heading">Settings file</h2>
+  <h2 class="group-heading">{$t("settings.general.settingsFile")}</h2>
   <div class="setting-group">
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Settings folder</span>
-        <span class="label-hint">Where settings.json, session.json and the recent repositories list are stored</span>
+        <span class="label-text">{$t("settings.general.settingsFolder")}</span>
+        <span class="label-hint">{$t("settings.general.settingsFolderHint")}</span>
       </div>
       <div class="setting-control">
         <button class="btn-secondary" onclick={openSettingsFolder}>
-          <FolderOpen size={12} aria-hidden="true" /> Open folder
+          <FolderOpen size={12} aria-hidden="true" /> {$t("settings.general.openFolder")}
         </button>
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Import / export</span>
-        <span class="label-hint">Copy your preferences to another machine. Your GitHub token is never exported.</span>
+        <span class="label-text">{$t("settings.general.importExport")}</span>
+        <span class="label-hint">{$t("settings.general.importExportHint")}</span>
       </div>
       <div class="setting-control path-control">
         <button class="btn-secondary" onclick={exportSettingsToFile}>
-          <Download size={12} aria-hidden="true" /> Export…
+          <Download size={12} aria-hidden="true" /> {$t("settings.general.export")}
         </button>
         <button class="btn-secondary" onclick={importSettingsFromFile}>
-          <Upload size={12} aria-hidden="true" /> Import…
+          <Upload size={12} aria-hidden="true" /> {$t("settings.general.import")}
         </button>
       </div>
     </div>

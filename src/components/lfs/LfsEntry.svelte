@@ -3,15 +3,16 @@
 <script lang="ts">
   import { HardDrive } from "lucide-svelte";
   import { lfsPanelOpen, lfsStatus } from "../../lib/stores/lfs";
+  import { t } from "../../lib/i18n";
 
   const count = $derived($lfsStatus?.patterns.length ?? 0);
 </script>
 
 {#if $lfsStatus?.version && count > 0}
-  <button class="lfs-entry" onclick={() => lfsPanelOpen.set(true)} title="Tracked patterns, locks, fetch and prune">
+  <button class="lfs-entry" onclick={() => lfsPanelOpen.set(true)} title={$t("lfs.entryTitle")}>
     <HardDrive size={14} />
     <span>Git LFS</span>
-    <span class="count">{count} pattern{count === 1 ? "" : "s"}</span>
+    <span class="count">{$t("lfs.patternCount", { count })}</span>
   </button>
 {/if}
 

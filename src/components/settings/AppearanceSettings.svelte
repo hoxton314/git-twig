@@ -1,19 +1,23 @@
 <script lang="ts">
   import { Check } from "lucide-svelte";
   import CustomThemes from "./CustomThemes.svelte";
+  import { t, type MessageKey } from "../../lib/i18n";
   import { globalSettings, updateGlobalSettings, cssFontFamily, UI_FONT_FALLBACK, MONO_FONT_FALLBACK } from "../../lib/stores/settings";
 
   const s = $derived($globalSettings);
 
-  const accentColors = [
-    { value: "#7aa2f7", label: "Blue" },
-    { value: "#9ece6a", label: "Green" },
-    { value: "#e0af68", label: "Yellow" },
-    { value: "#f7768e", label: "Red" },
-    { value: "#bb9af7", label: "Purple" },
-    { value: "#2ac3de", label: "Cyan" },
-    { value: "#ff9e64", label: "Orange" },
+  const accentColors: { value: string; key: MessageKey }[] = [
+    { value: "#7aa2f7", key: "settings.appearance.blue" },
+    { value: "#9ece6a", key: "settings.appearance.green" },
+    { value: "#e0af68", key: "settings.appearance.yellow" },
+    { value: "#f7768e", key: "settings.appearance.red" },
+    { value: "#bb9af7", key: "settings.appearance.purple" },
+    { value: "#2ac3de", key: "settings.appearance.cyan" },
+    { value: "#ff9e64", key: "settings.appearance.orange" },
   ];
+
+  /** Sample text for the monospace preview (code, not language). */
+  const MONO_SAMPLE = "a1b2c3d fn main() {} -> != ===";
 
   const uiFontSuggestions = ["Inter", "Cantarell", "Noto Sans", "Ubuntu", "Segoe UI", "SF Pro Text", "Roboto", "IBM Plex Sans"];
   const monoFontSuggestions = [
@@ -49,13 +53,13 @@
 </script>
 
 <div class="section">
-  <h1 class="section-heading">Appearance</h1>
+  <h1 class="section-heading">{$t("settings.nav.appearance")}</h1>
 
   <div class="setting-group">
     <div class="setting-row">
       <div class="setting-label">
-        <label class="label-text" for="theme-select">Theme</label>
-        <span class="label-hint">Application color theme</span>
+        <label class="label-text" for="theme-select">{$t("settings.appearance.theme")}</label>
+        <span class="label-hint">{$t("settings.appearance.themeHint")}</span>
       </div>
       <div class="setting-control">
         <select
@@ -63,10 +67,10 @@
           value={s.theme}
           onchange={(e) => updateGlobalSettings({ theme: e.currentTarget.value })}
         >
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-          {#each s.custom_themes ?? [] as t (t.id)}
-            <option value="custom:{t.id}">{t.name}</option>
+          <option value="dark">{$t("settings.appearance.dark")}</option>
+          <option value="light">{$t("settings.appearance.light")}</option>
+          {#each s.custom_themes ?? [] as theme (theme.id)}
+            <option value="custom:{theme.id}">{theme.name}</option>
           {/each}
         </select>
       </div>
@@ -76,8 +80,8 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text" id="accent-label">Accent color</span>
-        <span class="label-hint">Primary highlight color throughout the interface</span>
+        <span class="label-text" id="accent-label">{$t("settings.appearance.accent")}</span>
+        <span class="label-hint">{$t("settings.appearance.accentHint")}</span>
       </div>
       <div class="setting-control">
         <div class="color-swatches" role="radiogroup" aria-labelledby="accent-label">
@@ -88,10 +92,10 @@
               class:active={selected}
               style="--swatch-color: {color.value}"
               onclick={() => handleAccentChange(color.value)}
-              title={color.label}
+              title={$t(color.key)}
               role="radio"
               aria-checked={selected}
-              aria-label="{color.label} accent"
+              aria-label={$t("settings.appearance.accentAria", { color: $t(color.key) })}
             >
               {#if selected}
                 <Check size={14} strokeWidth={3} aria-hidden="true" />
@@ -104,14 +108,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Interface font size</span>
-        <span class="label-hint">Size of text in the main interface ({s.font_size}px)</span>
+        <span class="label-text">{$t("settings.appearance.fontSize")}</span>
+        <span class="label-hint">{$t("settings.appearance.fontSizeHint", { size: s.font_size })}</span>
       </div>
       <div class="setting-control">
         <input
           type="range"
-          aria-label="Interface font size"
-          aria-valuetext="{s.font_size} pixels"
+          aria-label={$t("settings.appearance.fontSize")}
+          aria-valuetext={$t("settings.appearance.pixels", { count: s.font_size })}
           min="11"
           max="16"
           step="1"
@@ -123,14 +127,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Diff font size</span>
-        <span class="label-hint">Size of text in diff and code views ({s.diff_font_size}px)</span>
+        <span class="label-text">{$t("settings.appearance.diffFontSize")}</span>
+        <span class="label-hint">{$t("settings.appearance.diffFontSizeHint", { size: s.diff_font_size })}</span>
       </div>
       <div class="setting-control">
         <input
           type="range"
-          aria-label="Diff font size"
-          aria-valuetext="{s.diff_font_size} pixels"
+          aria-label={$t("settings.appearance.diffFontSize")}
+          aria-valuetext={$t("settings.appearance.pixels", { count: s.diff_font_size })}
           min="11"
           max="16"
           step="1"
@@ -142,10 +146,10 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <label class="label-text" for="ui-font-input">Interface font</label>
+        <label class="label-text" for="ui-font-input">{$t("settings.appearance.uiFont")}</label>
         <span class="label-hint">
-          Font family for the interface; falls back to the system font if not installed.
-          <span class="font-preview" style="font-family: {uiPreview}">The quick brown fox · 0123</span>
+          {$t("settings.appearance.uiFontHint")}
+          <span class="font-preview" style="font-family: {uiPreview}">{$t("settings.appearance.uiFontSample")}</span>
         </span>
       </div>
       <div class="setting-control font-control">
@@ -153,7 +157,7 @@
           id="ui-font-input"
           type="text"
           list="ui-font-suggestions"
-          placeholder="System default"
+          placeholder={$t("settings.appearance.uiFontPlaceholder")}
           spellcheck="false"
           value={s.ui_font_family}
           onchange={(e) => commitFont("ui_font_family", e.currentTarget)}
@@ -163,17 +167,17 @@
           {#each uiFontSuggestions as f (f)}<option value={f}></option>{/each}
         </datalist>
         {#if s.ui_font_family}
-          <button class="btn-ghost" onclick={() => updateGlobalSettings({ ui_font_family: "" })} aria-label="Reset interface font">Reset</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ ui_font_family: "" })} aria-label={$t("settings.appearance.uiFontReset")}>{$t("common.reset")}</button>
         {/if}
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <label class="label-text" for="mono-font-input">Monospace font</label>
+        <label class="label-text" for="mono-font-input">{$t("settings.appearance.monoFont")}</label>
         <span class="label-hint">
-          Used for diffs, hashes and branch names.
-          <span class="font-preview mono" style="font-family: {monoPreview}">a1b2c3d fn main() {"{}"} -> != ===</span>
+          {$t("settings.appearance.monoFontHint")}
+          <span class="font-preview mono" style="font-family: {monoPreview}">{MONO_SAMPLE}</span>
         </span>
       </div>
       <div class="setting-control font-control">
@@ -181,7 +185,7 @@
           id="mono-font-input"
           type="text"
           list="mono-font-suggestions"
-          placeholder="System monospace"
+          placeholder={$t("settings.appearance.monoFontPlaceholder")}
           spellcheck="false"
           value={s.mono_font_family}
           onchange={(e) => commitFont("mono_font_family", e.currentTarget)}
@@ -191,7 +195,7 @@
           {#each monoFontSuggestions as f (f)}<option value={f}></option>{/each}
         </datalist>
         {#if s.mono_font_family}
-          <button class="btn-ghost" onclick={() => updateGlobalSettings({ mono_font_family: "" })} aria-label="Reset monospace font">Reset</button>
+          <button class="btn-ghost" onclick={() => updateGlobalSettings({ mono_font_family: "" })} aria-label={$t("settings.appearance.monoFontReset")}>{$t("common.reset")}</button>
         {/if}
       </div>
     </div>

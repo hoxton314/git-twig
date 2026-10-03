@@ -8,6 +8,7 @@ import * as tauri from "../tauri";
 import { activeRepoPath, addRepo } from "./repos";
 import { commitGraph, refreshAll } from "./graph";
 import { toast, toastError } from "./toasts";
+import { tr } from "../i18n";
 
 export const submodules = writable<SubmoduleInfo[]>([]);
 export const worktrees = writable<WorktreeInfo[]>([]);
@@ -46,7 +47,7 @@ export async function openAsTab(dir: string) {
     const info = await tauri.openRepo(dir);
     addRepo(info);
   } catch (err) {
-    toastError("Could not open repository", err);
+    toastError(tr("worktrees.openRepoFailed"), err);
   }
 }
 
@@ -55,7 +56,7 @@ async function runOp(title: string, op: () => Promise<{ success: boolean; messag
   try {
     const res = await op();
     if (res.success) toast("success", okMsg);
-    else toast("error", res.message.trim() || "Unknown error", { title });
+    else toast("error", res.message.trim() || tr("worktrees.unknownError"), { title });
   } catch (err) {
     toastError(title, err);
   } finally {
@@ -73,8 +74,12 @@ export async function updateSubmodules(subPath?: string) {
   if (!p || submoduleBusy) return;
   submoduleBusy = true;
   try {
-    toast("info", subPath ? `Updating ${subPath}…` : "Updating submodules…", { duration: 2000 });
-    await runOp("Submodule update failed", () => tauri.submoduleUpdate(p, subPath), subPath ? `Updated ${subPath}` : "Submodules updated");
+    toast("info", subPath ? tr("worktrees.submoduleUpdating", { path: subPath }) : tr("worktrees.submodulesUpdating"), { duration: 2000 });
+    await runOp(
+      tr("worktrees.submoduleUpdateFailed"),
+      () => tauri.submoduleUpdate(p, subPath),
+      subPath ? tr("worktrees.submoduleUpdated", { path: subPath }) : tr("worktrees.submodulesUpdated"),
+    );
   } finally {
     submoduleBusy = false;
   }
@@ -83,5 +88,5 @@ export async function updateSubmodules(subPath?: string) {
 export async function syncSubmodules(subPath?: string) {
   const p = get(activeRepoPath);
   if (!p) return;
-  await runOp("Submodule sync failed", () => tauri.submoduleSync(p, subPath), "Submodule URLs synced");
+  await runOp(tr("worktrees.submoduleSyncFailed"), () => tauri.submoduleSync(p, subPath), tr("worktrees.submodulesSynced"));
 }

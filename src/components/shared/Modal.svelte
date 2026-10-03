@@ -7,6 +7,7 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
   import { onMount } from "svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     open: boolean;
@@ -127,7 +128,7 @@
     >
       <div class="modal-header">
         <h2 class="modal-title" id={titleId}>{title}</h2>
-        <button class="modal-close" onclick={onclose} title="Close" aria-label="Close">
+        <button class="modal-close" onclick={onclose} title={$t("common.close")} aria-label={$t("common.close")}>
           <X size={16} />
         </button>
       </div>
