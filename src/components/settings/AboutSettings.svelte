@@ -7,6 +7,7 @@
   import { updater, checkForUpdates, ensureUpdaterSupport, installUpdate } from "../../lib/stores/updater";
   import { renderMarkdown } from "../../lib/markdown";
   import { toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
 
   const RELEASES_URL = "https://github.com/hoxton314/git-twig/releases";
 
@@ -27,7 +28,7 @@
   }
 
   function openExternal(url: string) {
-    openUrl(url).catch((err) => toastError("Could not open link", err));
+    openUrl(url).catch((err) => toastError(tr("settings.about.openLinkFailed"), err));
   }
 
   function onNotesClick(e: MouseEvent) {
@@ -40,13 +41,13 @@
 </script>
 
 <div class="section">
-  <h1 class="section-heading">About &amp; Updates</h1>
+  <h1 class="section-heading">{$t("settings.nav.about")}</h1>
 
   <div class="about-card">
     <span class="app-name">Twig</span>
-    <span class="app-version">Version {version || "…"}</span>
+    <span class="app-version">{$t("settings.about.version", { version: version || "…" })}</span>
     <button class="link-btn" onclick={() => openExternal(RELEASES_URL)}>
-      Release history <ExternalLink size={11} aria-hidden="true" />
+      {$t("settings.about.releaseHistory")} <ExternalLink size={11} aria-hidden="true" />
     </button>
   </div>
 
@@ -54,38 +55,40 @@
     {#if u.status === "unsupported"}
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Updates</span>
-          <span class="label-hint">Updates are managed by your package manager (or this is a development build).</span>
+          <span class="label-text">{$t("settings.about.updates")}</span>
+          <span class="label-hint">{$t("settings.about.managed")}</span>
         </div>
       </div>
     {:else}
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Check for updates</span>
+          <span class="label-text">{$t("settings.about.check")}</span>
           <span class="label-hint status-line" role="status" aria-live="polite">
             {#if u.status === "unknown"}
-              Determining update support…
+              {$t("settings.about.determining")}
             {:else if u.status === "checking"}
-              <Loader2 size={12} class="spin" aria-hidden="true" /> Checking…
+              <Loader2 size={12} class="spin" aria-hidden="true" /> {$t("settings.about.checking")}
             {:else if u.status === "up-to-date"}
-              <CheckCircle2 size={12} class="ok" aria-hidden="true" /> Twig is up to date{u.lastChecked ? ` (checked ${formatTime(u.lastChecked)})` : ""}.
+              <CheckCircle2 size={12} class="ok" aria-hidden="true" /> {u.lastChecked
+                ? $t("settings.about.upToDateChecked", { time: formatTime(u.lastChecked) })
+                : $t("settings.about.upToDate")}
             {:else if u.status === "available"}
-              <Download size={12} class="accent" aria-hidden="true" /> Version {u.version} is available.
+              <Download size={12} class="accent" aria-hidden="true" /> {$t("settings.about.available", { version: u.version })}
             {:else if u.status === "downloading"}
-              <Loader2 size={12} class="spin" aria-hidden="true" /> Downloading {u.version}…
+              <Loader2 size={12} class="spin" aria-hidden="true" /> {$t("settings.about.downloading", { version: u.version })}
             {:else if u.status === "error"}
-              <AlertTriangle size={12} class="err" aria-hidden="true" /> Update check failed: {u.error}
+              <AlertTriangle size={12} class="err" aria-hidden="true" /> {$t("settings.about.failed", { error: u.error })}
             {:else}
-              Not checked yet this session.
+              {$t("settings.about.notChecked")}
             {/if}
           </span>
         </div>
         <div class="setting-control actions">
           {#if u.status === "available"}
-            <button class="btn-primary" onclick={installUpdate}>Update &amp; Restart</button>
+            <button class="btn-primary" onclick={installUpdate}>{$t("settings.about.updateRestart")}</button>
           {/if}
           <button class="btn-secondary" onclick={() => checkForUpdates(true)} disabled={busy || u.status === "unknown"}>
-            <RefreshCw size={12} aria-hidden="true" /> Check now
+            <RefreshCw size={12} aria-hidden="true" /> {$t("settings.about.checkNow")}
           </button>
         </div>
       </div>
@@ -93,7 +96,7 @@
       {#if notesHtml}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="release-notes" onclick={onNotesClick} aria-label="Release notes for {u.version}">
+        <div class="release-notes" onclick={onNotesClick} aria-label={$t("settings.about.notesAria", { version: u.version })}>
           <!-- Safe: renderMarkdown escapes all input and only emits whitelisted tags. -->
           {@html notesHtml}
         </div>
@@ -101,14 +104,14 @@
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Automatically check on startup</span>
-          <span class="label-hint">Look for a new release each time Twig starts</span>
+          <span class="label-text">{$t("settings.about.onStartup")}</span>
+          <span class="label-hint">{$t("settings.about.onStartupHint")}</span>
         </div>
         <div class="setting-control">
           <label class="toggle">
             <input
               type="checkbox"
-              aria-label="Automatically check for updates on startup"
+              aria-label={$t("settings.about.onStartupAria")}
               checked={s.check_updates_on_startup}
               onchange={() => updateGlobalSettings({ check_updates_on_startup: !s.check_updates_on_startup })}
             />
@@ -120,12 +123,12 @@
       {#if s.skipped_update_version}
         <div class="setting-row">
           <div class="setting-label">
-            <span class="label-text">Skipped version</span>
-            <span class="label-hint">You won't be prompted about version {s.skipped_update_version} at startup</span>
+            <span class="label-text">{$t("settings.about.skipped")}</span>
+            <span class="label-hint">{$t("settings.about.skippedHint", { version: s.skipped_update_version })}</span>
           </div>
           <div class="setting-control">
             <button class="btn-secondary" onclick={() => updateGlobalSettings({ skipped_update_version: null })}>
-              Stop skipping
+              {$t("settings.about.stopSkipping")}
             </button>
           </div>
         </div>

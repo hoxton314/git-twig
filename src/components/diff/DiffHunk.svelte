@@ -13,6 +13,7 @@
   import { wordDiff, findMatches, buildSegments, type Range, type Segment } from "../../lib/diff/inline";
   import { getContext, tick, untrack } from "svelte";
   import { readable } from "svelte/store";
+  import { t } from "../../lib/i18n";
   import { DIFF_SEARCH_CONTEXT, type DiffSearchRegistry } from "../../lib/diff/searchRegistry";
 
   interface Props {
@@ -406,11 +407,11 @@
   const selCount = $derived(selected.size);
 </script>
 
-{#snippet eol()}<span class="no-eol" title="No newline at end of file">&#8856;</span>{/snippet}
+{#snippet eol()}<span class="no-eol" title={$t("diff.noNewlineAtEof")}>&#8856;</span>{/snippet}
 
 {#snippet text(ri: number, side: string)}{#each seg(ri) as s, si (si)}{#if s.cls || s.changed || s.match >= 0}{@const mid = s.match >= 0 ? `${matchPrefix}:${ri}:${side}:${s.match}` : undefined}<span class={segClass(s, mid)} data-m={mid} data-match-start={s.matchStart ? "" : undefined}>{s.text}</span>{:else}{s.text}{/if}{/each}{#if rows[ri].noEol}{@render eol()}{/if}{/snippet}
 
-{#snippet lineno(ri: number, n: number | null)}{#if selectable && isChange(rows[ri])}<button class="ln-btn" class:on={selected.has(ri)} aria-pressed={selected.has(ri)} title="Select line (Shift+click for a range)" onclick={(e) => toggleRow(ri, e)}>{n ?? ""}</button>{:else}{n ?? ""}{/if}{/snippet}
+{#snippet lineno(ri: number, n: number | null)}{#if selectable && isChange(rows[ri])}<button class="ln-btn" class:on={selected.has(ri)} aria-pressed={selected.has(ri)} title={$t("diff.selectLine")} onclick={(e) => toggleRow(ri, e)}>{n ?? ""}</button>{:else}{n ?? ""}{/if}{/snippet}
 
 <div class="hunk" class:wrap class:syn={!!language} class:hunk-anchor={showHeader} style:tab-size={tabSize} bind:this={rootEl}>
   {#if showHeader}
@@ -419,21 +420,21 @@
       {#if selectable && hasChanges}
         <div class="hunk-actions">
           {#if selCount > 0}
-            <span class="sel-count">{selCount} line{selCount === 1 ? "" : "s"}</span>
+            <span class="sel-count">{$t("diff.lineCount", { count: selCount })}</span>
             {#if actions === "unstaged"}
-              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", false)}>Stage lines</button>
-              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", false)}>Discard lines</button>
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", false)}>{$t("diff.stageLines")}</button>
+              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", false)}>{$t("diff.discardLines")}</button>
             {:else}
-              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", false)}>Unstage lines</button>
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", false)}>{$t("diff.unstageLines")}</button>
             {/if}
-            <button class="hunk-btn subtle" onclick={() => (selected = new Set())}>Clear</button>
+            <button class="hunk-btn subtle" onclick={() => (selected = new Set())}>{$t("common.clear")}</button>
           {:else}
-            <button class="hunk-btn subtle" onclick={selectAll} title="Select every changed line in this hunk">Select</button>
+            <button class="hunk-btn subtle" onclick={selectAll} title={$t("diff.selectHunkLines")}>{$t("diff.select")}</button>
             {#if actions === "unstaged"}
-              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", true)}>Stage hunk</button>
-              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", true)}>Discard hunk</button>
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("stage", true)}>{$t("diff.stageHunk")}</button>
+              <button class="hunk-btn danger" disabled={busy} onclick={() => runAction("discard", true)}>{$t("diff.discardHunk")}</button>
             {:else}
-              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", true)}>Unstage hunk</button>
+              <button class="hunk-btn" disabled={busy} onclick={() => runAction("unstage", true)}>{$t("diff.unstageHunk")}</button>
             {/if}
           {/if}
         </div>

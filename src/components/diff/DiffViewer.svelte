@@ -19,6 +19,7 @@
   import { settings, updateSettings } from "../../lib/stores/settings";
   import { toast, toastError } from "../../lib/stores/toasts";
   import { onAction } from "../../lib/keybindings";
+  import { t, tr } from "../../lib/i18n";
   import { ensureLanguage, isLanguageReady, languageForPath } from "../../lib/diff/highlight";
   import * as tauri from "../../lib/tauri";
   import DiffHunk, { WINDOWED_HUNK_MIN_ROWS } from "./DiffHunk.svelte";
@@ -202,7 +203,7 @@
     if (f.old_path && f.new_path && f.old_path !== f.new_path) {
       return `${f.old_path} → ${f.new_path}`;
     }
-    return f.new_path ?? f.old_path ?? "unknown";
+    return f.new_path ?? f.old_path ?? $t("diff.unknownPath");
   }
 
   function fileKey(f: DiffFile): string {
@@ -390,9 +391,11 @@
     if (selected.length === 0) return;
 
     if (action === "discard" && $settings.confirm_destructive_ops) {
-      const what = whole ? "this hunk" : `${selected.length} selected line${selected.length === 1 ? "" : "s"}`;
-      const ok = await ask(`Discard ${what} in ${filePath}? This cannot be undone.`, {
-        title: "Discard changes",
+      const message = whole
+        ? tr("diff.discardHunkConfirm", { path: filePath })
+        : tr("diff.discardLinesConfirm", { count: selected.length, path: filePath });
+      const ok = await ask(message, {
+        title: tr("diff.discardChanges"),
         kind: "warning",
       });
       if (!ok) return;
@@ -410,11 +413,16 @@
         : [];
       const result = await tauri.applyDiffSelection(path, filePath, area, action, selected, ranges);
       if (!result.success) {
-        const verb = action === "stage" ? "stage" : action === "unstage" ? "unstage" : "discard";
-        toast("error", result.message.trim() || "git apply failed", { title: `Could not ${verb} changes` });
+        const title =
+          action === "stage"
+            ? tr("diff.stageFailed")
+            : action === "unstage"
+              ? tr("diff.unstageFailed")
+              : tr("diff.discardFailed");
+        toast("error", result.message.trim() || tr("diff.gitApplyFailed"), { title });
       }
     } catch (err) {
-      toastError("Could not apply selection", err);
+      toastError(tr("diff.applySelectionFailed"), err);
     } finally {
       actionBusy = false;
       // Refresh staging lists and this diff even after a failure, since a
@@ -527,13 +535,13 @@
       try {
         const b64 = await tauri.getFileBlob(path, f.new_path, source);
         if (gen !== blobGen || repoPath !== path) return;
-        if (b64 === null) throw new Error("file contents unavailable");
+        if (b64 === null) throw new Error(tr("diff.fileContentsUnavailable"));
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         contexts[key].lines = splitFileLines(new TextDecoder().decode(bytes));
       } catch (err) {
         if (gen !== blobGen) return;
         contexts[key].failed = true;
-        toastError("Could not load file contents", err);
+        toastError(tr("diff.loadFileContentsFailed"), err);
         return;
       } finally {
         if (gen === blobGen && contexts[key]) contexts[key].loading = false;
@@ -724,22 +732,22 @@
 {#snippet expander(file: DiffFile, gi: number, view: GapView, busy: boolean)}
   <div class="expander">
     {#if view.canDown}
-      <button class="exp-btn" disabled={busy} onclick={() => expandGap(file, gi, "down")} title="Show {EXPAND_STEP} more lines below">
+      <button class="exp-btn" disabled={busy} onclick={() => expandGap(file, gi, "down")} title={$t("diff.showMoreBelow", { count: EXPAND_STEP })}>
         <ChevronDown size={13} />
       </button>
     {/if}
     {#if view.canUp}
-      <button class="exp-btn" disabled={busy} onclick={() => expandGap(file, gi, "up")} title="Show {EXPAND_STEP} more lines above">
+      <button class="exp-btn" disabled={busy} onclick={() => expandGap(file, gi, "up")} title={$t("diff.showMoreAbove", { count: EXPAND_STEP })}>
         <ChevronUp size={13} />
       </button>
     {/if}
     <button class="exp-label" disabled={busy} onclick={() => expandGap(file, gi, "all")}>
       {#if busy}
-        Loading…
+        {$t("common.loading")}
       {:else if view.unknownEnd}
-        Show rest of file
+        {$t("diff.showRestOfFile")}
       {:else}
-        Show {view.hidden} hidden line{view.hidden === 1 ? "" : "s"}
+        {$t("diff.showHiddenLines", { count: view.hidden })}
       {/if}
     </button>
   </div>
@@ -769,40 +777,40 @@
 
 <!-- Focusable so Ctrl+F / F3 can be scoped to the diff panel. -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<div class="diff-viewer" bind:this={rootEl} tabindex="-1" role="region" aria-label="Diff">
+<div class="diff-viewer" bind:this={rootEl} tabindex="-1" role="region" aria-label={$t("diff.region")}>
   <div class="diff-header">
     <span class="diff-title">
       {#if isWipMode}
-        <span class="label">Working changes</span>
-        — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
+        <span class="label">{$t("diff.workingChanges")}</span>
+        {$t("diff.filesChanged", { count: diff.length })}
       {:else if isWorkingMode && workingFile}
-        <span class="label">{workingFile.area === "staged" ? "Staged" : "Unstaged"}</span>
+        <span class="label">{workingFile.area === "staged" ? $t("diff.staged") : $t("diff.unstaged")}</span>
         — {workingFile.path}
       {:else if compare}
-        <span class="label">Comparing</span>
+        <span class="label">{$t("diff.comparing")}</span>
         <span class="oid" title={`${compare.from} → ${compare.to}`}>{compare.from.slice(0, 7)}..{compare.to.slice(0, 7)}</span>
-        — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
+        {$t("diff.filesChanged", { count: diff.length })}
       {:else if commitOid}
         <span class="oid">{commitOid?.slice(0, 7)}</span>
-        — {diff.length} file{diff.length !== 1 ? "s" : ""} changed
+        {$t("diff.filesChanged", { count: diff.length })}
         {#if multiCount > 2}
-          <span class="label" title="Select exactly two commits to compare them">· {multiCount} selected</span>
+          <span class="label" title={$t("diff.selectTwoToCompare")}>{$t("diff.multiSelected", { count: multiCount })}</span>
         {/if}
       {/if}
     </span>
     <div class="view-toggle">
-      <button class="toggle-btn" onclick={() => gotoHunk(-1)} title="Previous change (Alt+Up)" aria-label="Previous change">
+      <button class="toggle-btn" onclick={() => gotoHunk(-1)} title={$t("diff.prevChangeTitle")} aria-label={$t("diff.prevChange")}>
         <ChevronUp size={14} />
       </button>
-      <button class="toggle-btn" onclick={() => gotoHunk(1)} title="Next change (Alt+Down)" aria-label="Next change">
+      <button class="toggle-btn" onclick={() => gotoHunk(1)} title={$t("diff.nextChangeTitle")} aria-label={$t("diff.nextChange")}>
         <ChevronDown size={14} />
       </button>
       <button
         class="toggle-btn"
         class:active={searchOpen}
         onclick={() => (searchOpen ? closeSearch() : openSearch())}
-        title="Find in diff (Ctrl+F)"
-        aria-label="Find in diff"
+        title={$t("diff.findTitle")}
+        aria-label={$t("diff.find")}
       >
         <Search size={14} />
       </button>
@@ -810,8 +818,8 @@
         class="toggle-btn"
         class:active={showWhitespace}
         onclick={toggleWhitespace}
-        title={showWhitespace ? "Hide whitespace-only changes" : "Show whitespace-only changes"}
-        aria-label="Toggle whitespace changes"
+        title={showWhitespace ? $t("diff.hideWhitespace") : $t("diff.showWhitespaceChanges")}
+        aria-label={$t("diff.toggleWhitespace")}
         aria-pressed={showWhitespace}
       >
         <Pilcrow size={14} />
@@ -821,7 +829,7 @@
         class="toggle-btn"
         class:active={viewMode === "unified"}
         onclick={() => ($diffViewMode = "unified")}
-        title="Unified view"
+        title={$t("diff.unifiedView")}
       >
         <AlignJustify size={14} />
       </button>
@@ -829,7 +837,7 @@
         class="toggle-btn"
         class:active={viewMode === "split"}
         onclick={() => ($diffViewMode = "split")}
-        title="Split view"
+        title={$t("diff.splitView")}
       >
         <Columns2 size={14} />
       </button>
@@ -844,22 +852,22 @@
         bind:value={searchText}
         oninput={onSearchInput}
         onkeydown={onSearchKeydown}
-        placeholder="Find in diff"
-        aria-label="Find in diff"
+        placeholder={$t("diff.find")}
+        aria-label={$t("diff.find")}
         spellcheck="false"
       />
       <span class="match-count">
         {#if searchQuery}
-          {matchCount === 0 ? "No results" : `${activeMatch + 1} of ${matchCount}`}
+          {matchCount === 0 ? $t("diff.noResults") : $t("diff.matchOf", { n: activeMatch + 1, total: matchCount })}
         {/if}
       </span>
-      <button class="toggle-btn" disabled={matchCount === 0} onclick={() => stepMatch(-1)} title="Previous match (Shift+Enter)" aria-label="Previous match">
+      <button class="toggle-btn" disabled={matchCount === 0} onclick={() => stepMatch(-1)} title={$t("diff.prevMatchTitle")} aria-label={$t("diff.prevMatch")}>
         <ChevronUp size={14} />
       </button>
-      <button class="toggle-btn" disabled={matchCount === 0} onclick={() => stepMatch(1)} title="Next match (Enter)" aria-label="Next match">
+      <button class="toggle-btn" disabled={matchCount === 0} onclick={() => stepMatch(1)} title={$t("diff.nextMatchTitle")} aria-label={$t("diff.nextMatch")}>
         <ChevronDown size={14} />
       </button>
-      <button class="toggle-btn" onclick={closeSearch} title="Close (Esc)" aria-label="Close search">
+      <button class="toggle-btn" onclick={closeSearch} title={$t("diff.closeSearchTitle")} aria-label={$t("diff.closeSearch")}>
         <X size={14} />
       </button>
     </div>
@@ -869,7 +877,7 @@
     {#if loading}
       <div class="loading">
         <Loader2 size={20} class="spinner" />
-        <span>Loading diff...</span>
+        <span>{$t("diff.loadingDiff")}</span>
       </div>
     {:else}
       <!-- Keyed by index too: the WIP diff concatenates staged + unstaged, so the
@@ -903,7 +911,7 @@
               {#if file.is_lfs}
                 <div class="lfs-notice">
                   <Package size={16} />
-                  LFS object — {file.lfs_size ?? "unknown size"}
+                  {$t("diff.lfsObject", { size: file.lfs_size ?? $t("diff.unknownSize") })}
                 </div>
               {:else if isImageFile(file)}
                 {@const blob = imageBlobs[fileKey(file)]}
@@ -924,27 +932,27 @@
               {:else if file.is_binary}
                 <div class="binary-notice">
                   <Binary size={16} />
-                  Binary file
+                  {$t("diff.binaryFile")}
                 </div>
               {:else if file.hunks.length === 0}
                 <div class="binary-notice">
                   {#if file.status === "renamed" || file.status === "copied"}
-                    File renamed without content changes
+                    {$t("diff.renamedNoChanges")}
                   {:else if file.status === "added"}
-                    New empty file
+                    {$t("diff.newEmptyFile")}
                   {:else if file.status === "deleted"}
-                    Deleted empty file
+                    {$t("diff.deletedEmptyFile")}
                   {:else if !showWhitespace}
-                    Only whitespace changes (hidden)
-                    <button class="show-large-btn" onclick={toggleWhitespace}>Show whitespace</button>
+                    {$t("diff.onlyWhitespaceHidden")}
+                    <button class="show-large-btn" onclick={toggleWhitespace}>{$t("diff.showWhitespace")}</button>
                   {:else}
-                    No content changes
+                    {$t("diff.noContentChanges")}
                   {/if}
                 </div>
               {:else if unwindowedRows(file) > UNWINDOWED_ROWS_LIMIT && !forceShown.has(fileKey(file))}
                 <div class="binary-notice">
-                  Large diff ({unwindowedRows(file).toLocaleString()} lines in {file.hunks.length.toLocaleString()} hunks) hidden
-                  <button class="show-large-btn" onclick={() => showLarge(file)}>Show anyway</button>
+                  {$t("diff.largeDiffHidden", { lines: unwindowedRows(file).toLocaleString(), hunks: file.hunks.length.toLocaleString() })}
+                  <button class="show-large-btn" onclick={() => showLarge(file)}>{$t("diff.showAnyway")}</button>
                 </div>
               {:else}
                 {@const lang = fileLanguage(file)}
@@ -975,7 +983,7 @@
         </div>
       {/each}
       {#if diff.length === 0 && !loading}
-        <div class="empty-diff">No changes to display</div>
+        <div class="empty-diff">{$t("diff.noChanges")}</div>
       {/if}
     {/if}
   </div>

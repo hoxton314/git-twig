@@ -350,7 +350,7 @@
 
 <svelte:window onkeydown={handleMenuKeydown} />
 
-<div class="tab-bar" data-tauri-drag-region role="tablist" aria-label="Open repositories" bind:this={tabBarEl}>
+<div class="tab-bar" data-tauri-drag-region role="tablist" aria-label={$t("tabs.openRepos")} bind:this={tabBarEl}>
   <button
     class="home-btn"
     class:active={homeActive}
@@ -378,7 +378,7 @@
       title={$t("tabs.tabTitle", { path })}
     >
       {#if $favoritePaths.has(path)}
-        <Pin size={12} class="tab-pin" aria-label="Pinned" />
+        <Pin size={12} class="tab-pin" aria-label={$t("tabs.pinnedLabel")} />
       {:else}
         <GitBranch size={14} />
       {/if}

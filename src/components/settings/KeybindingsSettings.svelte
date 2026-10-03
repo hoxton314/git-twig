@@ -2,16 +2,17 @@
   import { RotateCcw } from "lucide-svelte";
   import { ACTIONS, eventToShortcut, normalizeShortcut, resolveShortcut } from "../../lib/keybindings";
   import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
+  import { t, type MessageKey } from "../../lib/i18n";
 
   const s = $derived($globalSettings);
 
   // Group actions by category
   const categories = $derived.by(() => {
-    const map = new Map<string, typeof ACTIONS>();
+    const map = new Map<MessageKey, typeof ACTIONS>();
     for (const action of ACTIONS) {
-      const list = map.get(action.category) ?? [];
+      const list = map.get(action.categoryKey) ?? [];
       list.push(action);
-      map.set(action.category, list);
+      map.set(action.categoryKey, list);
     }
     return [...map.entries()];
   });
@@ -41,12 +42,16 @@
       byShortcut.set(norm, [...(byShortcut.get(norm) ?? []), action.id]);
     }
     const result = new Map<string, string[]>();
+    const labelOf = (o: string) => {
+      const a = ACTIONS.find((x) => x.id === o);
+      return a ? $t(a.labelKey) : o;
+    };
     for (const ids of byShortcut.values()) {
       if (ids.length < 2) continue;
       for (const id of ids) {
         result.set(
           id,
-          ids.filter((o) => o !== id).map((o) => ACTIONS.find((a) => a.id === o)?.label ?? o),
+          ids.filter((o) => o !== id).map(labelOf),
         );
       }
     }
@@ -126,31 +131,31 @@
       aria-describedby="capture-hint"
     >
       <p class="capture-title" id="capture-title" aria-live="assertive">
-        Press a key combination for “{ACTIONS.find((a) => a.id === capturingActionId)?.label ?? capturingActionId}”
+        {$t("settings.keys.capture", { action: ACTIONS.find((a) => a.id === capturingActionId)?.label ?? capturingActionId })}
       </p>
-      <p class="capture-hint" id="capture-hint">Press Escape to cancel, Backspace to remove the shortcut</p>
+      <p class="capture-hint" id="capture-hint">{$t("settings.keys.captureHint")}</p>
     </div>
   </div>
 {/if}
 
 <div class="section">
   <div class="section-header">
-    <h1 class="section-heading">Keybindings</h1>
+    <h1 class="section-heading">{$t("settings.nav.keybindings")}</h1>
     {#if Object.keys(s.keybinding_overrides).length > 0}
       <button class="reset-all-btn" onclick={resetAllBindings}>
         <RotateCcw size={12} />
-        Reset all to defaults
+        {$t("settings.keys.resetAll")}
       </button>
     {/if}
   </div>
 
   {#each categories as [category, actions] (category)}
     <div class="setting-group">
-      <h2 class="group-heading">{category}</h2>
+      <h2 class="group-heading">{$t(category)}</h2>
 
       {#each actions as action (action.id)}
         <div class="keybinding-row">
-          <span class="action-label">{action.label}</span>
+          <span class="action-label">{$t(action.labelKey)}</span>
           <div class="shortcut-area">
             <button
               class="shortcut-btn"
@@ -159,9 +164,18 @@
               class:conflict={conflicts.has(action.id)}
               onclick={() => startCapture(action.id)}
               title={conflicts.has(action.id)
-                ? `Conflicts with: ${conflicts.get(action.id)?.join(", ")}`
-                : "Click to change"}
-              aria-label="Change shortcut for {action.label}, currently {effectiveShortcut(action.id) || 'not set'}{conflicts.has(action.id) ? `, conflicts with ${conflicts.get(action.id)?.join(', ')}` : ''}"
+                ? $t("settings.keys.conflictsTitle", { actions: conflicts.get(action.id)?.join(", ") ?? "" })
+                : $t("settings.keys.clickToChange")}
+              aria-label={conflicts.has(action.id)
+                ? $t("settings.keys.changeAriaConflict", {
+                    action: action.label,
+                    shortcut: effectiveShortcut(action.id) || $t("settings.keys.notSetLower"),
+                    actions: conflicts.get(action.id)?.join(", ") ?? "",
+                  })
+                : $t("settings.keys.changeAria", {
+                    action: action.label,
+                    shortcut: effectiveShortcut(action.id) || $t("settings.keys.notSetLower"),
+                  })}
             >
               {#if effectiveShortcut(action.id)}
                 {#each effectiveShortcut(action.id).split(/\+(?!$)/) as part, i}
@@ -169,15 +183,18 @@
                   <kbd class="key">{part}</kbd>
                 {/each}
               {:else}
-                <span class="key-unset">Not set</span>
+                <span class="key-unset">{$t("settings.notSet")}</span>
               {/if}
             </button>
             {#if isCustomized(action.id)}
               <button
                 class="reset-btn"
                 onclick={() => resetBinding(action.id)}
-                title="Reset to default ({action.defaultShortcut || 'not set'})"
-                aria-label="Reset {action.label} to default ({action.defaultShortcut || 'not set'})"
+                title={$t("settings.keys.resetTitle", { shortcut: action.defaultShortcut || $t("settings.keys.notSetLower") })}
+                aria-label={$t("settings.keys.resetAria", {
+                  action: action.label,
+                  shortcut: action.defaultShortcut || $t("settings.keys.notSetLower"),
+                })}
               >
                 <RotateCcw size={11} />
               </button>

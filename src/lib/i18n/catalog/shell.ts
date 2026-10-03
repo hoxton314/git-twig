@@ -113,6 +113,8 @@ export const en = {
   "tabs.cloneGitHub": "Clone from GitHub...",
   "tabs.newRepo": "New repository...",
   "tabs.newGitHubRepo": "New GitHub repo...",
+  "tabs.openRepos": "Open repositories",
+  "tabs.pinnedLabel": "Pinned",
 
   // ── Home screen ────────────────────────────────────────────────────
   "home.tagline": "Lighter than the rest.",
@@ -283,6 +285,8 @@ export const pl: Translation<typeof en> = {
   "tabs.cloneGitHub": "Klonuj z GitHuba...",
   "tabs.newRepo": "Nowe repozytorium...",
   "tabs.newGitHubRepo": "Nowe repozytorium GitHub...",
+  "tabs.openRepos": "Otwarte repozytoria",
+  "tabs.pinnedLabel": "Przypięte",
 
   // ── Home screen ────────────────────────────────────────────────────
   "home.tagline": "Lżejszy od reszty.",

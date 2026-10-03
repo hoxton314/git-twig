@@ -1,6 +1,7 @@
 <script lang="ts">
   import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { diffViewMode } from "../../lib/stores/ui";
+  import { t } from "../../lib/i18n";
 
   const s = $derived($globalSettings);
 
@@ -25,13 +26,13 @@
 </script>
 
 <div class="section">
-  <h1 class="section-heading">Editor & Diff</h1>
+  <h1 class="section-heading">{$t("settings.nav.editor")}</h1>
 
   <div class="setting-group">
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Default diff view</span>
-        <span class="label-hint">How diffs are displayed by default</span>
+        <span class="label-text">{$t("settings.editor.diffView")}</span>
+        <span class="label-hint">{$t("settings.editor.diffViewHint")}</span>
       </div>
       <div class="setting-control">
         <div class="segmented-control">
@@ -40,14 +41,14 @@
             class:active={s.diff_view_mode === "unified"}
             onclick={() => setDiffView("unified")}
           >
-            Unified
+            {$t("settings.editor.unified")}
           </button>
           <button
             class="segment"
             class:active={s.diff_view_mode === "split"}
             onclick={() => setDiffView("split")}
           >
-            Split
+            {$t("settings.editor.split")}
           </button>
         </div>
       </div>
@@ -55,25 +56,25 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Tab size</span>
-        <span class="label-hint">Number of spaces per tab in diff rendering</span>
+        <span class="label-text">{$t("settings.editor.tabSize")}</span>
+        <span class="label-hint">{$t("settings.editor.tabSizeHint")}</span>
       </div>
       <div class="setting-control">
         <select
           value={s.tab_size}
           onchange={(e) => updateGlobalSettings({ tab_size: Number(e.currentTarget.value) })}
         >
-          <option value={2}>2 spaces</option>
-          <option value={4}>4 spaces</option>
-          <option value={8}>8 spaces</option>
+          <option value={2}>{$t("settings.editor.spaces", { count: 2 })}</option>
+          <option value={4}>{$t("settings.editor.spaces", { count: 4 })}</option>
+          <option value={8}>{$t("settings.editor.spaces", { count: 8 })}</option>
         </select>
       </div>
     </div>
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Context lines</span>
-        <span class="label-hint">Lines of surrounding context shown around changes</span>
+        <span class="label-text">{$t("settings.editor.contextLines")}</span>
+        <span class="label-hint">{$t("settings.editor.contextLinesHint")}</span>
       </div>
       <div class="setting-control">
         <input
@@ -89,14 +90,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Show whitespace changes</span>
-        <span class="label-hint">Display whitespace-only modifications in diffs</span>
+        <span class="label-text">{$t("settings.editor.whitespace")}</span>
+        <span class="label-hint">{$t("settings.editor.whitespaceHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
           <input
             type="checkbox"
-            aria-label="Show whitespace changes"
+            aria-label={$t("settings.editor.whitespace")}
             checked={s.show_whitespace_changes}
             onchange={() => updateGlobalSettings({ show_whitespace_changes: !s.show_whitespace_changes })}
           />
@@ -107,14 +108,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Word wrap in diffs</span>
-        <span class="label-hint">Wrap long lines instead of horizontal scrolling</span>
+        <span class="label-text">{$t("settings.editor.wordWrap")}</span>
+        <span class="label-hint">{$t("settings.editor.wordWrapHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
           <input
             type="checkbox"
-            aria-label="Word wrap in diffs"
+            aria-label={$t("settings.editor.wordWrap")}
             checked={s.word_wrap_in_diffs}
             onchange={() => updateGlobalSettings({ word_wrap_in_diffs: !s.word_wrap_in_diffs })}
           />
@@ -125,8 +126,8 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Syntax highlighting</span>
-        <span class="label-hint">Color diff lines by programming language</span>
+        <span class="label-text">{$t("settings.editor.syntax")}</span>
+        <span class="label-hint">{$t("settings.editor.syntaxHint")}</span>
       </div>
       <div class="setting-control">
         <label class="toggle">
@@ -142,14 +143,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">External diff tool</span>
-        <span class="label-hint">Path to external diff viewer (e.g. meld, kdiff3)</span>
+        <span class="label-text">{$t("settings.editor.diffTool")}</span>
+        <span class="label-hint">{$t("settings.editor.diffToolHint")}</span>
       </div>
       <div class="setting-control">
         <input
           type="text"
           class="text-input"
-          placeholder="Not set"
+          placeholder={$t("settings.notSet")}
           value={s.external_diff_tool ?? ""}
           onchange={(e) => updateGlobalSettings({ external_diff_tool: e.currentTarget.value.trim() || null })}
         />
@@ -158,14 +159,14 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">External merge tool</span>
-        <span class="label-hint">Path to external merge tool</span>
+        <span class="label-text">{$t("settings.editor.mergeTool")}</span>
+        <span class="label-hint">{$t("settings.editor.mergeToolHint")}</span>
       </div>
       <div class="setting-control">
         <input
           type="text"
           class="text-input"
-          placeholder="Not set"
+          placeholder={$t("settings.notSet")}
           value={s.external_merge_tool ?? ""}
           onchange={(e) => updateGlobalSettings({ external_merge_tool: e.currentTarget.value.trim() || null })}
         />
@@ -174,15 +175,15 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Terminal</span>
-        <span class="label-hint">Command for “Open in terminal”; runs in the repository folder ({"{path}"} is replaced by it)</span>
+        <span class="label-text">{$t("settings.editor.terminal")}</span>
+        <span class="label-hint">{$t("settings.editor.terminalHint", { path: "{path}" })}</span>
       </div>
       <div class="setting-control">
         <input
           type="text"
           class="text-input"
-          placeholder="Default ($TERMINAL or a found terminal)"
-          aria-label="Terminal command"
+          placeholder={$t("settings.editor.terminalPlaceholder")}
+          aria-label={$t("settings.editor.terminalAria")}
           value={s.terminal_command ?? ""}
           onchange={(e) => updateGlobalSettings({ terminal_command: e.currentTarget.value.trim() || null })}
         />
@@ -191,15 +192,15 @@
 
     <div class="setting-row">
       <div class="setting-label">
-        <span class="label-text">Editor</span>
-        <span class="label-hint">Command for “Open in editor”; {"{path}"} is replaced, otherwise the path is appended</span>
+        <span class="label-text">{$t("settings.editor.editor")}</span>
+        <span class="label-hint">{$t("settings.editor.editorHint", { path: "{path}" })}</span>
       </div>
       <div class="setting-control">
         <input
           type="text"
           class="text-input"
-          placeholder="Default (code, else the system opener)"
-          aria-label="Editor command"
+          placeholder={$t("settings.editor.editorPlaceholder")}
+          aria-label={$t("settings.editor.editorAria")}
           value={s.editor_command ?? ""}
           onchange={(e) => updateGlobalSettings({ editor_command: e.currentTarget.value.trim() || null })}
         />

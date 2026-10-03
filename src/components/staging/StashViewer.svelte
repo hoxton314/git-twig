@@ -9,6 +9,7 @@
   import * as tauri from "../../lib/tauri";
   import type { StashDetail, StashDiff } from "../../lib/types/git";
   import { Loader2, ArchiveRestore, Copy, GitBranchPlus, Pencil, Trash2 } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     stash: StashDetail | null;
@@ -48,35 +49,35 @@
   const shown = $derived(diff ? (tab === "tracked" ? diff.tracked : diff.untracked) : []);
 </script>
 
-<Modal open={stash !== null} title={stash ? `Stash — ${stash.message}` : "Stash"} {onclose} width="min(1100px, 94vw)">
+<Modal open={stash !== null} title={stash ? $t("stash.viewerTitle", { message: stash.message }) : $t("stash.viewerTitleBare")} {onclose} width="min(1100px, 94vw)">
   {#if stash}
     <div class="viewer">
       <div class="bar">
         <div class="tabs" role="tablist">
           <button role="tab" class="tab" class:active={tab === "tracked"} aria-selected={tab === "tracked"} onclick={() => (tab = "tracked")}>
-            Changes <span class="n">{diff?.tracked.length ?? "…"}</span>
+            {$t("stash.changes")} <span class="n">{diff?.tracked.length ?? "…"}</span>
           </button>
           {#if stash.has_untracked}
             <button role="tab" class="tab" class:active={tab === "untracked"} aria-selected={tab === "untracked"} onclick={() => (tab = "untracked")}>
-              Untracked <span class="n">{diff?.untracked.length ?? "…"}</span>
+              {$t("stash.untracked")} <span class="n">{diff?.untracked.length ?? "…"}</span>
             </button>
           {/if}
         </div>
         <span class="ref" title={stash.oid}>{stash.reference} · {stash.oid.slice(0, 7)}</span>
         <div class="actions">
-          <button class="btn" disabled={busy} onclick={() => onaction("pop", stash)} title="Apply and remove">
-            <ArchiveRestore size={13} /> Pop
+          <button class="btn" disabled={busy} onclick={() => onaction("pop", stash)} title={$t("stash.popHint")}>
+            <ArchiveRestore size={13} /> {$t("stash.pop")}
           </button>
-          <button class="btn" disabled={busy} onclick={() => onaction("apply", stash)} title="Apply and keep">
-            <Copy size={13} /> Apply
+          <button class="btn" disabled={busy} onclick={() => onaction("apply", stash)} title={$t("stash.applyHint")}>
+            <Copy size={13} /> {$t("common.apply")}
           </button>
-          <button class="btn" disabled={busy} onclick={() => onaction("branch", stash)} title="Create a branch from this stash">
-            <GitBranchPlus size={13} /> Branch…
+          <button class="btn" disabled={busy} onclick={() => onaction("branch", stash)} title={$t("stash.branchFromThis")}>
+            <GitBranchPlus size={13} /> {$t("stash.branchButton")}
           </button>
-          <button class="btn" disabled={busy} onclick={() => onaction("rename", stash)} title="Rename">
+          <button class="btn" disabled={busy} onclick={() => onaction("rename", stash)} title={$t("common.rename")}>
             <Pencil size={13} />
           </button>
-          <button class="btn danger" disabled={busy} onclick={() => onaction("drop", stash)} title="Drop">
+          <button class="btn danger" disabled={busy} onclick={() => onaction("drop", stash)} title={$t("stash.drop")}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -85,9 +86,9 @@
         {#if error}
           <div class="empty error">{error}</div>
         {:else if !diff}
-          <div class="empty"><Loader2 size={14} class="spinner" /> Loading stash…</div>
+          <div class="empty"><Loader2 size={14} class="spinner" /> {$t("stash.loading")}</div>
         {:else}
-          <DiffFileList files={shown} expandAll={shown.length <= 8} emptyText={tab === "tracked" ? "No tracked changes" : "No untracked files"} />
+          <DiffFileList files={shown} expandAll={shown.length <= 8} emptyText={tab === "tracked" ? $t("stash.noTracked") : $t("stash.noUntracked")} />
         {/if}
       </div>
     </div>

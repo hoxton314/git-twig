@@ -6,71 +6,79 @@ import { refreshAll } from "./stores/graph";
 import { refreshTags } from "./stores/tags";
 import { toast, toastError } from "./stores/toasts";
 import { confirmDestructive } from "./commitActions";
+import { tr } from "./i18n";
 
 async function refresh(path: string) {
   await Promise.all([refreshAll(path), refreshTags(path)]);
 }
 
 export async function pushTagAction(path: string, name?: string) {
-  const what = name ? `tag ${name}` : "all tags";
+  const failed = name ? tr("tags.pushTagFailed", { name }) : tr("tags.pushAllFailed");
   try {
     const r = await tauri.pushTag(path, name);
-    if (r.success) toast("success", `Pushed ${what} (${r.message.replace(/^Pushed to /, "")})`);
-    else toast("error", r.message.trim(), { title: `Push ${what} failed` });
+    if (r.success) {
+      const dest = r.message.replace(/^Pushed to /, "");
+      toast("success", name ? tr("tags.pushedTag", { name, dest }) : tr("tags.pushedAll", { dest }));
+    } else toast("error", r.message.trim(), { title: failed });
   } catch (err) {
-    toastError(`Push ${what} failed`, err);
+    toastError(failed, err);
   }
 }
 
 export async function deleteTagAction(path: string, tag: TagInfo) {
   const ok = await confirmDestructive(
-    `Delete the local tag "${tag.name}"?\n\nThe tag on any remote is not affected.`,
-    "Delete Tag",
-    "Delete",
+    tr("tags.deleteConfirm", { name: tag.name }),
+    tr("tags.deleteTitle"),
+    tr("common.delete"),
   );
   if (!ok) return;
   try {
     const r = await tauri.deleteTag(path, tag.name);
     await refresh(path);
     if (!r.success) {
-      toast("error", r.message.trim(), { title: "Delete Tag Failed" });
+      toast("error", r.message.trim(), { title: tr("tags.deleteFailed") });
       return;
     }
     const target = tag.target_oid;
-    toast("success", `Deleted tag ${tag.name}`, {
+    toast("success", tr("tags.deleted", { name: tag.name }), {
       duration: 8000,
       action: target
         ? {
-            label: "Undo",
+            label: tr("tags.undo"),
             run: async () => {
               try {
                 const res = await tauri.createTag(path, tag.name, target, tag.message ?? undefined);
                 await refresh(path);
-                if (!res.success) toast("error", res.message.trim(), { title: "Undo Failed" });
+                if (!res.success) toast("error", res.message.trim(), { title: tr("tags.undoFailed") });
               } catch (err) {
-                toastError("Undo Failed", err);
+                toastError(tr("tags.undoFailed"), err);
               }
             },
           }
         : undefined,
     });
   } catch (err) {
-    toastError("Delete Tag Failed", err);
+    toastError(tr("tags.deleteFailed"), err);
   }
 }
 
 export async function deleteRemoteTagAction(path: string, tag: TagInfo) {
   // Deleting on the remote affects everyone, so always confirm.
   const ok = await ask(
-    `Delete the tag "${tag.name}" from the remote? Others who fetched it keep their copy, but it will no longer be on the server.`,
-    { title: "Delete Remote Tag", kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" },
+    tr("tags.deleteRemoteConfirm", { name: tag.name }),
+    {
+      title: tr("tags.deleteRemoteTitle"),
+      kind: "warning",
+      okLabel: tr("common.delete"),
+      cancelLabel: tr("common.cancel"),
+    },
   );
   if (!ok) return;
   try {
     const r = await tauri.deleteRemoteTag(path, tag.name);
     if (r.success) toast("success", r.message.trim());
-    else toast("error", r.message.trim(), { title: "Delete Remote Tag Failed" });
+    else toast("error", r.message.trim(), { title: tr("tags.deleteRemoteFailed") });
   } catch (err) {
-    toastError("Delete Remote Tag Failed", err);
+    toastError(tr("tags.deleteRemoteFailed"), err);
   }
 }

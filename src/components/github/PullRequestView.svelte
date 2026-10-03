@@ -12,7 +12,8 @@
   import { refreshAll } from "../../lib/stores/graph";
   import { toast, toastError } from "../../lib/stores/toasts";
   import type { HostedRemote, PrDetail, PrFile, PrSummary } from "../../lib/types/hosting";
-  import { relativeTime, reviewLabel, stateLabel } from "./prFormat";
+  import { relativeTime, reviewLabel, stateLabel, markers, segments } from "./prFormat";
+  import { t, tr } from "../../lib/i18n";
 
   interface Props {
     repoPath: string;
@@ -92,9 +93,9 @@
     }
   }
 
-  function selectTab(t: Tab) {
-    tab = t;
-    if (t === "files") loadFiles();
+  function selectTab(next: Tab) {
+    tab = next;
+    if (next === "files") loadFiles();
   }
 
   function toggleFile(path: string) {
@@ -111,9 +112,9 @@
       const res = await tauri.hostingCheckoutPr(repoPath, remote.remote_name, summary.number);
       refreshAll(repoPath);
       if (res.success) toast("success", res.message, { title: `#${summary.number}` });
-      else toast("error", res.message, { title: "Checkout failed" });
+      else toast("error", res.message, { title: tr("prs.checkoutFailed") });
     } catch (err) {
-      toastError("Checkout failed", err);
+      toastError(tr("prs.checkoutFailed"), err);
     } finally {
       checkingOut = false;
     }
@@ -133,7 +134,6 @@
   const ci = $derived(ciStatusFor(summary.head_sha, repoPath, remote.remote_name));
   const checks = $derived($ci.status?.checks ?? []);
   const reviewText = $derived(reviewLabel(summary.review_state));
-  const prWord = $derived(remote.provider === "gitlab" ? "merge request" : "pull request");
   const prSign = $derived(remote.provider === "gitlab" ? "!" : "#");
 
   const CHECK_ICON: Record<string, string> = { success: "✓", failure: "✗", pending: "●", neutral: "–" };
@@ -146,22 +146,20 @@
     </div>
     <div class="meta-row">
       <span class="state-pill {shown.draft && shown.state === 'open' ? 'draft' : shown.state}">
-        {shown.draft && shown.state === "open" ? "Draft" : stateLabel(shown.state)}
+        {shown.draft && shown.state === "open" ? $t("prs.draft") : stateLabel(shown.state)}
       </span>
       <span class="meta">
-        <strong>{shown.author}</strong> wants to merge
-        <code class="ref">{shown.head_repo ? `${shown.head_repo}:` : ""}{shown.head_ref}</code>
-        into <code class="ref">{shown.base_ref}</code>
+        {#each segments($t("prs.wantsToMerge", markers("author", "head", "base"))) as seg}{#if seg.param === "author"}<strong>{shown.author}</strong>{:else if seg.param === "head"}<code class="ref">{shown.head_repo ? `${shown.head_repo}:` : ""}{shown.head_ref}</code>{:else if seg.param === "base"}<code class="ref">{shown.base_ref}</code>{:else}{seg.text}{/if}{/each}
       </span>
     </div>
     <div class="meta-row secondary">
-      <span>opened {relativeTime(shown.created_at)}</span>
-      <span>· updated {relativeTime(shown.updated_at)}</span>
+      <span>{$t("prs.opened", { time: relativeTime(shown.created_at) })}</span>
+      <span>· {$t("prs.updated", { time: relativeTime(shown.updated_at) })}</span>
       {#if reviewText}
         <span class="review {summary.review_state}">· {reviewText}</span>
       {/if}
       {#if detail?.mergeable_state}
-        <span>· merge state: {detail.mergeable_state}</span>
+        <span>· {$t("prs.mergeState", { state: detail.mergeable_state })}</span>
       {/if}
       {#if detail?.additions != null}
         <span>· <span class="add">+{detail.additions}</span> <span class="del">−{detail.deletions ?? 0}</span></span>
@@ -175,31 +173,31 @@
       </div>
     {/if}
     <div class="actions">
-      <button class="btn" onclick={checkout} disabled={checkingOut} title="Fetch the {prWord} head and check it out as pr/{shown.number}">
+      <button class="btn" onclick={checkout} disabled={checkingOut} title={remote.provider === "gitlab" ? $t("prs.checkoutTitleMr", { number: shown.number }) : $t("prs.checkoutTitlePr", { number: shown.number })}>
         {#if checkingOut}<Loader2 size={13} class="spinner" />{:else}<Download size={13} />{/if}
-        <span>Checkout</span>
+        <span>{$t("prs.checkout")}</span>
       </button>
-      <button class="btn" onclick={() => openUrl(shown.html_url)} title="Open in browser">
+      <button class="btn" onclick={() => openUrl(shown.html_url)} title={$t("prs.openInBrowser")}>
         <ExternalLink size={13} />
-        <span>Open in browser</span>
+        <span>{$t("prs.openInBrowser")}</span>
       </button>
     </div>
   </header>
 
   <div class="tabs" role="tablist">
-    <button class="tab" class:active={tab === "description"} role="tab" aria-selected={tab === "description"} onclick={() => selectTab("description")}>Description</button>
+    <button class="tab" class:active={tab === "description"} role="tab" aria-selected={tab === "description"} onclick={() => selectTab("description")}>{$t("prs.tabDescription")}</button>
     <button class="tab" class:active={tab === "files"} role="tab" aria-selected={tab === "files"} onclick={() => selectTab("files")}>
-      Files{#if detail?.changed_files != null}&nbsp;<span class="count">{detail.changed_files}</span>{/if}
+      {$t("prs.tabFiles")}{#if detail?.changed_files != null}{"\u00a0"}<span class="count">{detail.changed_files}</span>{/if}
     </button>
     <button class="tab" class:active={tab === "checks"} role="tab" aria-selected={tab === "checks"} onclick={() => selectTab("checks")}>
-      Checks <CiBadge sha={summary.head_sha} {repoPath} remote={remote.remote_name} />
+      {$t("prs.tabChecks")} <CiBadge sha={summary.head_sha} {repoPath} remote={remote.remote_name} />
     </button>
   </div>
 
   <div class="tab-body">
     {#if tab === "description"}
       {#if loadingDetail}
-        <div class="placeholder"><Loader2 size={16} class="spinner" /> Loading…</div>
+        <div class="placeholder"><Loader2 size={16} class="spinner" /> {$t("common.loading")}</div>
       {:else if detailError}
         <div class="error">{detailError}</div>
       {:else if detail && detail.body.trim()}
@@ -208,15 +206,15 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="markdown" onclick={handleBodyClick}>{@html bodyHtml}</div>
       {:else if detail}
-        <div class="placeholder">No description provided.</div>
+        <div class="placeholder">{$t("prs.noDescription")}</div>
       {/if}
     {:else if tab === "files"}
       {#if loadingFiles}
-        <div class="placeholder"><Loader2 size={16} class="spinner" /> Loading changed files…</div>
+        <div class="placeholder"><Loader2 size={16} class="spinner" /> {$t("prs.loadingFiles")}</div>
       {:else if filesError}
         <div class="error">{filesError}</div>
       {:else if files && files.length === 0}
-        <div class="placeholder">No changed files.</div>
+        <div class="placeholder">{$t("prs.noFiles")}</div>
       {:else if files}
         {#each files as f (f.path + (f.old_path ?? ""))}
           <div class="file">
@@ -231,9 +229,9 @@
             {#if !collapsed.has(f.path)}
               <div class="file-diff">
                 {#if f.patch_missing}
-                  <div class="placeholder small">Diff not available (binary or too large).</div>
+                  <div class="placeholder small">{$t("prs.diffUnavailable")}</div>
                 {:else if f.hunks.length === 0}
-                  <div class="placeholder small">No textual changes.</div>
+                  <div class="placeholder small">{$t("prs.noTextualChanges")}</div>
                 {:else}
                   {#each f.hunks as hunk, hi (hi)}
                     <DiffHunk {hunk} mode={$diffViewMode} tabSize={$settings.tab_size} wrap={$settings.word_wrap_in_diffs} />
@@ -247,16 +245,16 @@
     {:else}
       <div class="checks-head">
         <span class="muted">Head <code>{summary.head_sha.slice(0, 8)}</code></span>
-        <button class="icon-btn" title="Refresh checks" aria-label="Refresh checks" onclick={() => refreshCi(summary.head_sha, repoPath, remote.remote_name, true)}>
+        <button class="icon-btn" title={$t("prs.refreshChecks")} aria-label={$t("prs.refreshChecks")} onclick={() => refreshCi(summary.head_sha, repoPath, remote.remote_name, true)}>
           <RefreshCw size={13} />
         </button>
       </div>
       {#if $ci.loading && !$ci.status}
-        <div class="placeholder"><Loader2 size={16} class="spinner" /> Loading checks…</div>
+        <div class="placeholder"><Loader2 size={16} class="spinner" /> {$t("prs.loadingChecks")}</div>
       {:else if $ci.error}
         <div class="error">{$ci.error}</div>
       {:else if checks.length === 0}
-        <div class="placeholder">No CI checks reported for this commit.</div>
+        <div class="placeholder">{$t("prs.noChecks")}</div>
       {:else}
         <ul class="checks">
           {#each checks as c, ci_i (ci_i)}
@@ -266,7 +264,7 @@
               {#if c.description}<span class="check-desc">{c.description}</span>{/if}
               {#if c.url}
                 {@const url = c.url}
-                <button class="icon-btn" title="Open details" aria-label="Open details for {c.name}" onclick={() => openUrl(url)}>
+                <button class="icon-btn" title={$t("prs.openDetails")} aria-label={$t("prs.openDetailsFor", { name: c.name })} onclick={() => openUrl(url)}>
                   <ExternalLink size={12} />
                 </button>
               {/if}
@@ -276,7 +274,7 @@
       {/if}
     {/if}
   </div>
-  <div class="footer-hint"><GitBranch size={11} /> {remote.project_path} via <code>{remote.remote_name}</code></div>
+  <div class="footer-hint"><GitBranch size={11} /> {#each segments($t("github.via", { project: remote.project_path, ...markers("remote") })) as seg}{#if seg.param === "remote"}<code>{remote.remote_name}</code>{:else}{seg.text}{/if}{/each}</div>
 </div>
 
 <style>

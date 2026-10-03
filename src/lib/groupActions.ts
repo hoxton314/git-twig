@@ -5,6 +5,7 @@ import { openRepos, addRepo, activeRepoPath } from "./stores/repos";
 import { currentView } from "./stores/ui";
 import { findGroup, refreshMissingPaths } from "./stores/repoHistory";
 import { toast } from "./stores/toasts";
+import { tr } from "./i18n";
 
 /**
  * Open every repository of a group as a tab (already open ones are kept)
@@ -15,7 +16,7 @@ export async function openRepoGroup(id: string): Promise<void> {
   const group = findGroup(id);
   if (!group) return;
   if (group.paths.length === 0) {
-    toast("info", `“${group.name}” has no repositories yet.`);
+    toast("info", tr("groups.emptyGroup", { name: group.name }));
     return;
   }
   const failed: string[] = [];
@@ -38,9 +39,15 @@ export async function openRepoGroup(id: string): Promise<void> {
   }
   if (failed.length > 0) {
     refreshMissingPaths();
-    toast("warning", `Couldn't open ${failed.length} of ${group.paths.length} repositories in “${group.name}”:\n${failed.join("\n")}`, {
-      title: "Open group",
-      duration: 0,
-    });
+    toast(
+      "warning",
+      tr("groups.openPartlyFailed", {
+        failed: failed.length,
+        total: group.paths.length,
+        name: group.name,
+        paths: failed.join("\n"),
+      }),
+      { title: tr("groups.openGroupTitle"), duration: 0 },
+    );
   }
 }

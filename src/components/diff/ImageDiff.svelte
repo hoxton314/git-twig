@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Image, Loader2 } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     oldData: string | null;
@@ -56,6 +57,10 @@
     newDims = { w: img.naturalWidth, h: img.naturalHeight };
   }
 
+  function dims(d: { w: number; h: number }): string {
+    return `${d.w} x ${d.h}`;
+  }
+
   function formatSize(data: string): string {
     // Decode the byte count from the base64 payload, accounting for the data-URL
     // prefix (if any) and `=` padding so the size isn't over-reported.
@@ -100,12 +105,12 @@
   {#if loading}
     <div class="image-loading">
       <Loader2 size={18} class="spinner" />
-      <span>Loading preview...</span>
+      <span>{$t("diff.loadingPreview")}</span>
     </div>
   {:else if !hasOld && !hasNew}
     <div class="image-loading">
       <Image size={16} />
-      <span>No preview available</span>
+      <span>{$t("diff.noPreview")}</span>
     </div>
   {:else if isModified}
     <div class="compare-controls">
@@ -114,48 +119,48 @@
         class:active={mode === "side-by-side"}
         onclick={() => (mode = "side-by-side")}
       >
-        Side by side
+        {$t("diff.image.sideBySide")}
       </button>
       <button
         class="mode-btn"
         class:active={mode === "swipe"}
         onclick={() => (mode = "swipe")}
       >
-        Swipe
+        {$t("diff.image.swipe")}
       </button>
       <button
         class="mode-btn"
         class:active={mode === "fade"}
         onclick={() => (mode = "fade")}
       >
-        Onion skin
+        {$t("diff.image.onionSkin")}
       </button>
     </div>
 
     {#if mode === "side-by-side"}
       <div class="side-by-side">
         <div class="image-panel">
-          <div class="panel-label deleted">Before</div>
+          <div class="panel-label deleted">{$t("diff.image.before")}</div>
           <div class="image-container">
             {#if oldSrc}
-              <img src={oldSrc} alt="Before" onload={onOldLoad} />
+              <img src={oldSrc} alt={$t("diff.image.before")} onload={onOldLoad} />
             {/if}
           </div>
           <div class="image-meta">
-            {#if oldDims}{oldDims.w} x {oldDims.h}{/if}
-            {#if oldData} &middot; {formatSize(oldData)}{/if}
+            {#if oldDims}{dims(oldDims)}{/if}
+            {#if oldData}{` · ${formatSize(oldData)}`}{/if}
           </div>
         </div>
         <div class="image-panel">
-          <div class="panel-label added">After</div>
+          <div class="panel-label added">{$t("diff.image.after")}</div>
           <div class="image-container">
             {#if newSrc}
-              <img src={newSrc} alt="After" onload={onNewLoad} />
+              <img src={newSrc} alt={$t("diff.image.after")} onload={onNewLoad} />
             {/if}
           </div>
           <div class="image-meta">
-            {#if newDims}{newDims.w} x {newDims.h}{/if}
-            {#if newData} &middot; {formatSize(newData)}{/if}
+            {#if newDims}{dims(newDims)}{/if}
+            {#if newData}{` · ${formatSize(newData)}`}{/if}
           </div>
         </div>
       </div>
@@ -164,7 +169,7 @@
         class="swipe-container"
         role="slider"
         tabindex="0"
-        aria-label="Swipe between before and after"
+        aria-label={$t("diff.image.swipeSlider")}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(swipePosition)}
@@ -176,12 +181,12 @@
       >
         <div class="swipe-layer swipe-new">
           {#if newSrc}
-            <img src={newSrc} alt="After" />
+            <img src={newSrc} alt={$t("diff.image.after")} />
           {/if}
         </div>
         <div class="swipe-layer swipe-old" style="clip-path: inset(0 {100 - swipePosition}% 0 0);">
           {#if oldSrc}
-            <img src={oldSrc} alt="Before" />
+            <img src={oldSrc} alt={$t("diff.image.before")} />
           {/if}
         </div>
         <div class="swipe-handle" style="left: {swipePosition}%;">
@@ -189,14 +194,14 @@
           <div class="swipe-grip"></div>
         </div>
         <div class="swipe-labels">
-          <span class="swipe-label deleted">Before</span>
-          <span class="swipe-label added">After</span>
+          <span class="swipe-label deleted">{$t("diff.image.before")}</span>
+          <span class="swipe-label added">{$t("diff.image.after")}</span>
         </div>
       </div>
     {:else if mode === "fade"}
       <div class="fade-container">
         <div class="fade-slider-row">
-          <span class="fade-label deleted">Before</span>
+          <span class="fade-label deleted">{$t("diff.image.before")}</span>
           <input
             type="range"
             min="0"
@@ -205,13 +210,13 @@
             bind:value={fadeOpacity}
             class="fade-slider"
           />
-          <span class="fade-label added">After</span>
+          <span class="fade-label added">{$t("diff.image.after")}</span>
         </div>
         <div class="fade-images">
           {#if oldSrc}
             <img
               src={oldSrc}
-              alt="Before"
+              alt={$t("diff.image.before")}
               class="fade-img"
               style="opacity: {1 - fadeOpacity};"
             />
@@ -219,7 +224,7 @@
           {#if newSrc}
             <img
               src={newSrc}
-              alt="After"
+              alt={$t("diff.image.after")}
               class="fade-img"
               style="opacity: {fadeOpacity};"
             />
@@ -230,21 +235,21 @@
   {:else}
     <div class="single-image">
       <div class="panel-label {hasNew ? 'added' : 'deleted'}">
-        {hasNew ? "Added" : "Deleted"}
+        {hasNew ? $t("diff.added") : $t("diff.deleted")}
       </div>
       <div class="image-container">
         {#if newSrc}
-          <img src={newSrc} alt="Added file" onload={onNewLoad} />
+          <img src={newSrc} alt={$t("diff.image.addedFile")} onload={onNewLoad} />
         {:else if oldSrc}
-          <img src={oldSrc} alt="Deleted file" onload={onOldLoad} />
+          <img src={oldSrc} alt={$t("diff.image.deletedFile")} onload={onOldLoad} />
         {/if}
       </div>
       <div class="image-meta">
         <Image size={12} />
-        {#if hasNew && newDims}{newDims.w} x {newDims.h}{/if}
-        {#if hasOld && oldDims}{oldDims.w} x {oldDims.h}{/if}
-        {#if hasNew && newData} &middot; {formatSize(newData)}{/if}
-        {#if hasOld && oldData} &middot; {formatSize(oldData)}{/if}
+        {#if hasNew && newDims}{dims(newDims)}{/if}
+        {#if hasOld && oldDims}{dims(oldDims)}{/if}
+        {#if hasNew && newData}{` · ${formatSize(newData)}`}{/if}
+        {#if hasOld && oldData}{` · ${formatSize(oldData)}`}{/if}
       </div>
     </div>
   {/if}

@@ -8,13 +8,16 @@
  */
 
 import { writable } from "svelte/store";
+import { tr, type MessageKey } from "./i18n";
 
 // ── Action definitions ───────────────────────────────────────────────
 
-export interface KeybindingAction {
+interface ActionDef {
   id: string;
-  label: string;
-  category: string;
+  /** Catalog key of the action's name (palette, keybinding settings). */
+  labelKey: MessageKey;
+  /** Catalog key of the group it is listed under. */
+  categoryKey: MessageKey;
   /** Empty string = no default shortcut (still listed, rebindable, and in the palette). */
   defaultShortcut: string;
   /** Also fire while focus is in an input/textarea (e.g. commit, command palette). */
@@ -23,112 +26,134 @@ export interface KeybindingAction {
   hideInPalette?: boolean;
 }
 
-export const ACTIONS: KeybindingAction[] = [
+export interface KeybindingAction extends ActionDef {
+  /** Name in the current language (not reactive; use `$t(labelKey)` in markup). */
+  readonly label: string;
+  /** Category in the current language (not reactive; use `$t(categoryKey)` in markup). */
+  readonly category: string;
+}
+
+const ACTION_DEFS: ActionDef[] = [
   // Navigation
-  { id: "open_repo",      label: "Open repository",      category: "Navigation", defaultShortcut: "Ctrl+O" },
-  { id: "open_repo_menu", label: "Open repository menu (search repositories)", category: "Repository", defaultShortcut: "" },
-  { id: "clone_from_url", label: "Clone repository from URL…", category: "Repository", defaultShortcut: "" },
-  { id: "init_repository", label: "Initialize new repository…", category: "Repository", defaultShortcut: "" },
-  { id: "close_tab",      label: "Close tab",            category: "Navigation", defaultShortcut: "Ctrl+W" },
-  { id: "next_tab",       label: "Next tab",             category: "Navigation", defaultShortcut: "Ctrl+Tab" },
-  { id: "prev_tab",       label: "Previous tab",         category: "Navigation", defaultShortcut: "Ctrl+Shift+Tab" },
-  { id: "go_home",        label: "Go to home screen",    category: "Navigation", defaultShortcut: "Ctrl+H" },
-  { id: "go_settings",    label: "Open settings",        category: "Navigation", defaultShortcut: "Ctrl+," },
+  { id: "open_repo",      labelKey: "actions.openRepo",      categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+O" },
+  { id: "open_repo_menu", labelKey: "actions.openRepoMenu", categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "clone_from_url", labelKey: "actions.cloneFromUrl", categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "init_repository", labelKey: "actions.initRepository", categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "close_tab",      labelKey: "actions.closeTab",            categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+W" },
+  { id: "next_tab",       labelKey: "actions.nextTab",             categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+Tab" },
+  { id: "prev_tab",       labelKey: "actions.prevTab",         categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+Shift+Tab" },
+  { id: "go_home",        labelKey: "actions.goHome",    categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+H" },
+  { id: "go_settings",    labelKey: "actions.goSettings",        categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+," },
 
   // Sidebar & panels
-  { id: "toggle_sidebar", label: "Toggle sidebar",       category: "Panels",     defaultShortcut: "Ctrl+B" },
+  { id: "toggle_sidebar", labelKey: "actions.toggleSidebar",       categoryKey: "actions.category.panels",     defaultShortcut: "Ctrl+B" },
 
   // Git operations
-  { id: "commit",         label: "Commit",               category: "Git",        defaultShortcut: "Ctrl+Enter" },
-  { id: "push",           label: "Push",                 category: "Git",        defaultShortcut: "Ctrl+Shift+P" },
-  { id: "pull",           label: "Pull",                 category: "Git",        defaultShortcut: "Ctrl+Shift+L" },
-  { id: "fetch",          label: "Fetch all",            category: "Git",        defaultShortcut: "Ctrl+Shift+F" },
+  { id: "commit",         labelKey: "actions.commit",               categoryKey: "actions.category.git",        defaultShortcut: "Ctrl+Enter" },
+  { id: "push",           labelKey: "actions.push",                 categoryKey: "actions.category.git",        defaultShortcut: "Ctrl+Shift+P" },
+  { id: "pull",           labelKey: "actions.pull",                 categoryKey: "actions.category.git",        defaultShortcut: "Ctrl+Shift+L" },
+  { id: "fetch",          labelKey: "actions.fetch",            categoryKey: "actions.category.git",        defaultShortcut: "Ctrl+Shift+F" },
 
   // Commit context menu, undo history, tags
-  { id: "commit_context_menu",  label: "Open commit context menu",          category: "Commit", defaultShortcut: "Shift+F10" },
-  { id: "branch_from_selected", label: "Create branch at selected commit…", category: "Commit", defaultShortcut: "" },
-  { id: "create_tag",           label: "Create tag at selected commit…",    category: "Commit", defaultShortcut: "" },
-  { id: "save_patch_selected",  label: "Save selected commit(s) as patch…",  category: "Commit", defaultShortcut: "" },
-  { id: "save_working_patch",   label: "Save working changes as patch…",    category: "Commit", defaultShortcut: "" },
-  { id: "apply_patch",          label: "Apply patch file…",                 category: "Commit", defaultShortcut: "" },
-  { id: "search_code",          label: "Search code…",                      category: "Navigation", defaultShortcut: "Ctrl+Shift+G" },
-  { id: "bisect_start",         label: "Bisect: start (selected commit is bad)", category: "Commit", defaultShortcut: "" },
-  { id: "bisect_good",          label: "Bisect: mark current commit good",  category: "Commit", defaultShortcut: "" },
-  { id: "bisect_bad",           label: "Bisect: mark current commit bad",   category: "Commit", defaultShortcut: "" },
-  { id: "bisect_skip",          label: "Bisect: skip current commit",       category: "Commit", defaultShortcut: "" },
-  { id: "bisect_reset",         label: "Bisect: reset",                     category: "Commit", defaultShortcut: "" },
-  { id: "squash_selected",      label: "Squash selected commits…",          category: "Commit", defaultShortcut: "" },
-  { id: "cherry_pick_selected", label: "Cherry-pick selected commit(s)",    category: "Commit", defaultShortcut: "" },
-  { id: "revert_selected",      label: "Revert selected commit",            category: "Commit", defaultShortcut: "" },
-  { id: "copy_commit_sha",      label: "Copy selected commit SHA",          category: "Commit", defaultShortcut: "" },
-  { id: "show_undo_history",    label: "Undo history (reflog)…",            category: "Git",    defaultShortcut: "Ctrl+Shift+H" },
-  { id: "push_all_tags",        label: "Push all tags",                     category: "Git",    defaultShortcut: "" },
+  { id: "commit_context_menu",  labelKey: "actions.commitContextMenu",          categoryKey: "actions.category.commit", defaultShortcut: "Shift+F10" },
+  { id: "branch_from_selected", labelKey: "actions.branchFromSelected", categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "create_tag",           labelKey: "actions.createTag",    categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "save_patch_selected",  labelKey: "actions.savePatchSelected",  categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "save_working_patch",   labelKey: "actions.saveWorkingPatch",    categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "apply_patch",          labelKey: "actions.applyPatch",                 categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "search_code",          labelKey: "actions.searchCode",                      categoryKey: "actions.category.navigation", defaultShortcut: "Ctrl+Shift+G" },
+  { id: "bisect_start",         labelKey: "actions.bisectStart", categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "bisect_good",          labelKey: "actions.bisectGood",  categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "bisect_bad",           labelKey: "actions.bisectBad",   categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "bisect_skip",          labelKey: "actions.bisectSkip",       categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "bisect_reset",         labelKey: "actions.bisectReset",                     categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "squash_selected",      labelKey: "actions.squashSelected",          categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "cherry_pick_selected", labelKey: "actions.cherryPickSelected",    categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "revert_selected",      labelKey: "actions.revertSelected",            categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "copy_commit_sha",      labelKey: "actions.copyCommitSha",          categoryKey: "actions.category.commit", defaultShortcut: "" },
+  { id: "show_undo_history",    labelKey: "actions.showUndoHistory",            categoryKey: "actions.category.git",    defaultShortcut: "Ctrl+Shift+H" },
+  { id: "push_all_tags",        labelKey: "actions.pushAllTags",                     categoryKey: "actions.category.git",    defaultShortcut: "" },
   // Staging panel: file lists & commit helpers
-  { id: "staging_stage_all",      label: "Stage all changes",              category: "Staging", defaultShortcut: "" },
-  { id: "staging_unstage_all",    label: "Unstage all changes",            category: "Staging", defaultShortcut: "" },
-  { id: "staging_toggle_tree",    label: "Toggle tree / flat file list",   category: "Staging", defaultShortcut: "" },
-  { id: "staging_filter_files",   label: "Filter changed files",           category: "Staging", defaultShortcut: "" },
-  { id: "commit_toggle_amend",    label: "Toggle amend last commit",       category: "Staging", defaultShortcut: "" },
-  { id: "commit_toggle_signoff",  label: "Toggle Signed-off-by trailer",   category: "Staging", defaultShortcut: "" },
-  { id: "commit_add_coauthor",    label: "Add co-author to commit",        category: "Staging", defaultShortcut: "" },
-  { id: "commit_insert_template", label: "Insert commit message template", category: "Staging", defaultShortcut: "" },
-  { id: "commit_message_history", label: "Recent commit messages",         category: "Staging", defaultShortcut: "" },
+  { id: "staging_stage_all",      labelKey: "actions.stagingStageAll",              categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "staging_unstage_all",    labelKey: "actions.stagingUnstageAll",            categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "staging_toggle_tree",    labelKey: "actions.stagingToggleTree",   categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "staging_filter_files",   labelKey: "actions.stagingFilterFiles",           categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "commit_toggle_amend",    labelKey: "actions.commitToggleAmend",       categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "commit_toggle_signoff",  labelKey: "actions.commitToggleSignoff",   categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "commit_add_coauthor",    labelKey: "actions.commitAddCoauthor",        categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "commit_insert_template", labelKey: "actions.commitInsertTemplate", categoryKey: "actions.category.staging", defaultShortcut: "" },
+  { id: "commit_message_history", labelKey: "actions.commitMessageHistory",         categoryKey: "actions.category.staging", defaultShortcut: "" },
   // Branch list / remotes
-  { id: "remotes_manage",        label: "Manage remotes…",        category: "Git",        defaultShortcut: "" },
-  { id: "branch_create",         label: "Create branch…",         category: "Git",        defaultShortcut: "" },
-  { id: "branch_rename_current", label: "Rename current branch…", category: "Git",        defaultShortcut: "" },
-  { id: "branch_filter",         label: "Filter branches",        category: "Navigation", defaultShortcut: "" },
+  { id: "remotes_manage",        labelKey: "actions.remotesManage",        categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "branch_create",         labelKey: "actions.branchCreate",         categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "branch_rename_current", labelKey: "actions.branchRenameCurrent", categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "branch_filter",         labelKey: "actions.branchFilter",        categoryKey: "actions.category.navigation", defaultShortcut: "" },
   // Conflict resolution & history rewriting (rebase, force push)
-  { id: "force_push",         label: "Force push (with lease)",          category: "Git", defaultShortcut: "" },
-  { id: "rebase_onto",        label: "Rebase current branch onto…",      category: "Git", defaultShortcut: "" },
-  { id: "interactive_rebase", label: "Interactive rebase…",              category: "Git", defaultShortcut: "" },
-  { id: "operation_continue", label: "Continue merge / rebase / cherry-pick", category: "Git", defaultShortcut: "" },
-  { id: "operation_abort",    label: "Abort merge / rebase / cherry-pick",    category: "Git", defaultShortcut: "" },
-  { id: "operation_skip",     label: "Skip current commit (rebase / cherry-pick)", category: "Git", defaultShortcut: "" },
-  { id: "resolve_conflicts",  label: "Resolve conflicts",                category: "Git", defaultShortcut: "" },
+  { id: "force_push",         labelKey: "actions.forcePush",          categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "rebase_onto",        labelKey: "actions.rebaseOnto",      categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "interactive_rebase", labelKey: "actions.interactiveRebase",              categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "operation_continue", labelKey: "actions.operationContinue", categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "operation_abort",    labelKey: "actions.operationAbort",    categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "operation_skip",     labelKey: "actions.operationSkip", categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "resolve_conflicts",  labelKey: "actions.resolveConflicts",                categoryKey: "actions.category.git", defaultShortcut: "" },
   // Commit graph (Ctrl+F / "/" also open search while the commit list is focused)
-  { id: "graph_search",                label: "Search commits",                         category: "Graph", defaultShortcut: "" },
-  { id: "graph_filter",                label: "Filter commits",                         category: "Graph", defaultShortcut: "" },
-  { id: "graph_jump_head",             label: "Jump to HEAD",                           category: "Graph", defaultShortcut: "" },
-  { id: "graph_goto_ref",              label: "Go to branch, tag or commit…",           category: "Graph", defaultShortcut: "" },
-  { id: "graph_view_options",          label: "Graph view options",                     category: "Graph", defaultShortcut: "" },
-  { id: "graph_load_all",              label: "Load entire history",                    category: "Graph", defaultShortcut: "" },
-  { id: "graph_toggle_remotes",        label: "Toggle remote branches in graph",        category: "Graph", defaultShortcut: "" },
-  { id: "graph_toggle_current_branch", label: "Toggle current branch only in graph",    category: "Graph", defaultShortcut: "" },
+  { id: "graph_search",                labelKey: "actions.graphSearch",                         categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_filter",                labelKey: "actions.graphFilter",                         categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_jump_head",             labelKey: "actions.graphJumpHead",                           categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_goto_ref",              labelKey: "actions.graphGotoRef",           categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_view_options",          labelKey: "actions.graphViewOptions",                     categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_load_all",              labelKey: "actions.graphLoadAll",                    categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_toggle_remotes",        labelKey: "actions.graphToggleRemotes",        categoryKey: "actions.category.graph", defaultShortcut: "" },
+  { id: "graph_toggle_current_branch", labelKey: "actions.graphToggleCurrentBranch",    categoryKey: "actions.category.graph", defaultShortcut: "" },
   // File history & blame, stash extras, submodules, worktrees
-  { id: "file_history",      label: "File history…",            category: "History",    defaultShortcut: "" },
-  { id: "blame_file",        label: "Blame…",                   category: "History",    defaultShortcut: "" },
-  { id: "stash_files",       label: "Stash selected files…",    category: "Git",        defaultShortcut: "" },
-  { id: "submodules_update", label: "Update submodules (init, recursive)", category: "Git", defaultShortcut: "" },
-  { id: "submodules_sync",   label: "Sync submodule URLs",      category: "Git",        defaultShortcut: "" },
-  { id: "new_window",        label: "New window",               category: "Application", defaultShortcut: "Ctrl+Shift+N" },
-  { id: "repo_dashboard",    label: "Repository dashboard (fetch all)…", category: "Repository", defaultShortcut: "" },
-  { id: "lfs_manage",        label: "Git LFS…",                 category: "Git",        defaultShortcut: "" },
-  { id: "worktree_add",      label: "Add worktree…",            category: "Git",        defaultShortcut: "" },
+  { id: "file_history",      labelKey: "actions.fileHistory",            categoryKey: "actions.category.history",    defaultShortcut: "" },
+  { id: "blame_file",        labelKey: "actions.blameFile",                   categoryKey: "actions.category.history",    defaultShortcut: "" },
+  { id: "stash_files",       labelKey: "actions.stashFiles",    categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "submodules_update", labelKey: "actions.submodulesUpdate", categoryKey: "actions.category.git", defaultShortcut: "" },
+  { id: "submodules_sync",   labelKey: "actions.submodulesSync",      categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "new_window",        labelKey: "actions.newWindow",               categoryKey: "actions.category.application", defaultShortcut: "Ctrl+Shift+N" },
+  { id: "repo_dashboard",    labelKey: "actions.repoDashboard", categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "lfs_manage",        labelKey: "actions.lfsManage",                 categoryKey: "actions.category.git",        defaultShortcut: "" },
+  { id: "worktree_add",      labelKey: "actions.worktreeAdd",            categoryKey: "actions.category.git",        defaultShortcut: "" },
   // App shell: command palette, tabs, settings, updater
-  { id: "command_palette",      label: "Command palette",                 category: "Navigation",  defaultShortcut: "Ctrl+K", allowInInputs: true, hideInPalette: true },
-  { id: "move_tab_left",        label: "Move tab left",                   category: "Navigation",  defaultShortcut: "Ctrl+Shift+PageUp" },
-  { id: "move_tab_right",       label: "Move tab right",                  category: "Navigation",  defaultShortcut: "Ctrl+Shift+PageDown" },
-  { id: "toggle_favorite_repo", label: "Pin/unpin repository to favorites", category: "Repository", defaultShortcut: "" },
-  { id: "reveal_repo",          label: "Open repository folder",          category: "Repository", defaultShortcut: "" },
-  { id: "open_terminal",        label: "Open repository in terminal",     category: "Repository", defaultShortcut: "" },
-  { id: "open_editor",          label: "Open repository in editor",       category: "Repository", defaultShortcut: "" },
-  { id: "copy_repo_path",       label: "Copy repository path",            category: "Repository", defaultShortcut: "" },
-  { id: "check_for_updates",    label: "Check for updates",               category: "Application", defaultShortcut: "" },
-  { id: "open_settings_folder", label: "Open settings folder",            category: "Application", defaultShortcut: "" },
-  { id: "export_settings",      label: "Export settings…",                category: "Application", defaultShortcut: "" },
-  { id: "import_settings",      label: "Import settings…",                category: "Application", defaultShortcut: "" },
+  { id: "command_palette",      labelKey: "actions.commandPalette",                 categoryKey: "actions.category.navigation",  defaultShortcut: "Ctrl+K", allowInInputs: true, hideInPalette: true },
+  { id: "move_tab_left",        labelKey: "actions.moveTabLeft",                   categoryKey: "actions.category.navigation",  defaultShortcut: "Ctrl+Shift+PageUp" },
+  { id: "move_tab_right",       labelKey: "actions.moveTabRight",                  categoryKey: "actions.category.navigation",  defaultShortcut: "Ctrl+Shift+PageDown" },
+  { id: "toggle_favorite_repo", labelKey: "actions.toggleFavoriteRepo", categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "reveal_repo",          labelKey: "actions.revealRepo",          categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "open_terminal",        labelKey: "actions.openTerminal",     categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "open_editor",          labelKey: "actions.openEditor",       categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "copy_repo_path",       labelKey: "actions.copyRepoPath",            categoryKey: "actions.category.repository", defaultShortcut: "" },
+  { id: "check_for_updates",    labelKey: "actions.checkForUpdates",               categoryKey: "actions.category.application", defaultShortcut: "" },
+  { id: "open_settings_folder", labelKey: "actions.openSettingsFolder",            categoryKey: "actions.category.application", defaultShortcut: "" },
+  { id: "export_settings",      labelKey: "actions.exportSettings",                categoryKey: "actions.category.application", defaultShortcut: "" },
+  { id: "import_settings",      labelKey: "actions.importSettings",                categoryKey: "actions.category.application", defaultShortcut: "" },
   // Hosting integrations (GitHub / GitLab / Gitea)
-  { id: "open_pull_requests",  label: "Show pull requests",   category: "Hosting", defaultShortcut: "" },
-  { id: "create_pull_request", label: "Create pull request",  category: "Hosting", defaultShortcut: "" },
-  { id: "refresh_ci_status",   label: "Refresh CI status",    category: "Hosting", defaultShortcut: "" },
+  { id: "open_pull_requests",  labelKey: "actions.openPullRequests",   categoryKey: "actions.category.hosting", defaultShortcut: "" },
+  { id: "create_pull_request", labelKey: "actions.createPullRequest",  categoryKey: "actions.category.hosting", defaultShortcut: "" },
+  { id: "refresh_ci_status",   labelKey: "actions.refreshCiStatus",    categoryKey: "actions.category.hosting", defaultShortcut: "" },
   // Diff viewer
-  { id: "diff_next_hunk", label: "Next change in diff",  category: "Diff",       defaultShortcut: "Alt+ArrowDown" },
-  { id: "diff_prev_hunk", label: "Previous change in diff", category: "Diff",    defaultShortcut: "Alt+ArrowUp" },
+  { id: "diff_next_hunk", labelKey: "actions.diffNextHunk",  categoryKey: "actions.category.diff",       defaultShortcut: "Alt+ArrowDown" },
+  { id: "diff_prev_hunk", labelKey: "actions.diffPrevHunk", categoryKey: "actions.category.diff",    defaultShortcut: "Alt+ArrowUp" },
   // Ctrl+F is handled by the diff panel itself while it has focus.
-  { id: "diff_find",      label: "Find in diff",         category: "Diff",       defaultShortcut: "" },
-  { id: "diff_toggle_whitespace", label: "Toggle whitespace changes in diffs", category: "Diff", defaultShortcut: "" },
+  { id: "diff_find",      labelKey: "actions.diffFind",         categoryKey: "actions.category.diff",       defaultShortcut: "" },
+  { id: "diff_toggle_whitespace", labelKey: "actions.diffToggleWhitespace", categoryKey: "actions.category.diff", defaultShortcut: "" },
 ];
+
+export const ACTIONS: KeybindingAction[] = ACTION_DEFS.map((def) => ({
+  ...def,
+  get label() {
+    return tr(def.labelKey);
+  },
+  get category() {
+    return tr(def.categoryKey);
+  },
+}));
+
+/** Name of an action in the current language, or its id when unknown. */
+export function actionLabel(actionId: string): string {
+  return ACTIONS.find((a) => a.id === actionId)?.label ?? actionId;
+}
 
 // ── Shortcut parsing & matching ──────────────────────────────────────
 

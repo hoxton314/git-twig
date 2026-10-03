@@ -6,6 +6,7 @@
   import DiffHunk from "../diff/DiffHunk.svelte";
   import { diffViewMode } from "../../lib/stores/ui";
   import { settings } from "../../lib/stores/settings";
+  import { t } from "../../lib/i18n";
   import { FileText, Binary, Package, ChevronDown, ChevronRight } from "lucide-svelte";
   import type { DiffFile } from "../../lib/types/git";
 
@@ -18,7 +19,7 @@
     emptyText?: string;
   }
 
-  let { files, expandAll = false, hideHeaders = false, emptyText = "No changes" }: Props = $props();
+  let { files, expandAll = false, hideHeaders = false, emptyText }: Props = $props();
 
   const LARGE_DIFF_LINES = 2000;
 
@@ -44,7 +45,7 @@
 
   function displayPath(f: DiffFile): string {
     if (f.old_path && f.new_path && f.old_path !== f.new_path) return `${f.old_path} → ${f.new_path}`;
-    return f.new_path ?? f.old_path ?? "unknown";
+    return f.new_path ?? f.old_path ?? $t("diff.unknownPath");
   }
 
   function lineCount(f: DiffFile): number {
@@ -84,23 +85,23 @@
       {#if open}
         <div class="file-diff">
           {#if file.is_lfs}
-            <div class="notice"><Package size={14} /> LFS object — {file.lfs_size ?? "unknown size"}</div>
+            <div class="notice"><Package size={14} /> {$t("diff.lfsObject", { size: file.lfs_size ?? $t("diff.unknownSize") })}</div>
           {:else if file.is_binary}
-            <div class="notice"><Binary size={14} /> Binary file</div>
+            <div class="notice"><Binary size={14} /> {$t("diff.binaryFile")}</div>
           {:else if file.hunks.length === 0}
             <div class="notice">
               {file.status === "renamed" || file.status === "copied"
-                ? "File renamed without content changes"
+                ? $t("diff.renamedNoChanges")
                 : file.status === "added"
-                  ? "New empty file"
+                  ? $t("diff.newEmptyFile")
                   : file.status === "deleted"
-                    ? "Deleted empty file"
-                    : "No content changes"}
+                    ? $t("diff.deletedEmptyFile")
+                    : $t("diff.noContentChanges")}
             </div>
           {:else if lines > LARGE_DIFF_LINES && !forceShown.has(i)}
             <div class="notice">
-              Large diff ({lines.toLocaleString()} lines) hidden
-              <button class="show-btn" onclick={() => (forceShown = new Set([...forceShown, i]))}>Show anyway</button>
+              {$t("diff.largeDiffLinesHidden", { lines: lines.toLocaleString() })}
+              <button class="show-btn" onclick={() => (forceShown = new Set([...forceShown, i]))}>{$t("diff.showAnyway")}</button>
             </div>
           {:else}
             {#each file.hunks as hunk, hi (hi)}
@@ -111,7 +112,7 @@
       {/if}
     </div>
   {:else}
-    <div class="notice">{emptyText}</div>
+    <div class="notice">{emptyText ?? $t("diff.noChangesShort")}</div>
   {/each}
 </div>
 

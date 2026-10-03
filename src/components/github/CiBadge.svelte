@@ -14,6 +14,7 @@
   import { activeRepoPath } from "../../lib/stores/repos";
   import type { CiState, CiStatus } from "../../lib/types/hosting";
   import { readable, type Readable } from "svelte/store";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     sha?: string;
@@ -41,13 +42,13 @@
     neutral: "–",
     none: "–",
   };
-  const LABEL: Record<CiState, string> = {
-    success: "Checks passed",
-    failure: "Checks failed",
-    pending: "Checks running",
-    neutral: "Checks neutral / skipped",
-    none: "No CI checks",
-  };
+  const LABEL = $derived<Record<CiState, string>>({
+    success: $t("github.ciPassed"),
+    failure: $t("github.ciFailed"),
+    pending: $t("github.ciRunning"),
+    neutral: $t("github.ciNeutral"),
+    none: $t("github.ciNone"),
+  });
 
   const tooltip = $derived.by(() => {
     if (!effective) return "";
@@ -56,7 +57,7 @@
     const lines = status.checks
       .slice(0, 20)
       .map((c) => `${ICON[c.state]} ${c.name}${c.description ? ` — ${c.description}` : ""}`);
-    if (status.checks.length > 20) lines.push(`… and ${status.checks.length - 20} more`);
+    if (status.checks.length > 20) lines.push($t("github.ciMore", { count: status.checks.length - 20 }));
     return `${head}\n${lines.join("\n")}`;
   });
 

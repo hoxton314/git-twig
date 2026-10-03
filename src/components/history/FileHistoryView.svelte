@@ -4,6 +4,7 @@
   import type { DiffFile, FileHistoryEntry } from "../../lib/types/git";
   import { showBlame, showInGraph } from "../../lib/stores/fileviews";
   import { toast } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import DiffFileList from "./DiffFileList.svelte";
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
   import { relativeTime, fullDate, copyText } from "./format";
@@ -114,7 +115,7 @@
 
   function blameAt(e: FileHistoryEntry) {
     if (e.status === "deleted") {
-      toast("info", "The file does not exist in this commit (it was deleted here).");
+      toast("info", tr("history.deletedHere"));
       return;
     }
     showBlame(e.path, e.commit.oid);
@@ -126,13 +127,13 @@
       x: ev.clientX,
       y: ev.clientY,
       items: [
-        { label: "Show in graph", action: () => { showInGraph(e.commit.oid); } },
-        { label: "Blame at this commit", action: () => blameAt(e), disabled: e.status === "deleted" },
+        { label: tr("history.showInGraph"), action: () => { showInGraph(e.commit.oid); } },
+        { label: tr("history.blameAtCommit"), action: () => blameAt(e), disabled: e.status === "deleted" },
         { separator: true },
         {
-          label: "Copy commit SHA",
+          label: tr("history.copySha"),
           action: async () => {
-            if (await copyText(e.commit.oid)) toast("success", `Copied ${e.commit.short_oid}`);
+            if (await copyText(e.commit.oid)) toast("success", tr("history.copied", { sha: e.commit.short_oid }));
           },
         },
       ],
@@ -143,6 +144,21 @@
 
   function statusLetter(s: string) {
     return s.charAt(0).toUpperCase();
+  }
+
+  function statusName(s: FileHistoryEntry["status"]): string {
+    switch (s) {
+      case "added":
+        return $t("history.status.added");
+      case "deleted":
+        return $t("history.status.deleted");
+      case "renamed":
+        return $t("history.status.renamed");
+      case "modified":
+        return $t("history.status.modified");
+      default:
+        return s;
+    }
   }
 </script>
 
@@ -155,14 +171,14 @@
     onkeydown={onKeydown}
     tabindex="0"
     role="listbox"
-    aria-label="Commits that changed {path}"
+    aria-label={$t("history.listLabel", { path })}
   >
     {#if error}
       <div class="empty error">{error}</div>
     {:else if entries.length === 0 && loading}
-      <div class="empty"><Loader2 size={14} class="spinner" /> Walking history…</div>
+      <div class="empty"><Loader2 size={14} class="spinner" /> {$t("history.walking")}</div>
     {:else if entries.length === 0}
-      <div class="empty">No commits touch this file.</div>
+      <div class="empty">{$t("history.noCommits")}</div>
     {/if}
 
     {#each entries as e, i (e.commit.oid)}
@@ -179,8 +195,8 @@
         ondblclick={() => showInGraph(e.commit.oid)}
       >
         <div class="row1">
-          <span class="badge badge-{e.status}" title={e.status}>{statusLetter(e.status)}</span>
-          <span class="summary" title={e.commit.summary}>{e.commit.summary || "(no message)"}</span>
+          <span class="badge badge-{e.status}" title={statusName(e.status)}>{statusLetter(e.status)}</span>
+          <span class="summary" title={e.commit.summary}>{e.commit.summary || $t("history.noMessage")}</span>
         </div>
         <div class="row2">
           <span class="oid">{e.commit.short_oid}</span>
@@ -188,7 +204,7 @@
           <span class="time" title={fullDate(e.commit.timestamp)}>{relativeTime(e.commit.timestamp)}</span>
         </div>
         {#if e.old_path}
-          <div class="renamed" title="{e.old_path} → {e.path}">renamed from {e.old_path}</div>
+          <div class="renamed" title="{e.old_path} → {e.path}">{$t("history.renamedFrom", { path: e.old_path })}</div>
         {/if}
       </div>
     {/each}
@@ -196,9 +212,9 @@
     {#if entries.length > 0 && (hasMore || loading)}
       <div class="more">
         {#if loading}
-          <Loader2 size={12} class="spinner" /> Loading…
+          <Loader2 size={12} class="spinner" /> {$t("common.loading")}
         {:else}
-          <button class="link-btn" onclick={loadMore}>Load more</button>
+          <button class="link-btn" onclick={loadMore}>{$t("history.loadMore")}</button>
         {/if}
       </div>
     {/if}
@@ -217,11 +233,11 @@
           </div>
         </div>
         <div class="actions">
-          <button class="btn" onclick={() => showInGraph(selected.commit.oid)} title="Select this commit in the graph">
-            <GitCommitHorizontal size={13} /> Show in graph
+          <button class="btn" onclick={() => showInGraph(selected.commit.oid)} title={$t("history.showInGraphTitle")}>
+            <GitCommitHorizontal size={13} /> {$t("history.showInGraph")}
           </button>
-          <button class="btn" onclick={() => blameAt(selected)} disabled={selected.status === "deleted"} title="Blame the file as of this commit">
-            <ScanLine size={13} /> Blame here
+          <button class="btn" onclick={() => blameAt(selected)} disabled={selected.status === "deleted"} title={$t("history.blameHereTitle")}>
+            <ScanLine size={13} /> {$t("history.blameHere")}
           </button>
         </div>
       </div>
@@ -230,15 +246,15 @@
       {/if}
       <div class="diff-scroll">
         {#if diffLoading}
-          <div class="empty"><Loader2 size={14} class="spinner" /> Loading diff…</div>
+          <div class="empty"><Loader2 size={14} class="spinner" /> {$t("history.loadingDiff")}</div>
         {:else if diffError}
           <div class="empty error">{diffError}</div>
         {:else}
-          <DiffFileList files={diff} hideHeaders={diff.length === 1} emptyText="No changes to this file in this commit" />
+          <DiffFileList files={diff} hideHeaders={diff.length === 1} emptyText={$t("history.noChangesInCommit")} />
         {/if}
       </div>
     {:else if !loading && !error && entries.length > 0}
-      <div class="empty center"><History size={16} /> Select a commit</div>
+      <div class="empty center"><History size={16} /> {$t("history.selectCommit")}</div>
     {/if}
   </div>
 </div>

@@ -3,6 +3,7 @@
   import type { GraphDateFormat, GraphRowDensity } from "../../lib/types/git";
   import { DEFAULT_COL_WIDTHS } from "./graphLayout";
   import GraphPopover from "./GraphPopover.svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     onclose: () => void;
@@ -21,16 +22,16 @@
   }
 </script>
 
-<GraphPopover label="Graph view options" {onclose} width={250}>
+<GraphPopover label={$t("graph.viewOptionsLabel")} {onclose} width={250}>
   <div class="group">
-    <div class="group-title">Columns</div>
+    <div class="group-title">{$t("graph.columns")}</div>
     <label class="check">
       <input
         type="checkbox"
         checked={s.graph_show_author}
         onchange={(e) => updateSettings({ graph_show_author: e.currentTarget.checked })}
       />
-      Author
+      {$t("graph.colAuthor")}
     </label>
     <label class="check">
       <input
@@ -38,7 +39,7 @@
         checked={s.graph_show_sha}
         onchange={(e) => updateSettings({ graph_show_sha: e.currentTarget.checked })}
       />
-      SHA
+      {$t("graph.colSha")}
     </label>
     <label class="check">
       <input
@@ -46,40 +47,40 @@
         checked={s.graph_show_date}
         onchange={(e) => updateSettings({ graph_show_date: e.currentTarget.checked })}
       />
-      Date
+      {$t("graph.colDate")}
     </label>
-    <button class="link" onclick={resetWidths}>Reset column widths</button>
+    <button class="link" onclick={resetWidths}>{$t("graph.resetWidths")}</button>
   </div>
 
   <div class="group">
     <label class="field">
-      <span class="group-title">Date format</span>
+      <span class="group-title">{$t("graph.dateFormat")}</span>
       <select
         value={s.graph_date_format}
         onchange={(e) =>
           updateSettings({ graph_date_format: e.currentTarget.value as GraphDateFormat })}
       >
-        <option value="relative">Relative (5m ago)</option>
-        <option value="iso">Absolute (2024-05-01 14:30)</option>
-        <option value="locale">System locale</option>
+        <option value="relative">{$t("graph.dateRelative")}</option>
+        <option value="iso">{$t("graph.dateAbsolute")}</option>
+        <option value="locale">{$t("graph.dateLocale")}</option>
       </select>
     </label>
     <label class="field">
-      <span class="group-title">Row density</span>
+      <span class="group-title">{$t("graph.rowDensity")}</span>
       <select
         value={s.graph_row_density}
         onchange={(e) =>
           updateSettings({ graph_row_density: e.currentTarget.value as GraphRowDensity })}
       >
-        <option value="compact">Compact</option>
-        <option value="normal">Normal</option>
-        <option value="comfortable">Comfortable</option>
+        <option value="compact">{$t("graph.densityCompact")}</option>
+        <option value="normal">{$t("graph.densityNormal")}</option>
+        <option value="comfortable">{$t("graph.densityComfortable")}</option>
       </select>
     </label>
   </div>
 
   <div class="group">
-    <div class="group-title">History</div>
+    <div class="group-title">{$t("graph.history")}</div>
     <label class="check">
       <input
         type="checkbox"
@@ -87,7 +88,7 @@
         disabled={s.graph_current_branch_only}
         onchange={(e) => updateSettings({ graph_hide_remotes: e.currentTarget.checked })}
       />
-      Hide remote branches
+      {$t("graph.hideRemotes")}
     </label>
     <label class="check">
       <input
@@ -95,7 +96,7 @@
         checked={s.graph_current_branch_only}
         onchange={(e) => updateSettings({ graph_current_branch_only: e.currentTarget.checked })}
       />
-      Current branch only
+      {$t("graph.currentBranchOnly")}
     </label>
   </div>
 </GraphPopover>

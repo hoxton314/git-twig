@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type { RefLabel } from "../../lib/types/git";
   import GraphPopover from "./GraphPopover.svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     /** Known refs (branches/tags) to suggest. */
@@ -19,6 +20,7 @@
 
   const MAX_SUGGESTIONS = 50;
   const ORDER = { local: 0, tag: 1, remote: 2 } as const;
+  const KIND_KEYS = { local: "graph.kindLocal", tag: "graph.kindTag", remote: "graph.kindRemote" } as const;
 
   const suggestions = $derived.by(() => {
     const q = query.trim().toLowerCase();
@@ -66,22 +68,22 @@
   }
 </script>
 
-<GraphPopover label="Go to branch, tag or commit" {onclose} width={300}>
+<GraphPopover label={$t("graph.gotoRef")} {onclose} width={300}>
   <input
     bind:this={inputEl}
     bind:value={query}
     class="goto-input"
     type="text"
-    placeholder="Branch, tag, HEAD or SHA…"
+    placeholder={$t("graph.gotoPlaceholder")}
     spellcheck="false"
     autocomplete="off"
-    aria-label="Branch, tag or commit to go to"
+    aria-label={$t("graph.gotoInput")}
     aria-controls="goto-ref-list"
     onkeydown={onKeydown}
     oninput={() => (active = 0)}
   />
   {#if suggestions.length > 0}
-    <ul class="list" id="goto-ref-list" role="listbox" aria-label="Matching refs">
+    <ul class="list" id="goto-ref-list" role="listbox" aria-label={$t("graph.gotoMatches")}>
       {#each suggestions as ref, i (ref.ref_type + ":" + ref.name)}
         <li role="option" aria-selected={i === active}>
           <button
@@ -92,13 +94,13 @@
             onclick={() => submit(ref.name)}
           >
             <span class="name">{ref.name}</span>
-            <span class="kind kind-{ref.ref_type}">{ref.name === "HEAD" ? "head" : ref.ref_type}</span>
+            <span class="kind kind-{ref.ref_type}">{ref.name === "HEAD" ? $t("graph.kindHead") : $t(KIND_KEYS[ref.ref_type])}</span>
           </button>
         </li>
       {/each}
     </ul>
   {:else if query.trim()}
-    <div class="hint">Press Enter to go to “{query.trim()}”</div>
+    <div class="hint">{$t("graph.gotoHint", { rev: query.trim() })}</div>
   {/if}
 </GraphPopover>
 

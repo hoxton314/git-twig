@@ -3,6 +3,7 @@
   import Modal from "../shared/Modal.svelte";
   import * as tauri from "../../lib/tauri";
   import type { AuthorInfo } from "../../lib/types/git";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     open: boolean;
@@ -58,6 +59,10 @@
     if (active >= matches.length) active = Math.max(0, matches.length - 1);
   });
 
+  // The note wraps the trailer name in <code>; split the message around it.
+  const TRAILER = "Co-authored-by:";
+  const note = $derived($t("coauthor.note").split("{trailer}"));
+
   function pick(ident: string) {
     onpick(ident);
     onclose();
@@ -78,32 +83,32 @@
   }
 </script>
 
-<Modal {open} title="Add Co-author" {onclose} width="420px">
+<Modal {open} title={$t("coauthor.title")} {onclose} width="420px">
   <div class="picker">
     <input
       class="search"
       type="text"
-      placeholder="Search authors, or type Name <email>"
+      placeholder={$t("coauthor.placeholder")}
       bind:value={query}
       onkeydown={onKey}
       spellcheck="false"
-      aria-label="Search co-authors"
+      aria-label={$t("coauthor.searchLabel")}
       aria-controls="coauthor-list"
     />
     {#if custom}
       <button class="row custom" onclick={() => pick(custom)}>
         <UserPlus size={13} />
-        <span class="name">Add {custom}</span>
+        <span class="name">{$t("coauthor.addCustom", { ident: custom })}</span>
       </button>
     {/if}
-    <div class="list" id="coauthor-list" role="listbox" aria-label="Recent authors">
+    <div class="list" id="coauthor-list" role="listbox" aria-label={$t("coauthor.recent")}>
       {#if loading}
-        <div class="hint"><Loader2 size={13} class="spinner" /> Loading authors…</div>
+        <div class="hint"><Loader2 size={13} class="spinner" /> {$t("coauthor.loading")}</div>
       {:else if error}
         <div class="hint error">{error}</div>
       {:else if matches.length === 0}
         <div class="hint">
-          {authors.length === 0 ? "No other authors in recent history." : "No matching authors."}
+          {authors.length === 0 ? $t("coauthor.noAuthors") : $t("coauthor.noMatches")}
         </div>
       {:else}
         {#each matches as a, i (a.email)}
@@ -117,12 +122,12 @@
           >
             <span class="name">{a.name}</span>
             <span class="email">{a.email}</span>
-            <span class="count" title="Commits in recent history">{a.count}</span>
+            <span class="count" title={$t("coauthor.countTitle")}>{a.count}</span>
           </button>
         {/each}
       {/if}
     </div>
-    <p class="note">Adds a <code>Co-authored-by:</code> trailer to the commit message.</p>
+    <p class="note">{note[0]}<code>{TRAILER}</code>{note[1] ?? ""}</p>
   </div>
 </Modal>
 

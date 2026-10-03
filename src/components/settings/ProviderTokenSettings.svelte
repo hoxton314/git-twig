@@ -11,6 +11,7 @@
   import { globalSettings, updateGlobalSettings, flushSettings } from "../../lib/stores/settings";
   import { clearCi } from "../../lib/stores/ci";
   import type { GitHubUser } from "../../lib/types/github";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     provider: "gitlab" | "gitea";
@@ -114,8 +115,8 @@
 <div class="setting-group">
   <div class="setting-row">
     <div class="setting-label">
-      <span class="label-text">Instance URL</span>
-      <span class="label-hint">Remotes on this host get pull request and CI integration.</span>
+      <span class="label-text">{$t("hosting.instanceUrl")}</span>
+      <span class="label-hint">{$t("hosting.instanceUrlHint")}</span>
     </div>
     <div class="setting-control">
       <input
@@ -123,7 +124,7 @@
         class="text-input"
         spellcheck="false"
         placeholder={urlPlaceholder}
-        aria-label="{title} instance URL"
+        aria-label={$t("hosting.instanceUrlLabel", { title })}
         bind:value={urlInput}
         onblur={saveUrl}
         onkeydown={(e) => e.key === "Enter" && saveUrl()}
@@ -133,18 +134,18 @@
 
   <div class="setting-row">
     <div class="setting-label">
-      <span class="label-text">Access token</span>
+      <span class="label-text">{$t("hosting.accessToken")}</span>
       <span class="label-hint">
         {#if tokenPage}
-          Create one at
+          {$t("hosting.createOneAt")}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span class="link" role="link" tabindex="0" onclick={() => openUrl(tokenPage)} onkeydown={(e) => e.key === "Enter" && openUrl(tokenPage)}>{tokenPath.replace(/^\//, "")}</span>
-          with {scopesHint}.
+          {$t("hosting.withScopes", { scopes: scopesHint })}
         {:else}
-          Set the instance URL first.
+          {$t("hosting.setUrlFirst")}
         {/if}
-        Stored in your system keyring.
+        {$t("hosting.storedInKeyring")}
       </span>
     </div>
     <div class="setting-control token-control">
@@ -153,32 +154,32 @@
         class="token-input"
         autocomplete="off"
         spellcheck="false"
-        aria-label="{title} access token"
-        placeholder={hasToken ? "Saved in system keyring — paste to replace" : "Token"}
+        aria-label={$t("hosting.accessTokenLabel", { title })}
+        placeholder={hasToken ? $t("hosting.tokenSavedPlaceholder") : $t("hosting.tokenPlaceholder")}
         disabled={!normalizedUrl}
         bind:value={tokenInput}
         onkeydown={(e) => e.key === "Enter" && saveToken()}
       />
-      <button class="btn-secondary" onclick={saveToken} disabled={!tokenInput.trim() || !normalizedUrl}>Save</button>
+      <button class="btn-secondary" onclick={saveToken} disabled={!tokenInput.trim() || !normalizedUrl}>{$t("common.save")}</button>
       {#if hasToken}
-        <button class="btn-ghost" onclick={clearToken}>Clear</button>
+        <button class="btn-ghost" onclick={clearToken}>{$t("common.clear")}</button>
       {/if}
     </div>
   </div>
 
   <div class="setting-row">
     <div class="setting-label">
-      <span class="label-text">Connection status</span>
+      <span class="label-text">{$t("hosting.connectionStatus")}</span>
     </div>
     <div class="setting-control">
       {#if status === "loading"}
-        <div class="status-badge muted"><Loader2 size={14} class="spinner" /><span>Verifying...</span></div>
+        <div class="status-badge muted"><Loader2 size={14} class="spinner" /><span>{$t("hosting.verifying")}</span></div>
       {:else if status === "connected" && user}
-        <div class="status-badge connected"><Check size={14} /><span>Connected as <strong>@{user.login}</strong></span></div>
+        <div class="status-badge connected"><Check size={14} /><span>{$t("hosting.connectedAs")} <strong>@{user.login}</strong></span></div>
       {:else if status === "error"}
         <div class="status-badge error" title={errorMsg}><AlertCircle size={14} /><span>{errorMsg}</span></div>
       {:else}
-        <div class="status-badge muted"><span>Not configured</span></div>
+        <div class="status-badge muted"><span>{$t("hosting.notConfigured")}</span></div>
       {/if}
     </div>
   </div>

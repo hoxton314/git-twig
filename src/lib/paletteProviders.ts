@@ -12,20 +12,21 @@ import { scannedRepos, refreshScannedRepos } from "./stores/scannedRepos";
 import { trackOperation } from "./stores/operations";
 import { toast, toastError } from "./stores/toasts";
 import * as tauri from "./tauri";
+import { tr } from "./i18n";
 import type { BranchInfo } from "./types/git";
 
 async function checkout(repoPath: string, branch: BranchInfo) {
   try {
-    const result = await trackOperation(repoPath, "checkout", `Checking out ${branch.name}…`, () =>
+    const result = await trackOperation(repoPath, "checkout", tr("palette.checkingOut", { branch: branch.name }), () =>
       branch.is_remote
         ? tauri.checkoutRemoteBranch(repoPath, branch.name)
         : tauri.checkoutBranch(repoPath, branch.name),
     );
     await refreshAll(repoPath);
-    if (result.success) toast("success", `Switched to ${branch.is_remote ? branch.name.replace(/^[^/]+\//, "") : branch.name}`);
-    else toastError("Checkout failed", result.message);
+    if (result.success) toast("success", tr("palette.switchedTo", { branch: branch.is_remote ? branch.name.replace(/^[^/]+\//, "") : branch.name }));
+    else toastError(tr("palette.checkoutFailed"), result.message);
   } catch (err) {
-    toastError("Checkout failed", err);
+    toastError(tr("palette.checkoutFailed"), err);
   }
 }
 
@@ -38,7 +39,7 @@ export async function openRepoPath(path: string) {
   try {
     addRepo(await tauri.openRepo(path));
   } catch (err) {
-    toastError("Open repository failed", err);
+    toastError(tr("tabs.openFailed"), err);
   }
 }
 
@@ -54,8 +55,8 @@ export function installBuiltinPaletteProviders(): () => void {
           .map(
             (info): PaletteItem => ({
               id: `tab:${info.path}`,
-              label: `Switch to ${info.name}`,
-              category: "Tab",
+              label: tr("palette.switchTo", { name: info.name }),
+              category: tr("palette.catTab"),
               detail: info.head_name ? `${info.head_name} · ${info.path}` : info.path,
               keywords: "tab repository",
               run: () => {
@@ -83,8 +84,8 @@ export function installBuiltinPaletteProviders(): () => void {
           .map(
             (b): PaletteItem => ({
               id: `branch:${b.name}`,
-              label: `Checkout ${b.name}`,
-              category: b.is_remote ? "Remote branch" : "Branch",
+              label: tr("palette.checkout", { branch: b.name }),
+              category: b.is_remote ? tr("palette.catRemoteBranch") : tr("palette.catBranch"),
               detail: b.last_commit_summary,
               keywords: "checkout switch branch",
               run: () => checkout(repoPath, b),
@@ -108,8 +109,8 @@ export function installBuiltinPaletteProviders(): () => void {
           const isMissing = missing.has(path);
           items.push({
             id: `repo:${path}`,
-            label: `Open ${name}${isMissing ? " (missing)" : ""}`,
-            category: favorite ? "Favorite" : "Recent",
+            label: isMissing ? tr("palette.openMissing", { name }) : tr("palette.open", { name }),
+            category: favorite ? tr("palette.catFavorite") : tr("palette.catRecent"),
             detail: path,
             keywords: "open recent repository favorite",
             disabled: isMissing,
@@ -128,8 +129,8 @@ export function installBuiltinPaletteProviders(): () => void {
           seen.add(r.path);
           items.push({
             id: `repo:${r.path}`,
-            label: `Open ${r.name}`,
-            category: "Repository",
+            label: tr("palette.open", { name: r.name }),
+            category: tr("palette.catRepository"),
             detail: r.head_name ? `${r.head_name} · ${r.path}` : r.path,
             keywords: "open repository folder",
             run: () => openRepoPath(r.path),

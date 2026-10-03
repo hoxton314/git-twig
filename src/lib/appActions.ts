@@ -8,20 +8,21 @@ import { addRepo } from "./stores/repos";
 import { settings, globalSettings, DEFAULT_SETTINGS, flushSettings, replaceGlobalSettings } from "./stores/settings";
 import { toast, toastError } from "./stores/toasts";
 import * as tauri from "./tauri";
+import { tr } from "./i18n";
 
 /** Pick a folder and open it as a repository tab. */
 export async function openRepoWithDialog(): Promise<void> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "Open Git Repository",
+    title: tr("app.openRepoDialogTitle"),
     defaultPath: get(settings).default_repo_dir ?? undefined,
   });
   if (!selected || Array.isArray(selected)) return;
   try {
     addRepo(await tauri.openRepo(selected));
   } catch (err) {
-    toastError("Open repository failed", err);
+    toastError(tr("tabs.openFailed"), err);
   }
 }
 
@@ -30,14 +31,14 @@ export async function openSettingsFolder(): Promise<void> {
     await flushSettings();
     await tauri.openSettingsFolder();
   } catch (err) {
-    toastError("Could not open settings folder", err);
+    toastError(tr("app.openSettingsFolderFailed"), err);
   }
 }
 
 /** Save the current settings (never secrets) to a user-chosen JSON file. */
 export async function exportSettingsToFile(): Promise<void> {
   const path = await save({
-    title: "Export Twig Settings",
+    title: tr("app.exportSettingsTitle"),
     defaultPath: "twig-settings.json",
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
@@ -45,16 +46,16 @@ export async function exportSettingsToFile(): Promise<void> {
   try {
     // Global settings only: per-repository overrides must not leak into an import.
     await tauri.exportSettings(path, get(globalSettings));
-    toast("success", `Settings exported to ${path}`);
+    toast("success", tr("app.settingsExported", { path }));
   } catch (err) {
-    toastError("Export failed", err);
+    toastError(tr("app.exportFailed"), err);
   }
 }
 
 /** Replace the current settings with ones read from a JSON file. */
 export async function importSettingsFromFile(): Promise<void> {
   const path = await open({
-    title: "Import Twig Settings",
+    title: tr("app.importSettingsTitle"),
     multiple: false,
     directory: false,
     filters: [{ name: "JSON", extensions: ["json"] }],
@@ -62,11 +63,11 @@ export async function importSettingsFromFile(): Promise<void> {
   if (!path || Array.isArray(path)) return;
   try {
     const imported = await tauri.importSettings(path);
-    const confirmed = !get(settings).confirm_destructive_ops || await ask("Replace all current settings with the imported ones?", {
-      title: "Import Settings",
+    const confirmed = !get(settings).confirm_destructive_ops || await ask(tr("app.importConfirm"), {
+      title: tr("app.importConfirmTitle"),
       kind: "warning",
-      okLabel: "Import",
-      cancelLabel: "Cancel",
+      okLabel: tr("app.import"),
+      cancelLabel: tr("common.cancel"),
     });
     if (!confirmed) return;
     replaceGlobalSettings({
@@ -74,9 +75,9 @@ export async function importSettingsFromFile(): Promise<void> {
       ...imported,
       keybinding_overrides: imported.keybinding_overrides ?? {},
     });
-    toast("success", "Settings imported");
+    toast("success", tr("app.settingsImported"));
   } catch (err) {
-    toastError("Import failed", err);
+    toastError(tr("app.importFailed"), err);
   }
 }
 
@@ -86,7 +87,7 @@ export async function openRepoInTerminal(repoPath: string): Promise<void> {
     await flushSettings();
     await tauri.openInTerminal(repoPath);
   } catch (err) {
-    toastError("Could not open terminal", err);
+    toastError(tr("app.openTerminalFailed"), err);
   }
 }
 
@@ -96,7 +97,7 @@ export async function openRepoInEditor(repoPath: string, file: string | null = n
     await flushSettings();
     await tauri.openInEditor(repoPath, file);
   } catch (err) {
-    toastError("Could not open editor", err);
+    toastError(tr("app.openEditorFailed"), err);
   }
 }
 
@@ -109,7 +110,7 @@ export async function openPathsAsTabs(paths: string[]): Promise<void> {
     try {
       addRepo(await tauri.openRepo(p));
     } catch (err) {
-      toastError(`Could not open ${p}`, err);
+      toastError(tr("app.openPathFailed", { path: p }), err);
     }
   }
 }

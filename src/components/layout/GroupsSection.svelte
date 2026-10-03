@@ -18,6 +18,7 @@
   import { openDashboard } from "../../lib/dashboard";
   import { MAX_GROUP_NAME } from "../../lib/repoGroups";
   import { settings } from "../../lib/stores/settings";
+  import { t, tr } from "../../lib/i18n";
 
   interface Props {
     /** Open (or switch to) a single repository. */
@@ -36,23 +37,31 @@
     input?.select();
   }
 
+  function onRenameKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter") commitRename();
+    else if (e.key === "Escape") {
+      e.stopPropagation();
+      editing = null;
+    }
+  }
+
   function commitRename() {
     if (editing && draft.trim()) renameRepoGroup(editing, draft);
     editing = null;
   }
 
   async function newGroup() {
-    const id = await createRepoGroup("New group");
+    const id = await createRepoGroup(tr("groups.defaultName"));
     const g = $repoGroups.find((x) => x.id === id);
     if (g) startRename(id, g.name);
   }
 
   async function remove(id: string, name: string, count: number) {
     if (count > 0 && $settings.confirm_destructive_ops) {
-      const ok = await ask(`Delete the group “${name}”? Its ${count} repositories stay where they are.`, {
-        title: "Delete Group",
+      const ok = await ask(tr("groups.deleteConfirm", { name, count }), {
+        title: tr("groups.deleteTitle"),
         kind: "warning",
-        okLabel: "Delete",
+        okLabel: tr("common.delete"),
       });
       if (!ok) return;
     }
@@ -62,14 +71,14 @@
 
 <section class="open-repos groups" aria-labelledby="groups-heading">
   <div class="section-header">
-    <h2 class="section-title" id="groups-heading"><Layers size={13} /> Groups</h2>
+    <h2 class="section-title" id="groups-heading"><Layers size={13} /> {$t("groups.heading")}</h2>
     <span class="header-actions">
-      <button class="link-btn" onclick={() => openDashboard(null)} title="Status of every known repository, with Fetch all / Pull all"><LayoutDashboard size={12} /> Dashboard</button>
-      <button class="link-btn" onclick={newGroup}><Plus size={12} /> New group</button>
+      <button class="link-btn" onclick={() => openDashboard(null)} title={$t("groups.dashboardAllTitle")}><LayoutDashboard size={12} /> {$t("groups.dashboard")}</button>
+      <button class="link-btn" onclick={newGroup}><Plus size={12} /> {$t("groups.newGroup")}</button>
     </span>
   </div>
   {#if $repoGroups.length === 0}
-    <p class="empty">Group repositories to open them together. Use “Add to group” on a repository or tab.</p>
+    <p class="empty">{$t("groups.empty")}</p>
   {/if}
   {#each $repoGroups as g (g.id)}
     {@const openCount = g.paths.filter((p) => $openRepos.has(p)).length}
@@ -81,29 +90,23 @@
             bind:value={draft}
             class="rename"
             maxlength={MAX_GROUP_NAME - 4}
-            aria-label="Group name"
-            onkeydown={(e) => {
-              if (e.key === "Enter") commitRename();
-              else if (e.key === "Escape") {
-                e.stopPropagation();
-                editing = null;
-              }
-            }}
+            aria-label={$t("groups.nameLabel")}
+            onkeydown={onRenameKeydown}
             onblur={commitRename}
           />
         {:else}
           <span class="group-name" title={g.name}>{g.name}</span>
-          <span class="count">{g.paths.length} repo{g.paths.length === 1 ? "" : "s"}{openCount > 0 ? ` · ${openCount} open` : ""}</span>
+          <span class="count">{$t("tabs.repoCount", { count: g.paths.length })}{openCount > 0 ? $t("groups.openCount", { count: openCount }) : ""}</span>
         {/if}
         <span class="spacer"></span>
-        <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openDashboard(g.id)} title="Status of this group's repositories, with Fetch all / Pull all">
-          <LayoutDashboard size={12} /> Dashboard
+        <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openDashboard(g.id)} title={$t("groups.dashboardGroupTitle")}>
+          <LayoutDashboard size={12} /> {$t("groups.dashboard")}
         </button>
-        <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openRepoGroup(g.id)} title="Open every repository in this group as a tab">
-          <FolderOpen size={12} /> Open all
+        <button class="link-btn" disabled={g.paths.length === 0} onclick={() => openRepoGroup(g.id)} title={$t("groups.openAllTitle")}>
+          <FolderOpen size={12} /> {$t("groups.openAll")}
         </button>
-        <button class="icon-btn" onclick={() => startRename(g.id, g.name)} title="Rename" aria-label="Rename {g.name}"><Pencil size={12} /></button>
-        <button class="icon-btn" onclick={() => remove(g.id, g.name, g.paths.length)} title="Delete group" aria-label="Delete {g.name}"><Trash2 size={12} /></button>
+        <button class="icon-btn" onclick={() => startRename(g.id, g.name)} title={$t("common.rename")} aria-label={$t("groups.renameNamed", { name: g.name })}><Pencil size={12} /></button>
+        <button class="icon-btn" onclick={() => remove(g.id, g.name, g.paths.length)} title={$t("groups.deleteGroup")} aria-label={$t("groups.deleteNamed", { name: g.name })}><Trash2 size={12} /></button>
       </div>
       {#if g.paths.length > 0}
         <div class="members">
@@ -115,13 +118,13 @@
                 class:active={$activeRepoPath === path}
                 disabled={missing}
                 onclick={() => onopen(path)}
-                title={missing ? `${path} — folder not found` : path}
+                title={missing ? $t("groups.folderNotFound", { path }) : path}
               >
                 <FolderGit2 size={13} />
                 <span class="member-name">{repoDisplayName($repoHistory, path)}</span>
-                {#if missing}<span class="badge">missing</span>{:else if $openRepos.has(path)}<span class="badge">open</span>{/if}
+                {#if missing}<span class="badge">{$t("tabs.missing")}</span>{:else if $openRepos.has(path)}<span class="badge">{$t("tabs.open")}</span>{/if}
               </button>
-              <button class="icon-btn" onclick={() => removeRepoFromGroup(g.id, path)} title="Remove from group" aria-label="Remove {path} from {g.name}">
+              <button class="icon-btn" onclick={() => removeRepoFromGroup(g.id, path)} title={$t("groups.removeFromGroup")} aria-label={$t("groups.removeNamed", { path, name: g.name })}>
                 <X size={12} />
               </button>
             </div>

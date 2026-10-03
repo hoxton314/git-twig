@@ -16,13 +16,14 @@
     syncSubmodules,
   } from "../../lib/stores/repotools";
   import { toast } from "../../lib/stores/toasts";
+  import { tr } from "../../lib/i18n";
   import AddWorktreeDialog from "./AddWorktreeDialog.svelte";
 
   async function withSubmodules(fn: () => void) {
     if (!get(activeRepoPath)) return;
     await refreshRepoTools();
     if (get(submodules).length === 0) {
-      toast("info", "This repository has no submodules.");
+      toast("info", tr("worktrees.noSubmodules"));
       return;
     }
     fn();

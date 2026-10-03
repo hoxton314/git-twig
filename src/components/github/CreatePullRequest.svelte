@@ -9,6 +9,8 @@
   import type { BranchInfo } from "../../lib/types/git";
   import { refreshAll } from "../../lib/stores/graph";
   import { toastError } from "../../lib/stores/toasts";
+  import { t } from "../../lib/i18n";
+  import { markers, segments } from "./prFormat";
 
   interface Props {
     open_: boolean;
@@ -51,7 +53,7 @@
   /** Head as sent to the API: `branch`, or `owner:branch` for a fork. */
   const headSpec = $derived(isFork && headRemote ? `${headRemote.owner}:${head}` : head);
   const localBranches = $derived(branchInfos.filter((b) => !b.is_remote).map((b) => b.name));
-  const prWord = $derived(target?.provider === "gitlab" ? "Merge Request" : "Pull Request");
+  const prWord = $derived(target?.provider === "gitlab" ? $t("github.mrWord") : $t("github.prWord"));
 
   /** Whether `head` exists on the head remote and is up to date there. */
   const pushState = $derived.by((): { kind: "ok" } | { kind: "missing" } | { kind: "ahead"; count: number } => {
@@ -124,9 +126,9 @@
 
   function onTargetChange(name: string) {
     targetName = name;
-    const t = remotes.find((r) => r.remote_name === name);
+    const tgt = remotes.find((r) => r.remote_name === name);
     const h = remotes.find((r) => r.remote_name === headRemoteName);
-    if (!t || !h || h.provider !== t.provider || h.host !== t.host) headRemoteName = name;
+    if (!tgt || !h || h.provider !== tgt.provider || h.host !== tgt.host) headRemoteName = name;
     loadBaseBranches();
   }
 
@@ -150,7 +152,7 @@
         refreshAll(repoPath);
       }
     } catch (err) {
-      toastError("Push failed", err);
+      toastError($t("github.pushFailed"), err);
     } finally {
       pushing = false;
     }
@@ -192,7 +194,7 @@
   }
 </script>
 
-<Modal open={isOpen} title="Create {prWord}" onclose={handleClose} width="520px">
+<Modal open={isOpen} title={$t("github.createPr", { pr: prWord })} onclose={handleClose} width="520px">
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -200,25 +202,25 @@
   {#if detecting}
     <div class="loading-state">
       <Loader2 size={20} class="spinner" />
-      <span>Detecting remote...</span>
+      <span>{$t("github.detectingRemote")}</span>
     </div>
   {:else if noRemote}
     <div class="no-remote">
       <AlertCircle size={20} />
-      <span>No GitHub, GitLab or Gitea remote detected for this repository.</span>
+      <span>{$t("github.noHostedRemote")}</span>
     </div>
   {:else if createdPr}
     <!-- Success -->
     <div class="success-state">
       <div class="success-msg">
-        {prWord} <strong>{target?.provider === "gitlab" ? "!" : "#"}{createdPr.number}</strong> created: {createdPr.title}
+        {#each segments($t("github.prCreated", { pr: prWord, title: createdPr.title, ...markers("ref") })) as seg}{#if seg.param === "ref"}<strong>{target?.provider === "gitlab" ? "!" : "#"}{createdPr.number}</strong>{:else}{seg.text}{/if}{/each}
       </div>
       <div class="success-actions">
         <button class="btn-primary" onclick={handleOpenInBrowser}>
           <ExternalLink size={14} />
-          <span>Open in browser</span>
+          <span>{$t("github.openInBrowser")}</span>
         </button>
-        <button class="btn-ghost" onclick={handleClose}>Close</button>
+        <button class="btn-ghost" onclick={handleClose}>{$t("common.close")}</button>
       </div>
     </div>
   {:else if target}
@@ -227,7 +229,7 @@
       {#if remotes.length > 1}
         <div class="branch-row">
           <label class="branch-field">
-            <span class="branch-label">Target repository</span>
+            <span class="branch-label">{$t("github.targetRepo")}</span>
             <select class="branch-select" value={targetName} onchange={(e) => onTargetChange(e.currentTarget.value)}>
               {#each remotes as r (r.remote_name)}
                 <option value={r.remote_name}>{r.project_path} ({r.remote_name})</option>
@@ -236,7 +238,7 @@
           </label>
           {#if headCandidates.length > 1}
             <label class="branch-field">
-              <span class="branch-label">Head repository</span>
+              <span class="branch-label">{$t("github.headRepo")}</span>
               <select class="branch-select" bind:value={headRemoteName}>
                 {#each headCandidates as r (r.remote_name)}
                   <option value={r.remote_name}>{r.project_path} ({r.remote_name})</option>
@@ -249,7 +251,7 @@
 
       <div class="branch-row">
         <label class="branch-field">
-          <span class="branch-label">Base</span>
+          <span class="branch-label">{$t("github.base")}</span>
           <select class="branch-select" bind:value={base}>
             {#each remoteBranches as b (b)}
               <option value={b}>{b}</option>
@@ -272,40 +274,40 @@
           <AlertTriangle size={14} />
           <span>
             {#if pushState.kind === "missing"}
-              <code>{head}</code> hasn't been pushed to <code>{headRemote.remote_name}</code> yet.
+              {#each segments($t("github.branchNotPushed", markers("branch", "remote"))) as seg}{#if seg.param === "branch"}<code>{head}</code>{:else if seg.param === "remote"}<code>{headRemote.remote_name}</code>{:else}{seg.text}{/if}{/each}
             {:else}
-              {pushState.count} local commit{pushState.count === 1 ? "" : "s"} on <code>{head}</code> not pushed to <code>{headRemote.remote_name}</code>.
+              {#each segments($t("github.commitsNotPushed", { count: pushState.count, ...markers("branch", "remote") })) as seg}{#if seg.param === "branch"}<code>{head}</code>{:else if seg.param === "remote"}<code>{headRemote.remote_name}</code>{:else}{seg.text}{/if}{/each}
             {/if}
           </span>
           <button class="btn-push" onclick={pushHead} disabled={pushing}>
             {#if pushing}<Loader2 size={12} class="spinner" />{:else}<ArrowUpFromLine size={12} />{/if}
-            Push
+            {$t("github.push")}
           </button>
         </div>
       {/if}
 
       <label class="field-label">
-        Title
+        {$t("github.title")}
         <input
           type="text"
           class="field-input"
           bind:value={title}
-          placeholder="{prWord} title"
+          placeholder={$t("github.prTitlePlaceholder", { pr: prWord })}
         />
       </label>
 
       <label class="field-label">
-        Description
+        {$t("github.description")}
         <textarea
           class="field-textarea"
           bind:value={body}
-          placeholder="Optional description..."
+          placeholder={$t("github.descriptionPlaceholder")}
           rows="4"
         ></textarea>
       </label>
 
       <div class="remote-info">
-        {target.project_path} via <code>{target.remote_name}</code>{#if isFork} · head <code>{headSpec}</code>{/if}
+        {#each segments($t("github.via", { project: target.project_path, ...markers("remote") })) as seg}{#if seg.param === "remote"}<code>{target.remote_name}</code>{:else}{seg.text}{/if}{/each}{#if isFork} · head <code>{headSpec}</code>{/if}
       </div>
 
       <button
@@ -315,9 +317,9 @@
       >
         {#if creating}
           <Loader2 size={14} class="spinner" />
-          <span>Creating...</span>
+          <span>{$t("github.creating")}</span>
         {:else}
-          <span>Create {prWord}</span>
+          <span>{$t("github.createPr", { pr: prWord })}</span>
         {/if}
       </button>
     </div>

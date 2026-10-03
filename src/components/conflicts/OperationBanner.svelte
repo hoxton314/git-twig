@@ -31,6 +31,7 @@
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
   import type { ConflictFile } from "../../lib/types/git";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
 
   const st = $derived($operationState);
   const busy = $derived($operationBusy);
@@ -47,41 +48,52 @@
 
   const title = $derived.by(() => {
     if (!st) return "";
-    if (st.kind === "none") return "Unresolved conflicts";
-    if (st.kind === "bisect" && bisect) return `Bisecting — ${bisectProgress(bisect)}`;
+    if (st.kind === "none") return $t("conflicts.unresolvedConflicts");
+    if (st.kind === "bisect" && bisect) return $t("conflicts.bisecting", { progress: bisectProgress(bisect) });
     const name = operationLabel(st.kind);
     if (st.kind === "rebase") {
-      const branch = st.head_name ? ` ${st.head_name}` : "";
-      const onto = st.onto ? ` onto ${st.onto}` : "";
-      const step = st.step && st.total ? ` (${st.step}/${st.total})` : "";
-      return `${st.interactive ? "Interactive rebase" : "Rebasing"}${branch}${onto}${step}`;
+      let what = st.head_name
+        ? $t(st.interactive ? "conflicts.interactiveRebaseBranch" : "conflicts.rebasingBranch", { branch: st.head_name })
+        : $t(st.interactive ? "conflicts.interactiveRebase" : "conflicts.rebasing");
+      if (st.onto) what = $t("conflicts.onto", { what, onto: st.onto });
+      if (st.step && st.total) what = $t("conflicts.step", { what, step: st.step, total: st.total });
+      return what;
     }
-    return `${name} in progress`;
+    return $t("conflicts.inProgress", { name });
   });
 
   const detail = $derived.by(() => {
     if (!st) return "";
     if (bisect) {
-      if (bisect.first_bad) return `${bisect.first_bad.slice(0, 7)} ${bisect.first_bad_subject ?? ""} is the first ${bisect.term_bad} commit`;
-      if (!bisectTesting) return "Right-click a commit in the graph to mark it.";
-      if (bisect.current) return `Testing ${bisect.current.slice(0, 7)} ${bisect.current_subject ?? ""}`;
+      if (bisect.first_bad)
+        return $t("conflicts.firstBadIs", {
+          oid: bisect.first_bad.slice(0, 7),
+          subject: bisect.first_bad_subject ?? "",
+          term: bisect.term_bad,
+        });
+      if (!bisectTesting) return $t("conflicts.rightClickToMark");
+      if (bisect.current)
+        return $t("conflicts.testing", { oid: bisect.current.slice(0, 7), subject: bisect.current_subject ?? "" });
     }
     if (st.kind === "rebase" && st.stopped_for_edit) {
-      return `Stopped to edit ${st.current_commit?.slice(0, 7) ?? ""} ${st.current_subject ?? ""}. Amend or commit changes, then continue.`;
+      return $t("conflicts.stoppedForEdit", {
+        oid: st.current_commit?.slice(0, 7) ?? "",
+        subject: st.current_subject ?? "",
+      });
     }
     if (st.kind === "merge") return st.message?.split("\n", 1)[0] ?? "";
     if (st.current_subject) return `${st.current_commit?.slice(0, 7) ?? ""} ${st.current_subject}`;
     return "";
   });
 
-  const kindLabels: Record<ConflictFile["kind"], string> = {
-    both_modified: "both modified",
-    both_added: "both added",
-    deleted_by_us: "deleted by us",
-    deleted_by_them: "deleted by them",
-    added_by_us: "added by us",
-    added_by_them: "added by them",
-    both_deleted: "both deleted",
+  const kindLabels: Record<ConflictFile["kind"], MessageKey> = {
+    both_modified: "conflicts.kind.bothModified",
+    both_added: "conflicts.kind.bothAdded",
+    deleted_by_us: "conflicts.kind.deletedByUs",
+    deleted_by_them: "conflicts.kind.deletedByThem",
+    added_by_us: "conflicts.kind.addedByUs",
+    added_by_them: "conflicts.kind.addedByThem",
+    both_deleted: "conflicts.kind.bothDeleted",
   };
 
   async function fileOp(
@@ -105,41 +117,42 @@
   }
 
   function takeSide(files: string[], side: "ours" | "theirs") {
-    const label = side === "ours" ? "Take ours" : "Take theirs";
+    const label = tr(side === "ours" ? "conflicts.takeOurs" : "conflicts.takeTheirs");
     return fileOp(files.length === 1 ? files[0] : "*", label, (p) =>
       tauri.resolveTakeSide(p, files, side),
     );
   }
 
   function markResolved(file: string) {
-    return fileOp(file, "Mark resolved", (p) => tauri.markResolved(p, [file]));
+    return fileOp(file, tr("conflicts.markResolved"), (p) => tauri.markResolved(p, [file]));
   }
 
   async function openMergeTool(file: string) {
     const path = $activeRepoPath;
     if (!path) return;
-    toast("info", `Opening merge tool for ${file}… Close it when done.`);
-    await fileOp(file, "Merge tool", (p) =>
+    toast("info", tr("conflicts.openingMergeTool", { file }));
+    await fileOp(file, tr("conflicts.mergeTool"), (p) =>
       tauri.openMergeTool(p, file, $settings.external_merge_tool),
     );
   }
 
   function menuItems(file: ConflictFile): MenuItem[] {
-    const label = (side: string) => (side === "ours" ? st?.ours_label : st?.theirs_label) ?? side;
+    const ours = st?.ours_label ?? $t("conflicts.oursLower");
+    const theirs = st?.theirs_label ?? $t("conflicts.theirsLower");
     return [
-      { label: "Resolve in editor…", action: () => openConflictResolver(file.path) },
+      { label: $t("conflicts.resolveInEditor"), action: () => openConflictResolver(file.path) },
       { separator: true },
       {
-        label: file.has_ours ? `Take ${label("ours")}` : `Take ${label("ours")} (delete file)`,
+        label: $t(file.has_ours ? "conflicts.takeSide" : "conflicts.takeSideDelete", { side: ours }),
         action: () => takeSide([file.path], "ours"),
       },
       {
-        label: file.has_theirs ? `Take ${label("theirs")}` : `Take ${label("theirs")} (delete file)`,
+        label: $t(file.has_theirs ? "conflicts.takeSide" : "conflicts.takeSideDelete", { side: theirs }),
         action: () => takeSide([file.path], "theirs"),
       },
-      { label: "Open in merge tool", action: () => openMergeTool(file.path) },
+      { label: $t("conflicts.openInMergeTool"), action: () => openMergeTool(file.path) },
       { separator: true },
-      { label: "Mark as resolved", action: () => markResolved(file.path) },
+      { label: $t("conflicts.markAsResolved"), action: () => markResolved(file.path) },
     ];
   }
 
@@ -153,7 +166,7 @@
 </script>
 
 {#if active && st}
-  <section class="op-banner" aria-label="Operation in progress">
+  <section class="op-banner" aria-label={$t("conflicts.operationInProgress")}>
     <div class="op-header">
       <span class="op-icon">
         {#if conflicts.length > 0}
@@ -174,18 +187,18 @@
         {/if}
         {#if bisect}
           {#if bisect.first_bad}
-            <button class="op-btn primary" onclick={() => bisect.first_bad && revealCommit(bisect.first_bad)} title="Select it in the graph">
-              Show commit
+            <button class="op-btn primary" onclick={() => bisect.first_bad && revealCommit(bisect.first_bad)} title={$t("conflicts.selectInGraph")}>
+              {$t("conflicts.showCommit")}
             </button>
           {:else if bisectTesting}
-            <button class="op-btn" onclick={() => markBisect("good")} disabled={!!busy} title="The commit being tested is {bisect.term_good} (git bisect {bisect.term_good})">
-              <CheckCircle2 size={12} /> {bisect.term_good === "good" ? "Good" : bisect.term_good}
+            <button class="op-btn" onclick={() => markBisect("good")} disabled={!!busy} title={$t("conflicts.bisectMarkTitle", { term: bisect.term_good })}>
+              <CheckCircle2 size={12} /> {bisect.term_good === "good" ? $t("conflicts.good") : bisect.term_good}
             </button>
-            <button class="op-btn" onclick={() => markBisect("bad")} disabled={!!busy} title="The commit being tested is {bisect.term_bad} (git bisect {bisect.term_bad})">
-              <AlertTriangle size={12} /> {bisect.term_bad === "bad" ? "Bad" : bisect.term_bad}
+            <button class="op-btn" onclick={() => markBisect("bad")} disabled={!!busy} title={$t("conflicts.bisectMarkTitle", { term: bisect.term_bad })}>
+              <AlertTriangle size={12} /> {bisect.term_bad === "bad" ? $t("conflicts.bad") : bisect.term_bad}
             </button>
-            <button class="op-btn" onclick={() => markBisect("skip")} disabled={!!busy} title="Can't test this commit (git bisect skip)">
-              <SkipForward size={12} /> Skip
+            <button class="op-btn" onclick={() => markBisect("skip")} disabled={!!busy} title={$t("conflicts.bisectSkipTitle")}>
+              <SkipForward size={12} /> {$t("conflicts.skip")}
             </button>
           {/if}
         {/if}
@@ -195,23 +208,23 @@
               class="op-btn primary"
               onclick={requestContinue}
               disabled={!!busy || conflicts.length > 0}
-              title={conflicts.length > 0 ? "Resolve all conflicts first" : "Continue"}
+              title={conflicts.length > 0 ? $t("conflicts.resolveAllFirst") : $t("conflicts.continue")}
             >
-              <Play size={12} /> Continue
+              <Play size={12} /> {$t("conflicts.continue")}
             </button>
           {/if}
           {#if st.can_skip}
-            <button class="op-btn" onclick={skipOperation} disabled={!!busy} title="Skip the current commit">
-              <SkipForward size={12} /> Skip
+            <button class="op-btn" onclick={skipOperation} disabled={!!busy} title={$t("conflicts.skipCurrent")}>
+              <SkipForward size={12} /> {$t("conflicts.skip")}
             </button>
           {/if}
           <button
             class="op-btn danger"
             onclick={abortOperation}
             disabled={!!busy}
-            title={st.kind === "bisect" ? "End the bisect and go back to where it started (git bisect reset)" : "Abort and restore the previous state"}
+            title={st.kind === "bisect" ? $t("conflicts.endBisectTitle") : $t("conflicts.abortTitle")}
           >
-            <X size={12} /> {st.kind === "bisect" ? "Reset" : "Abort"}
+            <X size={12} /> {st.kind === "bisect" ? $t("common.reset") : $t("conflicts.abort")}
           </button>
         {/if}
       </div>
@@ -226,21 +239,21 @@
             aria-expanded={expanded}
           >
             {#if expanded}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
-            {conflicts.length} conflicted file{conflicts.length !== 1 ? "s" : ""}
+            {$t("conflicts.conflictedFiles", { count: conflicts.length })}
           </button>
           <span class="spacer"></span>
           <button
             class="link-btn"
             disabled={!!fileBusy}
             onclick={() => takeSide(conflicts.map((c) => c.path), "ours")}
-            title="Resolve every file with {st.ours_label}"
-          >All ours</button>
+            title={$t("conflicts.resolveAllWith", { side: st.ours_label })}
+          >{$t("conflicts.allOurs")}</button>
           <button
             class="link-btn"
             disabled={!!fileBusy}
             onclick={() => takeSide(conflicts.map((c) => c.path), "theirs")}
-            title="Resolve every file with {st.theirs_label}"
-          >All theirs</button>
+            title={$t("conflicts.resolveAllWith", { side: st.theirs_label })}
+          >{$t("conflicts.allTheirs")}</button>
         </div>
         {#if expanded}
           <div class="conflict-list">
@@ -255,7 +268,7 @@
                   e.preventDefault();
                   menu = { x: e.clientX, y: e.clientY, file };
                 }}
-                title="Click to resolve; right-click for more"
+                title={$t("conflicts.rowTitle")}
               >
                 {#if fileBusy === file.path || fileBusy === "*"}
                   <Loader2 size={13} class="spinner" />
@@ -263,32 +276,32 @@
                   <FileWarning size={13} class="conflict-icon" />
                 {/if}
                 <span class="path">{file.path}</span>
-                <span class="kind">{kindLabels[file.kind]}</span>
+                <span class="kind">{$t(kindLabels[file.kind])}</span>
                 <span class="row-actions">
                   <button
                     class="mini-btn"
                     disabled={!!fileBusy}
                     onclick={(e) => { e.stopPropagation(); takeSide([file.path], "ours"); }}
                     title={st.ours_label}
-                  >Ours</button>
+                  >{$t("conflicts.ours")}</button>
                   <button
                     class="mini-btn"
                     disabled={!!fileBusy}
                     onclick={(e) => { e.stopPropagation(); takeSide([file.path], "theirs"); }}
                     title={st.theirs_label}
-                  >Theirs</button>
+                  >{$t("conflicts.theirs")}</button>
                   <button
                     class="mini-btn"
                     disabled={!!fileBusy}
                     onclick={(e) => { e.stopPropagation(); openMergeTool(file.path); }}
-                    title="Open in external merge tool"
-                  >Tool</button>
+                    title={$t("conflicts.openInExternalTool")}
+                  >{$t("conflicts.tool")}</button>
                   <button
                     class="mini-btn icon"
                     disabled={!!fileBusy}
                     onclick={(e) => { e.stopPropagation(); markResolved(file.path); }}
-                    title="Mark as resolved (stage)"
-                    aria-label="Mark {file.path} as resolved"
+                    title={$t("conflicts.markResolvedStage")}
+                    aria-label={$t("conflicts.markFileResolved", { file: file.path })}
                   ><CheckCircle2 size={12} /></button>
                 </span>
               </div>
@@ -299,7 +312,7 @@
     {:else if inOperation && st.kind !== "bisect"}
       <div class="all-resolved">
         <CheckCircle2 size={13} />
-        {st.stopped_for_edit ? "No conflicts." : "All conflicts resolved."} Continue when ready.
+        {st.stopped_for_edit ? $t("conflicts.noConflictsContinue") : $t("conflicts.allResolvedContinue")}
       </div>
     {/if}
   </section>

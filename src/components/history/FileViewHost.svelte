@@ -20,6 +20,7 @@
   import { onAction } from "../../lib/keybindings";
   import * as tauri from "../../lib/tauri";
   import { History, ScanLine } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   const view = $derived($fileView);
   const repoPath = $derived($activeRepoPath);
@@ -76,7 +77,7 @@
             aria-selected={view.kind === "history"}
             onclick={() => showFileHistory(view.path)}
           >
-            <History size={13} /> History
+            <History size={13} /> {$t("history.tab")}
           </button>
           <button
             role="tab"
@@ -85,7 +86,7 @@
             aria-selected={view.kind === "blame"}
             onclick={() => view.kind !== "blame" && showBlame(view.path)}
           >
-            <ScanLine size={13} /> Blame
+            <ScanLine size={13} /> {$t("blame.tab")}
           </button>
           <span class="full-path" title={view.path}>{view.path}</span>
         </div>
@@ -102,7 +103,7 @@
 
   <FilePicker
     open={picker !== null}
-    title={picker === "blame" ? "Blame file" : "File history"}
+    title={picker === "blame" ? $t("blame.pickerTitle") : $t("history.pickerTitle")}
     items={pickerItems}
     error={pickerError}
     onconfirm={onPick}

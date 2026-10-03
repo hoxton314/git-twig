@@ -10,6 +10,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { refreshStatus } from "../../lib/stores/graph";
 import { settings } from "../../lib/stores/settings";
 import { toast, toastError } from "../../lib/stores/toasts";
+import { tr } from "../../lib/i18n";
 
 let writeQueue: Promise<unknown> = Promise.resolve();
 
@@ -26,7 +27,7 @@ export function runWrite(
     try {
       const result = await op();
       if (!result.success) {
-        toast("error", result.message.trim() || "Unknown error", { title });
+        toast("error", result.message.trim() || tr("staging.unknownError"), { title });
       } else {
         ok = true;
       }

@@ -30,6 +30,7 @@
   import { settings, updateSettings } from "../../lib/stores/settings";
   import { now } from "../../lib/stores/clock";
   import { toast, toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import { onAction } from "../../lib/keybindings";
   import * as tauri from "../../lib/tauri";
   import type { GraphEntry, RefLabel } from "../../lib/types/git";
@@ -241,8 +242,8 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Save changes as patch…", action: () => saveWorkingPatchAction(path) },
-        { label: "Apply patch file…", action: () => applyPatchAction(path) },
+        { label: tr("patches.saveChanges"), action: () => saveWorkingPatchAction(path) },
+        { label: tr("patches.applyFile"), action: () => applyPatchAction(path) },
       ],
     };
   }
@@ -393,7 +394,7 @@
       const loc = await tauri.locateCommit(path, rev, graphOptions());
       if (get(activeRepoPath) !== path) return;
       if (loc.index === null) {
-        toast("warning", `${rev} is not shown in the graph with the current view options.`);
+        toast("warning", tr("graph.revNotShown", { rev }));
         return;
       }
       if (filterMode) {
@@ -401,10 +402,10 @@
         searchMode.set("highlight");
       }
       const ok = await revealGraphCommit(loc.oid, loc.index);
-      if (!ok) toast("warning", `Could not show ${rev} in the graph.`);
+      if (!ok) toast("warning", tr("graph.revCouldNotShow", { rev }));
       containerEl?.focus({ preventScroll: true });
     } catch (err) {
-      toastError(`Can't go to ${rev}`, err);
+      toastError(tr("graph.revGotoFailed", { rev }), err);
     }
   }
 
@@ -610,15 +611,15 @@
     onkeydown={handleKeydown}
     tabindex="0"
     role="region"
-    aria-label={filterMode ? "Matching commits" : "Commit history"}
+    aria-label={filterMode ? $t("graph.matchingCommits") : $t("graph.commitHistory")}
   >
     {#if loading && !graph}
       <div class="loading">
         <Loader2 size={24} class="spinner" />
-        <span>Loading commits...</span>
+        <span>{$t("graph.loadingCommits")}</span>
       </div>
     {:else if filterMode && entries.length === 0}
-      <div class="empty">No commits match “{$searchQuery.trim()}”.</div>
+      <div class="empty">{$t("graph.noMatches", { query: $searchQuery.trim() })}</div>
     {:else if graph && entries.length > 0}
       {@render wipRow()}
       <div class="virtual-scroll" style="height: {totalHeight}px; position: relative;">
@@ -665,24 +666,24 @@
       {#if filterMode}
         {#if $searchResult?.truncated}
           <div class="list-footer">
-            Showing the first {entries.length.toLocaleString()} matches. Refine the search to narrow it down.
+            {$t("graph.truncated", { count: entries.length, n: entries.length.toLocaleString() })}
           </div>
         {/if}
       {:else if graph.has_more}
         <div class="list-footer" style="height: {ROW_HEIGHT}px;">
           {#if loadingMore}
             <Loader2 size={13} class="spinner" />
-            <span>Loading more…</span>
+            <span>{$t("graph.loadingMore")}</span>
           {:else}
-            <button class="load-more" onclick={loadMoreManually}>Load more commits</button>
+            <button class="load-more" onclick={loadMoreManually}>{$t("graph.loadMore")}</button>
           {/if}
         </div>
       {/if}
     {:else if graph}
       {@render wipRow()}
-      <div class="empty">No commits yet.</div>
+      <div class="empty">{$t("graph.noCommits")}</div>
     {:else if !loading && repoPath}
-      <div class="empty">Could not load commit history.</div>
+      <div class="empty">{$t("graph.loadFailed")}</div>
     {/if}
   </div>
 </div>
@@ -705,13 +706,13 @@
         <div class="wip-icon">
           <Pencil size={12} />
         </div>
-        <span class="wip-label">Uncommitted changes</span>
+        <span class="wip-label">{$t("graph.uncommitted")}</span>
         <span class="wip-counts">
           {#if status.staged.length > 0}
-            <span class="wip-staged">{status.staged.length} staged</span>
+            <span class="wip-staged">{$t("graph.wipStaged", { count: status.staged.length })}</span>
           {/if}
           {#if status.unstaged.length > 0}
-            <span class="wip-unstaged">{status.unstaged.length} modified</span>
+            <span class="wip-unstaged">{$t("graph.wipModified", { count: status.unstaged.length })}</span>
           {/if}
         </span>
       </button>

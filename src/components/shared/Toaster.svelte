@@ -1,24 +1,25 @@
 <script lang="ts">
   import { X } from "lucide-svelte";
   import { toasts, dismissToast, type Toast } from "../../lib/stores/toasts";
+  import { t } from "../../lib/i18n";
 
-  async function runAction(t: Toast) {
-    dismissToast(t.id);
-    await t.action?.run();
+  async function runAction(item: Toast) {
+    dismissToast(item.id);
+    await item.action?.run();
   }
 </script>
 
 <div class="toaster" aria-live="polite" aria-relevant="additions">
-  {#each $toasts as t (t.id)}
-    <div class="toast {t.kind}" role={t.kind === "error" ? "alert" : "status"}>
+  {#each $toasts as item (item.id)}
+    <div class="toast {item.kind}" role={item.kind === "error" ? "alert" : "status"}>
       <div class="body">
-        {#if t.title}<div class="title">{t.title}</div>{/if}
-        <div class="message">{t.message}</div>
+        {#if item.title}<div class="title">{item.title}</div>{/if}
+        <div class="message">{item.message}</div>
       </div>
-      {#if t.action}
-        <button class="action" onclick={() => runAction(t)}>{t.action.label}</button>
+      {#if item.action}
+        <button class="action" onclick={() => runAction(item)}>{item.action.label}</button>
       {/if}
-      <button class="close" aria-label="Dismiss notification" onclick={() => dismissToast(t.id)}>
+      <button class="close" aria-label={$t("shared.dismissNotification")} onclick={() => dismissToast(item.id)}>
         <X size={12} />
       </button>
     </div>

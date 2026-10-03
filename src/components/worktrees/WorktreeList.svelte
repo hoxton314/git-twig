@@ -9,6 +9,7 @@
   import { worktrees, refreshRepoTools, openAsTab, addWorktreeOpen } from "../../lib/stores/repotools";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
+  import { t, tr } from "../../lib/i18n";
   import type { WorktreeInfo } from "../../lib/types/git";
 
   const list = $derived($worktrees);
@@ -19,8 +20,8 @@
 
   function label(w: WorktreeInfo): string {
     if (w.branch) return w.branch;
-    if (w.head_short) return `detached @ ${w.head_short}`;
-    return w.name ?? "worktree";
+    if (w.head_short) return $t("worktrees.detached", { sha: w.head_short });
+    return w.name ?? $t("worktrees.worktree");
   }
 
   function tail(p: string): string {
@@ -30,7 +31,7 @@
   function open(w: WorktreeInfo) {
     if (w.is_current) return;
     if (w.is_prunable) {
-      toast("warning", "This worktree's directory is missing. Prune it to clean up.");
+      toast("warning", tr("worktrees.missingDir"));
       return;
     }
     openAsTab(w.path);
@@ -39,8 +40,8 @@
   async function remove(w: WorktreeInfo) {
     if (!repoPath || busy) return;
     if ($settings.confirm_destructive_ops) {
-      const ok = await ask(`Remove worktree "${label(w)}" at\n${w.path}?\n\nThe branch is kept.`, {
-        title: "Remove Worktree",
+      const ok = await ask(tr("worktrees.removeConfirm", { name: label(w), path: w.path }), {
+        title: tr("worktrees.removeTitle"),
         kind: "warning",
       });
       if (!ok) return;
@@ -50,21 +51,21 @@
       let res = await tauri.worktreeRemove(repoPath, w.path, false);
       if (!res.success && /modified or untracked|is dirty|use --force/i.test(res.message)) {
         const force = await ask(
-          `The worktree has uncommitted changes:\n\n${res.message.trim()}\n\nRemove it anyway and discard them?`,
-          { title: "Discard Worktree Changes", kind: "warning" },
+          tr("worktrees.discardConfirm", { details: res.message.trim() }),
+          { title: tr("worktrees.discardTitle"), kind: "warning" },
         );
         if (!force) return;
         res = await tauri.worktreeRemove(repoPath, w.path, true);
       }
       if (res.success) {
-        toast("success", `Removed worktree ${tail(w.path)}`);
+        toast("success", tr("worktrees.removed", { name: tail(w.path) }));
         // Close its tab if it was open.
-        if ($openRepos.has(w.path)) toast("info", "The removed worktree is still open in a tab; close it.");
+        if ($openRepos.has(w.path)) toast("info", tr("worktrees.stillOpen"));
       } else {
-        toast("error", res.message.trim(), { title: "Remove worktree failed" });
+        toast("error", res.message.trim(), { title: tr("worktrees.removeFailed") });
       }
     } catch (err) {
-      toastError("Remove worktree failed", err);
+      toastError(tr("worktrees.removeFailed"), err);
     } finally {
       busy = false;
       await refreshRepoTools(repoPath);
@@ -76,10 +77,10 @@
     if (!repoPath) return;
     try {
       const res = await tauri.worktreePrune(repoPath);
-      if (res.success) toast("success", "Pruned stale worktrees");
-      else toast("error", res.message.trim(), { title: "Prune failed" });
+      if (res.success) toast("success", tr("worktrees.pruned"));
+      else toast("error", res.message.trim(), { title: tr("worktrees.pruneFailed") });
     } catch (err) {
-      toastError("Prune failed", err);
+      toastError(tr("worktrees.pruneFailed"), err);
     } finally {
       refreshRepoTools(repoPath);
     }
@@ -91,22 +92,22 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Open in new tab", action: () => open(w), disabled: w.is_current || w.is_prunable },
+        { label: tr("worktrees.openInNewTab"), action: () => open(w), disabled: w.is_current || w.is_prunable },
         {
-          label: "Copy path",
+          label: tr("worktrees.copyPath"),
           action: async () => {
             try {
               await navigator.clipboard.writeText(w.path);
-              toast("success", "Path copied");
+              toast("success", tr("worktrees.pathCopied"));
             } catch (err) {
-              toastError("Copy failed", err);
+              toastError(tr("worktrees.copyFailed"), err);
             }
           },
         },
         { separator: true },
-        { label: "Prune stale worktrees", action: prune, disabled: !list.some((x) => x.is_prunable) },
+        { label: tr("worktrees.prune"), action: prune, disabled: !list.some((x) => x.is_prunable) },
         {
-          label: "Remove worktree…",
+          label: tr("worktrees.removeMenu"),
           action: () => remove(w),
           danger: true,
           disabled: w.is_main || w.is_current || w.is_locked,
@@ -121,10 +122,10 @@
     <div class="section-header">
       <button class="title-btn" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
         {#if expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
-        <span class="section-title">Worktrees</span>
+        <span class="section-title">{$t("worktrees.title")}</span>
         <span class="count">{list.length}</span>
       </button>
-      <button class="icon-btn" onclick={() => ($addWorktreeOpen = true)} title="Add worktree" aria-label="Add worktree">
+      <button class="icon-btn" onclick={() => ($addWorktreeOpen = true)} title={$t("worktrees.addTitle")} aria-label={$t("worktrees.addTitle")}>
         <Plus size={14} />
       </button>
     </div>
@@ -137,14 +138,14 @@
           class:stale={w.is_prunable}
           role="button"
           tabindex="0"
-          title="{w.path}{w.is_current ? '\n(this tab)' : '\nClick to open in a new tab'}"
+          title={w.is_current ? $t("worktrees.itemTitleCurrent", { path: w.path }) : $t("worktrees.itemTitle", { path: w.path })}
           onclick={() => open(w)}
           onkeydown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), open(w))}
           oncontextmenu={(e) => openMenu(e, w)}
         >
           <FolderGit2 size={13} />
           <span class="name">{label(w)}</span>
-          {#if w.is_main}<span class="tag">main</span>{/if}
+          {#if w.is_main}<span class="tag">{$t("worktrees.mainTag")}</span>{/if}
           {#if w.is_locked}<Lock size={11} />{/if}
           {#if w.is_prunable}<TriangleAlert size={11} />{/if}
           <span class="dir">{tail(w.path)}</span>

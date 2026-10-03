@@ -19,6 +19,7 @@
     type PaletteItem,
   } from "../../lib/palette";
   import { toastError } from "../../lib/stores/toasts";
+  import { t } from "../../lib/i18n";
 
   interface Ranked {
     item: PaletteItem;
@@ -226,7 +227,7 @@
       class="palette"
       role="dialog"
       aria-modal="true"
-      aria-label="Command palette"
+      aria-label={$t("palette.label")}
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
     >
@@ -238,7 +239,7 @@
           onkeydown={onKeydown}
           class="palette-input"
           type="text"
-          placeholder="Type a command, branch, tab or repository…"
+          placeholder={$t("palette.placeholder")}
           spellcheck="false"
           autocomplete="off"
           role="combobox"
@@ -249,7 +250,7 @@
         />
       </div>
 
-      <ul class="palette-list" id={listId} role="listbox" aria-label="Results" bind:this={listEl}>
+      <ul class="palette-list" id={listId} role="listbox" aria-label={$t("palette.results")} bind:this={listEl}>
         {#each results as r, i (r.item.id)}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <li
@@ -282,14 +283,14 @@
             {/if}
           </li>
         {:else}
-          <li class="palette-empty" role="option" aria-selected="false" aria-disabled="true">No matching commands</li>
+          <li class="palette-empty" role="option" aria-selected="false" aria-disabled="true">{$t("palette.noMatch")}</li>
         {/each}
       </ul>
 
       <div class="palette-footer" aria-hidden="true">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-        <span><kbd>Enter</kbd> run</span>
-        <span><kbd>Esc</kbd> close</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> {$t("palette.navigate")}</span>
+        <span><kbd>Enter</kbd> {$t("palette.run")}</span>
+        <span><kbd>Esc</kbd> {$t("palette.close")}</span>
       </div>
     </div>
   </div>

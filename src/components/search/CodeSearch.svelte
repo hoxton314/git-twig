@@ -12,6 +12,7 @@
   import { selectedCommitOid, selectedWorkingFile, workingFileDiff, workingStatus } from "../../lib/stores/graph";
   import { showBlame } from "../../lib/stores/fileviews";
   import { toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import * as tauri from "../../lib/tauri";
   import type { GrepResult } from "../../lib/types/git";
   import { ChevronDown, ChevronRight, ExternalLink, Loader2, X } from "lucide-svelte";
@@ -135,7 +136,7 @@
       const diff = area === "staged" ? await tauri.getStagedDiff(path, file) : await tauri.getUnstagedDiff(path, file);
       if ($activeRepoPath === path && $selectedWorkingFile?.path === file) $workingFileDiff = diff;
     } catch (err) {
-      toastError("Could not show the diff", err);
+      toastError(tr("search.showDiffFailed"), err);
     }
   }
 
@@ -145,7 +146,7 @@
     try {
       await tauri.openInEditor(path, file);
     } catch (err) {
-      toastError("Open in editor failed", err);
+      toastError(tr("search.openInEditorFailed"), err);
     }
   }
 
@@ -159,7 +160,7 @@
   const fileCount = $derived(result?.files.length ?? 0);
 </script>
 
-<Modal open={!!target} title="Search Code" onclose={close} width="min(960px, 94vw)">
+<Modal open={!!target} title={$t("search.title")} onclose={close} width="min(960px, 94vw)">
   {#if target}
     <div class="search">
       <div class="controls">
@@ -169,18 +170,18 @@
           onkeydown={onKeydown}
           class="query"
           type="text"
-          placeholder={regex ? "Regular expression (POSIX extended)" : "Text to find"}
+          placeholder={regex ? $t("search.regexPlaceholder") : $t("search.textPlaceholder")}
           spellcheck="false"
           autocomplete="off"
-          aria-label="Search code"
+          aria-label={$t("search.queryLabel")}
         />
-        <label class="opt" title="Treat the query as a regular expression (git grep -E)">
+        <label class="opt" title={$t("search.regexTitle")}>
           <input type="checkbox" bind:checked={regex} /> .*
         </label>
-        <label class="opt" title="Match case">
-          <input type="checkbox" bind:checked={matchCase} /> Aa
+        <label class="opt" title={$t("search.matchCase")}>
+          <input type="checkbox" bind:checked={matchCase} /> Aa <!-- i18n-ignore -->
         </label>
-        <label class="opt" title="Whole words only (git grep -w)">
+        <label class="opt" title={$t("search.wholeWordsTitle")}>
           <input type="checkbox" bind:checked={wholeWord} /> \b
         </label>
       </div>
@@ -190,33 +191,36 @@
           onkeydown={onKeydown}
           class="paths"
           type="text"
-          placeholder="Limit to paths, e.g. src/ *.ts (optional)"
+          placeholder={$t("search.pathsPlaceholder")}
           spellcheck="false"
           autocomplete="off"
-          aria-label="Limit to paths"
+          aria-label={$t("search.pathsLabel")}
         />
         <span class="scope">
           {#if target.rev}
-            In commit <code>{target.label ?? target.rev.slice(0, 7)}</code>
-            <button class="clear" onclick={() => openCodeSearch()} title="Search the working tree instead" aria-label="Search the working tree instead">
+            {$t("search.inCommit")} <code>{target.label ?? target.rev.slice(0, 7)}</code>
+            <button class="clear" onclick={() => openCodeSearch()} title={$t("search.searchWorkingTree")} aria-label={$t("search.searchWorkingTree")}>
               <X size={12} />
             </button>
           {:else}
-            Tracked files in the working tree
+            {$t("search.trackedFiles")}
           {/if}
         </span>
       </div>
 
       <div class="summary" aria-live="polite">
         {#if loading}
-          <Loader2 size={13} class="spinner" /> Searching…
+          <Loader2 size={13} class="spinner" /> {$t("search.searching")}
         {:else if error}
           <span class="error">{error}</span>
         {:else if result}
-          {result.total.toLocaleString()} match{result.total === 1 ? "" : "es"} in {fileCount.toLocaleString()} file{fileCount === 1 ? "" : "s"}
-          {#if result.truncated}<span class="muted"> — stopped at {result.total.toLocaleString()}; narrow the search to see the rest</span>{/if}
+          {$t("search.summary", {
+            matches: $t("search.matchCount", { count: result.total, n: result.total.toLocaleString() }),
+            files: $t("search.fileCount", { count: fileCount, n: fileCount.toLocaleString() }),
+          })}
+          {#if result.truncated}<span class="muted"> {$t("search.truncated", { n: result.total.toLocaleString() })}</span>{/if}
         {:else}
-          <span class="muted">Type at least two characters, or press Enter.</span>
+          <span class="muted">{$t("search.hint")}</span>
         {/if}
       </div>
 
@@ -231,14 +235,14 @@
                   <span class="count">{file.matches.length}</span>
                 </button>
                 {#if !target.rev}
-                  <button class="icon-btn" onclick={() => openInEditor(file.path)} title="Open in editor" aria-label="Open {file.path} in editor">
+                  <button class="icon-btn" onclick={() => openInEditor(file.path)} title={$t("search.openInEditor")} aria-label={$t("search.openFileInEditor", { path: file.path })}>
                     <ExternalLink size={12} />
                   </button>
                 {/if}
               </div>
               {#if !collapsed.has(file.path)}
                 {#each file.matches as m (m.line)}
-                  <button class="match" onclick={() => openMatch(file.path, m.line)} title={!target.rev && workingArea(file.path, $workingStatus) ? "Has uncommitted changes: show its diff" : `Show blame at line ${m.line}`}>
+                  <button class="match" onclick={() => openMatch(file.path, m.line)} title={!target.rev && workingArea(file.path, $workingStatus) ? $t("search.showDiffTitle") : $t("search.showBlameAtLine", { line: m.line })}>
                     <span class="ln">{m.line}</span>
                     <span class="text">{#each splitRuns(m.text, matchRanges(m.text, pattern, opts)) as seg, i (i)}{#if seg.hit}<mark>{seg.text}</mark>{:else}{seg.text}{/if}{/each}</span>
                   </button>

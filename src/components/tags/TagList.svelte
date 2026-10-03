@@ -8,6 +8,7 @@
   import { checkoutCommitAction, copyText } from "../../lib/commitActions";
   import { deleteRemoteTagAction, deleteTagAction, pushTagAction } from "../../lib/tagActions";
   import type { TagInfo } from "../../lib/types/git";
+  import { t } from "../../lib/i18n";
 
   const repoPath = $derived($activeRepoPath);
   const allTags = $derived($tags);
@@ -18,7 +19,7 @@
   const visible = $derived(
     filterLc
       ? allTags.filter(
-          (t) => t.name.toLowerCase().includes(filterLc) || (t.message ?? "").toLowerCase().includes(filterLc),
+          (tag) => tag.name.toLowerCase().includes(filterLc) || (tag.message ?? "").toLowerCase().includes(filterLc),
         )
       : allTags,
   );
@@ -33,58 +34,64 @@
     if (path) refreshTags(path);
   });
 
-  function tooltip(t: TagInfo): string {
-    const lines = [t.name];
-    if (t.short_target_oid) lines.push(`→ ${t.short_target_oid} ${t.commit_summary ?? ""}`.trimEnd());
-    if (t.annotated) {
-      const by = t.tagger_name ? ` by ${t.tagger_name}` : "";
-      lines.push(`Annotated${by}, ${new Date(t.timestamp * 1000).toLocaleString()}`);
-      if (t.message) lines.push("", t.message);
+  function tooltip(tag: TagInfo): string {
+    const lines = [tag.name];
+    if (tag.short_target_oid) lines.push(`→ ${tag.short_target_oid} ${tag.commit_summary ?? ""}`.trimEnd());
+    if (tag.annotated) {
+      const date = new Date(tag.timestamp * 1000).toLocaleString();
+      lines.push(
+        tag.tagger_name ? $t("tags.annotatedBy", { name: tag.tagger_name, date }) : $t("tags.annotated", { date }),
+      );
+      if (tag.message) lines.push("", tag.message);
     } else {
-      lines.push("Lightweight tag");
+      lines.push($t("tags.lightweight"));
     }
     return lines.join("\n");
   }
 
-  function show(t: TagInfo) {
-    if (t.target_oid) revealCommit(t.target_oid);
+  function show(tag: TagInfo) {
+    if (tag.target_oid) revealCommit(tag.target_oid);
   }
 
-  function items(t: TagInfo): MenuItem[] {
+  function items(tag: TagInfo): MenuItem[] {
     const path = repoPath;
     if (!path) return [];
-    const target = t.target_oid;
+    const target = tag.target_oid;
     return [
-      { label: "Show in graph", disabled: !target, action: () => show(t) },
+      { label: $t("tags.showInGraph"), disabled: !target, action: () => show(tag) },
       {
-        label: "Checkout tag (detached)",
+        label: $t("tags.checkoutDetached"),
         disabled: !target,
         action: () => target && checkoutCommitAction(path, target),
       },
       { separator: true },
-      { label: "Push tag to remote", action: () => pushTagAction(path, t.name) },
-      { label: "Copy tag name", action: () => copyText(t.name, "tag name") },
+      { label: $t("tags.pushToRemote"), action: () => pushTagAction(path, tag.name) },
+      { label: $t("tags.copyName"), action: () => copyText(tag.name, $t("tags.nameWhat")) },
       { separator: true },
-      { label: "Delete tag", danger: true, action: () => deleteTagAction(path, t) },
-      { label: "Delete tag from remote", danger: true, action: () => deleteRemoteTagAction(path, t) },
+      { label: $t("tags.delete"), danger: true, action: () => deleteTagAction(path, tag) },
+      { label: $t("tags.deleteFromRemote"), danger: true, action: () => deleteRemoteTagAction(path, tag) },
     ];
   }
 
-  function openMenu(e: MouseEvent, t: TagInfo) {
+  function openMenu(e: MouseEvent, tag: TagInfo) {
     e.preventDefault();
-    menu = { tag: t, x: e.clientX, y: e.clientY };
+    menu = { tag, x: e.clientX, y: e.clientY };
   }
 
-  function onRowKeydown(e: KeyboardEvent, t: TagInfo) {
+  function onRowKeydown(e: KeyboardEvent, tag: TagInfo) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      show(t);
+      show(tag);
     } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
       e.preventDefault();
       e.stopPropagation();
       const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      menu = { tag: t, x: r.left + 24, y: r.bottom };
+      menu = { tag, x: r.left + 24, y: r.bottom };
     }
+  }
+
+  function onFilterKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") filter = "";
   }
 
   function createAtHead() {
@@ -97,18 +104,18 @@
     <button class="toggle" onclick={() => (expanded = !expanded)} aria-expanded={expanded}>
       {#if expanded}<ChevronDown size={14} />{:else}<ChevronRight size={14} />{/if}
       <Tag size={14} />
-      <span>Tags</span>
+      <span>{$t("tags.title")}</span>
       <span class="count">{filterLc ? `${visible.length}/${allTags.length}` : allTags.length}</span>
     </button>
-    <button class="icon-btn" onclick={createAtHead} title="New tag at HEAD" aria-label="New tag at HEAD">
+    <button class="icon-btn" onclick={createAtHead} title={$t("tags.newAtHead")} aria-label={$t("tags.newAtHead")}>
       <Plus size={13} />
     </button>
     <button
       class="icon-btn"
       onclick={() => repoPath && pushTagAction(repoPath)}
       disabled={allTags.length === 0}
-      title="Push all tags"
-      aria-label="Push all tags"
+      title={$t("tags.pushAll")}
+      aria-label={$t("tags.pushAll")}
     >
       <Upload size={13} />
     </button>
@@ -120,34 +127,34 @@
         <Search size={12} />
         <input
           type="text"
-          placeholder="Filter tags..."
-          aria-label="Filter tags"
+          placeholder={$t("tags.filterPlaceholder")}
+          aria-label={$t("tags.filterLabel")}
           bind:value={filter}
-          onkeydown={(e) => e.key === "Escape" && (filter = "")}
+          onkeydown={onFilterKeydown}
         />
       </div>
     {/if}
 
     {#if $tagsLoading && allTags.length === 0}
-      <div class="empty">Loading tags…</div>
+      <div class="empty">{$t("tags.loading")}</div>
     {:else if allTags.length === 0}
-      <div class="empty">No tags yet</div>
+      <div class="empty">{$t("tags.none")}</div>
     {:else if visible.length === 0}
-      <div class="empty">No tags match “{filter}”</div>
+      <div class="empty">{$t("tags.noMatch", { filter })}</div>
     {:else}
-      {#each visible as t (t.name)}
+      {#each visible as tag (tag.name)}
         <div
           class="tag-item"
           role="button"
           tabindex="0"
-          title={tooltip(t)}
-          onclick={() => show(t)}
-          onkeydown={(e) => onRowKeydown(e, t)}
-          oncontextmenu={(e) => openMenu(e, t)}
+          title={tooltip(tag)}
+          onclick={() => show(tag)}
+          onkeydown={(e) => onRowKeydown(e, tag)}
+          oncontextmenu={(e) => openMenu(e, tag)}
         >
-          <Tag size={11} class={t.annotated ? "tag-icon annotated" : "tag-icon"} />
-          <span class="tag-name">{t.name}</span>
-          {#if t.short_target_oid}<span class="oid">{t.short_target_oid}</span>{/if}
+          <Tag size={11} class={tag.annotated ? "tag-icon annotated" : "tag-icon"} />
+          <span class="tag-name">{tag.name}</span>
+          {#if tag.short_target_oid}<span class="oid">{tag.short_target_oid}</span>{/if}
         </div>
       {/each}
     {/if}

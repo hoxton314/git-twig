@@ -69,6 +69,15 @@ export function tr(key: MessageKey, params?: Params): string {
   return translate(get(locale), key, params);
 }
 
+/**
+ * Split a translated message at its `{name}` placeholders, for markup that
+ * wraps a value (`<strong>{branch}</strong>`): odd indices are placeholder
+ * names, even indices plain text.
+ */
+export function splitMessage(msg: string): string[] {
+  return msg.split(/\{(\w+)\}/);
+}
+
 /** Placeholder names used by a message (all plural forms). */
 export function placeholders(msg: Message): string[] {
   const texts = typeof msg === "string" ? [msg] : Object.values(msg);

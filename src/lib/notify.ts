@@ -7,6 +7,7 @@
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import type { BranchInfo } from "./types/git";
 import { toast } from "./stores/toasts";
+import { tr } from "./i18n";
 
 export type NotifyMode = "off" | "current" | "all";
 
@@ -38,7 +39,7 @@ export function newUpstreamCommits(before: BranchInfo[], after: BranchInfo[], mo
 /** One line per branch: "main: 3 new commits on origin/main". */
 export function describe(events: NewCommits[]): string {
   return events
-    .map((e) => `${e.branch}: ${e.count} new commit${e.count === 1 ? "" : "s"} on ${e.upstream}`)
+    .map((e) => tr("notify.newCommitsLine", { branch: e.branch, count: e.count, upstream: e.upstream }))
     .join("\n");
 }
 
@@ -85,5 +86,5 @@ export async function announce(
 /** Tell the user about new upstream commits in `repoName`. */
 export async function announceNewCommits(repoName: string, events: NewCommits[]): Promise<void> {
   if (events.length === 0) return;
-  await announce(`New commits in ${repoName}`, describe(events));
+  await announce(tr("notify.newCommitsTitle", { repo: repoName }), describe(events));
 }

@@ -5,6 +5,7 @@
   import { createBranchTarget } from "../../lib/stores/commitUi";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
+  import { t, tr } from "../../lib/i18n";
 
   const target = $derived($createBranchTarget);
 
@@ -32,7 +33,7 @@
     const branch = name.trim();
     if (!path || !target || !branch || busy) return;
     if (/\s/.test(branch)) {
-      error = "Branch names cannot contain spaces.";
+      error = tr("graph.branchNoSpaces");
       return;
     }
     busy = true;
@@ -40,50 +41,50 @@
     try {
       const created = await tauri.createBranch(path, branch, target.oid);
       if (!created.success) {
-        error = created.message.trim() || "Could not create the branch.";
+        error = created.message.trim() || tr("graph.branchCreateError");
         return;
       }
       if (checkout) {
         const co = await tauri.checkoutBranch(path, branch);
         await refreshAll(path);
         if (!co.success) {
-          toast("warning", `Created ${branch}, but checking it out failed: ${co.message.trim()}`, {
-            title: "Checkout Failed",
+          toast("warning", tr("graph.branchCheckoutFailed", { branch, error: co.message.trim() }), {
+            title: tr("commits.checkoutFailed"),
           });
         } else {
-          toast("success", `Created and checked out ${branch}`);
+          toast("success", tr("graph.branchCreatedCheckedOut", { branch }));
         }
       } else {
         await refreshAll(path);
-        toast("success", `Created branch ${branch} at ${target.label}`);
+        toast("success", tr("graph.branchCreated", { branch, target: target.label }));
       }
       busy = false;
       close();
     } catch (err) {
-      toastError("Create Branch Failed", err);
+      toastError(tr("graph.branchCreateFailed"), err);
     } finally {
       busy = false;
     }
   }
 </script>
 
-<Modal open={!!target} title="Create Branch" onclose={close} width="400px">
+<Modal open={!!target} title={$t("graph.createBranch")} onclose={close} width="400px">
   {#if target}
     <form class="dialog" onsubmit={submit}>
-      <p class="desc">New branch at <code>{target.label}</code></p>
+      <p class="desc">{$t("graph.newBranchAt")} <code>{target.label}</code></p>
       <label class="field">
-        <span>Name</span>
-        <input type="text" bind:value={name} placeholder="feature/my-branch" spellcheck="false" autocomplete="off" />
+        <span>{$t("graph.branchName")}</span>
+        <input type="text" bind:value={name} placeholder={$t("graph.branchNamePlaceholder")} spellcheck="false" autocomplete="off" />
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={checkout} />
-        <span>Check out after creating</span>
+        <span>{$t("graph.checkoutAfterCreate")}</span>
       </label>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="actions">
-        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>Cancel</button>
+        <button type="button" class="btn-secondary" onclick={close} disabled={busy}>{$t("common.cancel")}</button>
         <button type="submit" class="btn-primary" disabled={busy || !name.trim()}>
-          {busy ? "Creating…" : "Create Branch"}
+          {busy ? $t("graph.creating") : $t("graph.createBranch")}
         </button>
       </div>
     </form>

@@ -15,6 +15,7 @@
   import { settings, settingsReady } from "../../lib/stores/settings";
   import { renderMarkdown } from "../../lib/markdown";
   import { toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
 
   const u = $derived($updater);
   const progressPercent = $derived(u.total > 0 ? Math.round((u.downloaded / u.total) * 100) : 0);
@@ -44,22 +45,22 @@
     if (!a) return;
     e.preventDefault();
     const href = a.getAttribute("href") ?? "";
-    if (/^https?:\/\//i.test(href)) openUrl(href).catch((err) => toastError("Could not open link", err));
+    if (/^https?:\/\//i.test(href)) openUrl(href).catch((err) => toastError(tr("updater.openLinkFailed"), err));
   }
 </script>
 
 {#if u.bannerVisible && (u.status === "available" || u.status === "downloading" || u.status === "error")}
-  <div class="update-banner" role="region" aria-label="Application update">
+  <div class="update-banner" role="region" aria-label={$t("updater.region")}>
     <div class="update-header">
       <span class="update-title">
         {#if u.status === "error"}
-          Update failed
+          {$t("updater.failed")}
         {:else}
-          Twig {u.version} is available
+          {$t("updater.available", { version: u.version })}
         {/if}
       </span>
       {#if u.status !== "downloading"}
-        <button class="icon-btn" onclick={dismissUpdateBanner} aria-label="Dismiss update notification" title="Dismiss">
+        <button class="icon-btn" onclick={dismissUpdateBanner} aria-label={$t("updater.dismissLabel")} title={$t("common.dismiss")}>
           <X size={14} />
         </button>
       {/if}
@@ -71,7 +72,7 @@
 
     {#if notesHtml && u.status !== "error"}
       <button class="notes-toggle" onclick={() => (showNotes = !showNotes)} aria-expanded={showNotes}>
-        {showNotes ? "Hide release notes" : "Show release notes"}
+        {showNotes ? $t("updater.hideNotes") : $t("updater.showNotes")}
       </button>
       {#if showNotes}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -88,21 +89,21 @@
         <div
           class="progress-bar"
           role="progressbar"
-          aria-label="Downloading update"
+          aria-label={$t("updater.downloadingLabel")}
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow={u.total > 0 ? progressPercent : undefined}
         >
           <div class="progress-fill" class:indeterminate={u.total === 0} style="width: {u.total > 0 ? progressPercent : 30}%"></div>
         </div>
-        <span class="progress-label" aria-live="polite">{u.total > 0 ? `${progressPercent}%` : "Downloading…"}</span>
+        <span class="progress-label" aria-live="polite">{u.total > 0 ? `${progressPercent}%` : $t("updater.downloading")}</span>
       {:else if u.status === "error"}
-        <button class="btn-update" onclick={installUpdate}>Retry</button>
-        <button class="btn-secondary" onclick={dismissUpdateBanner}>Close</button>
+        <button class="btn-update" onclick={installUpdate}>{$t("common.retry")}</button>
+        <button class="btn-secondary" onclick={dismissUpdateBanner}>{$t("common.close")}</button>
       {:else}
-        <button class="btn-update" onclick={installUpdate}>Update &amp; Restart</button>
-        <button class="btn-secondary" onclick={skipUpdateVersion}>Skip this version</button>
-        <button class="btn-secondary" onclick={dismissUpdateBanner}>Later</button>
+        <button class="btn-update" onclick={installUpdate}>{$t("updater.updateRestart")}</button>
+        <button class="btn-secondary" onclick={skipUpdateVersion}>{$t("updater.skipVersion")}</button>
+        <button class="btn-secondary" onclick={dismissUpdateBanner}>{$t("updater.later")}</button>
       {/if}
     </div>
   </div>

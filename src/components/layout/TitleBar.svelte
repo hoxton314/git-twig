@@ -2,6 +2,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { getVersion } from "@tauri-apps/api/app";
   import { Minus, Square, X } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   const win = getCurrentWindow();
   let version = $state("");
@@ -24,13 +25,13 @@
 <div class="title-bar" data-tauri-drag-region>
   <span class="title">Twig</span>{#if version}<span class="version">v{version}</span>{/if}
   <span class="spacer"></span>
-  <button class="win-btn" onclick={minimize} title="Minimize">
+  <button class="win-btn" onclick={minimize} title={$t("windows.minimize")}>
     <Minus size={14} />
   </button>
-  <button class="win-btn" onclick={toggleMaximize} title="Maximize">
+  <button class="win-btn" onclick={toggleMaximize} title={$t("windows.maximize")}>
     <Square size={11} />
   </button>
-  <button class="win-btn win-close" onclick={close} title="Close">
+  <button class="win-btn win-close" onclick={close} title={$t("common.close")}>
     <X size={14} />
   </button>
 </div>

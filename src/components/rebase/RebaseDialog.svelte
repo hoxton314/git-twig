@@ -10,6 +10,7 @@
   } from "../../lib/stores/operation";
   import { activeRepo } from "../../lib/stores/repos";
   import { branches, workingStatus } from "../../lib/stores/graph";
+  import { t } from "../../lib/i18n";
 
   const dialog = $derived($rebaseDialog);
   let target = $state("");
@@ -32,36 +33,38 @@
   const dirty = $derived($workingStatus.staged.length + $workingStatus.unstaged.length > 0);
   const busyOp = $derived($operationState !== null && $operationState.kind !== "none");
   const pushed = $derived(head?.upstream != null);
+  /** The hint, split where the bold branch name goes. */
+  const replays = $derived($t("rebase.replays").split("{branch}"));
 
   function close() {
     rebaseDialog.set({ open: false, target: "" });
   }
 
   async function submit() {
-    const t = target.trim();
-    if (!t || $operationBusy || busyOp) return;
+    const onto = target.trim();
+    if (!onto || $operationBusy || busyOp) return;
     close();
-    await rebaseOnto(t, autostash);
+    await rebaseOnto(onto, autostash);
   }
 
   function interactive() {
-    const t = target.trim();
+    const base = target.trim();
     close();
-    openInteractiveRebase(t);
+    openInteractiveRebase(base);
   }
 </script>
 
-<Modal open={dialog.open} title="Rebase {headName}" onclose={close} width="480px">
+<Modal open={dialog.open} title={$t("rebase.title", { branch: headName })} onclose={close} width="480px">
   <form class="body" onsubmit={(e) => { e.preventDefault(); submit(); }}>
     <label class="field">
-      <span class="label">Onto branch or commit</span>
+      <span class="label">{$t("rebase.onto")}</span>
       <div class="input-wrap">
         <GitBranch size={13} />
         <input
           type="text"
           list="rebase-targets"
           bind:value={target}
-          placeholder="e.g. main, origin/main, a1b2c3d"
+          placeholder={$t("rebase.ontoPlaceholder")}
           spellcheck="false"
           autocomplete="off"
         />
@@ -74,35 +77,34 @@
     </label>
 
     <p class="hint">
-      Replays the commits of <strong>{headName}</strong> that are not in the target on top of it.
+      {replays[0]}<strong>{headName}</strong>{replays[1] ?? ""}
     </p>
 
     {#if dirty}
       <label class="check">
         <input type="checkbox" bind:checked={autostash} />
-        Stash local changes during the rebase (autostash)
+        {$t("rebase.autostashLabel")}
       </label>
     {/if}
 
     {#if pushed}
       <p class="warn">
-        {headName} tracks {head?.upstream}. Rebasing rewrites its history; you will need to
-        force push afterwards.
+        {$t("rebase.tracksWarning", { branch: headName, upstream: head?.upstream ?? "" })}
       </p>
     {/if}
     {#if busyOp}
-      <p class="warn">Another operation is in progress. Continue or abort it first.</p>
+      <p class="warn">{$t("rebase.anotherInProgress")}</p>
     {/if}
 
     <div class="footer">
-      <button type="button" class="btn" onclick={interactive} disabled={busyOp} title="Choose, reorder, squash or reword commits">
-        <ListOrdered size={13} /> Interactive…
+      <button type="button" class="btn" onclick={interactive} disabled={busyOp} title={$t("rebase.interactiveButtonTitle")}>
+        <ListOrdered size={13} /> {$t("rebase.interactiveButton")}
       </button>
       <span class="spacer"></span>
-      <button type="button" class="btn" onclick={close}>Cancel</button>
+      <button type="button" class="btn" onclick={close}>{$t("common.cancel")}</button>
       <button type="submit" class="btn primary" disabled={!target.trim() || !!$operationBusy || busyOp}>
         {#if $operationBusy}<Loader2 size={13} class="spinner" />{/if}
-        Rebase
+        {$t("rebase.rebase")}
       </button>
     </div>
   </form>

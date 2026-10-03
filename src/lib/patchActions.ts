@@ -8,10 +8,11 @@ import type { ApplyPatchResult, PatchInfo } from "./types/git";
 import { refreshAll } from "./stores/graph";
 import { refreshOperation } from "./stores/operation";
 import { toast, toastError } from "./stores/toasts";
+import { tr } from "./i18n";
 
-const PATCH_FILTERS = [
-  { name: "Patches", extensions: ["patch", "diff", "mbox", "eml"] },
-  { name: "All files", extensions: ["*"] },
+const patchFilters = () => [
+  { name: tr("patches.filterPatches"), extensions: ["patch", "diff", "mbox", "eml"] },
+  { name: tr("patches.filterAll"), extensions: ["*"] },
 ];
 
 /** File-name-safe slug of a commit subject, like `git format-patch`. */
@@ -38,32 +39,40 @@ export async function savePatchesAction(
   const ordered = [...oids].reverse();
   const n = ordered.length;
   const target = opts.folder
-    ? await open({ directory: true, multiple: false, title: `Save ${n} patch files to folder` })
+    ? await open({ directory: true, multiple: false, title: tr("patches.saveToFolderTitle", { count: n }) })
     : await save({
-        title: n === 1 ? "Save Commit as Patch" : `Save ${n} Commits as One Patch File`,
+        title: n === 1 ? tr("patches.saveOneTitle") : tr("patches.saveManyTitle", { count: n }),
         defaultPath: opts.defaultName ?? (n === 1 ? `${ordered[0].slice(0, 7)}.patch` : `${n}-commits.mbox`),
-        filters: PATCH_FILTERS,
+        filters: patchFilters(),
       });
   if (!target || Array.isArray(target)) return;
   try {
     const files = await tauri.formatPatches(path, ordered, target, !opts.folder);
     toast(
       "success",
-      opts.folder ? `Saved ${files.length} patch file${files.length === 1 ? "" : "s"} to ${target}` : `Saved ${n === 1 ? "patch" : `${n} commits`} to ${target}`,
+      opts.folder
+        ? tr("patches.savedFiles", { count: files.length, target })
+        : n === 1
+          ? tr("patches.savedPatch", { target })
+          : tr("patches.savedCommits", { count: n, target }),
     );
   } catch (err) {
-    toastError("Save Patch Failed", err);
+    toastError(tr("patches.saveFailed"), err);
   }
 }
 
 export async function saveWorkingPatchAction(path: string) {
-  const target = await save({ title: "Save Working Changes as Patch", defaultPath: "changes.patch", filters: PATCH_FILTERS });
+  const target = await save({
+    title: tr("patches.saveWorkingTitle"),
+    defaultPath: "changes.patch",
+    filters: patchFilters(),
+  });
   if (!target) return;
   try {
     await tauri.saveWorkingPatch(path, target);
-    toast("success", `Saved working changes to ${target}`);
+    toast("success", tr("patches.savedWorking", { target }));
   } catch (err) {
-    toastError("Save Patch Failed", err);
+    toastError(tr("patches.saveFailed"), err);
   }
 }
 
@@ -73,17 +82,19 @@ export function applySummary(file: string, info: PatchInfo): string {
   const lines: string[] = [];
   if (info.kind === "mbox") {
     const n = info.count;
-    lines.push(`Apply ${n} commit${n === 1 ? "" : "s"} from ${name} onto the current branch (git am)?`, "");
+    lines.push(tr("patches.applyMboxConfirm", { count: n, name }), "");
     const shown = info.commits.slice(0, 10);
     lines.push(...shown.map((s) => `• ${s}`));
-    if (n > shown.length) lines.push(`… and ${n - shown.length} more`);
+    if (n > shown.length) lines.push(tr("patches.andMore", { count: n - shown.length }));
   } else if (info.applies_cleanly) {
-    lines.push(`Apply ${name} to the working tree?`);
+    lines.push(tr("patches.applyConfirm", { name }));
   } else {
     lines.push(
-      `${name} doesn't apply cleanly${info.check_error ? `:\n${info.check_error.split("\n")[0]}` : "."}`,
+      info.check_error
+        ? tr("patches.notCleanError", { name, error: info.check_error.split("\n")[0] })
+        : tr("patches.notClean", { name }),
       "",
-      "Apply it with a three-way merge? Conflicting files are left with conflict markers to resolve.",
+      tr("patches.threeWayConfirm"),
     );
   }
   if (info.stat) lines.push("", info.stat);
@@ -95,28 +106,32 @@ export function failureText(r: ApplyPatchResult): string {
   const why = r.message.trim().split("\n").filter(Boolean).slice(-3).join("\n");
   const detail = why ? `\n\n${why}` : "";
   if (r.stopped) {
-    const what = r.conflicted ? "stopped with conflicts. Resolve them, then continue" : "stopped. Fix the problem, then continue";
-    return `Applying the patch series ${what}, skip or abort from the banner above the graph.${detail}`;
+    return tr(r.conflicted ? "patches.seriesConflicts" : "patches.seriesStopped") + detail;
   }
-  if (r.conflicted) return `The patch was applied with conflicts. Resolve the conflicted files in the changes list.${detail}`;
-  return `git could not apply the patch.${detail}`;
+  if (r.conflicted) return tr("patches.appliedWithConflicts") + detail;
+  return tr("patches.gitCouldNotApply") + detail;
 }
 
 export async function applyPatchAction(path: string) {
-  const file = await open({ title: "Apply Patch File", multiple: false, directory: false, filters: PATCH_FILTERS });
+  const file = await open({
+    title: tr("patches.applyFileTitle"),
+    multiple: false,
+    directory: false,
+    filters: patchFilters(),
+  });
   if (!file || Array.isArray(file)) return;
   let info: PatchInfo;
   try {
     info = await tauri.inspectPatch(path, file);
   } catch (err) {
-    toastError("Cannot Apply Patch", err);
+    toastError(tr("patches.cannotApply"), err);
     return;
   }
   const ok = await ask(applySummary(file, info), {
-    title: "Apply Patch",
+    title: tr("patches.applyTitle"),
     kind: info.applies_cleanly === false ? "warning" : "info",
-    okLabel: info.applies_cleanly === false ? "Apply (3-way)" : "Apply",
-    cancelLabel: "Cancel",
+    okLabel: info.applies_cleanly === false ? tr("patches.apply3way") : tr("common.apply"),
+    cancelLabel: tr("common.cancel"),
   });
   if (!ok) return;
   try {
@@ -124,15 +139,20 @@ export async function applyPatchAction(path: string) {
     await refreshAll(path);
     if (r.mode === "am") await refreshOperation(path);
     if (r.success) {
-      toast("success", r.mode === "am" ? `Applied ${info.count} commit${info.count === 1 ? "" : "s"} from the patch` : "Applied the patch to the working tree");
+      toast(
+        "success",
+        r.mode === "am"
+          ? tr("patches.appliedCommits", { count: info.count })
+          : tr("patches.appliedWorking"),
+      );
     } else {
       toast("warning", failureText(r), {
-        title: r.conflicted ? "Conflicts" : "Apply Patch Stopped",
+        title: r.conflicted ? tr("commits.conflicts") : tr("patches.applyStopped"),
         duration: 0,
       });
     }
   } catch (err) {
     await refreshAll(path);
-    toastError("Apply Patch Failed", err);
+    toastError(tr("patches.applyFailed"), err);
   }
 }

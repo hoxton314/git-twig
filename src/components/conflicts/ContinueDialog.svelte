@@ -8,6 +8,7 @@
     operationBusy,
     operationLabel,
   } from "../../lib/stores/operation";
+  import { t } from "../../lib/i18n";
 
   const st = $derived($operationState);
   const dialog = $derived($continueDialog);
@@ -22,7 +23,7 @@
 
   const kind = $derived(st?.kind ?? "none");
   const title = $derived(
-    kind === "merge" ? "Commit Merge" : `Continue ${operationLabel(kind)}`,
+    kind === "merge" ? $t("conflicts.commitMergeTitle") : $t("operation.continue", { name: operationLabel(kind) }),
   );
 
   function close() {
@@ -48,11 +49,13 @@
   <div class="body">
     <p class="hint">
       {#if kind === "rebase"}
-        Message for the rebased commit{st?.current_subject ? ` "${st.current_subject}"` : ""}.
+        {st?.current_subject
+          ? $t("conflicts.rebasedMessageNamed", { subject: st.current_subject })
+          : $t("conflicts.rebasedMessage")}
       {:else if kind === "merge"}
-        All conflicts are resolved. Review the merge commit message.
+        {$t("conflicts.reviewMergeMessage")}
       {:else}
-        Message for the {operationLabel(kind).toLowerCase()} commit.
+        {$t("conflicts.messageFor", { name: operationLabel(kind).toLowerCase() })}
       {/if}
     </p>
     <textarea
@@ -60,15 +63,15 @@
       bind:value={message}
       rows="8"
       spellcheck="true"
-      aria-label="Commit message"
+      aria-label={$t("conflicts.commitMessage")}
       onkeydown={onKeydown}
     ></textarea>
     <div class="footer">
-      <span class="shortcut">Ctrl+Enter to continue</span>
-      <button class="btn" onclick={close}>Cancel</button>
+      <span class="shortcut">{$t("conflicts.ctrlEnter")}</span>
+      <button class="btn" onclick={close}>{$t("common.cancel")}</button>
       <button class="btn primary" onclick={submit} disabled={!message.trim() || !!$operationBusy}>
         {#if $operationBusy}<Loader2 size={13} class="spinner" />{:else}<Play size={13} />{/if}
-        {kind === "merge" ? "Commit merge" : "Continue"}
+        {kind === "merge" ? $t("conflicts.commitMerge") : $t("conflicts.continue")}
       </button>
     </div>
   </div>

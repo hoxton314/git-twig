@@ -4,6 +4,7 @@
   import type { GitConfig, SigningKey } from "../../lib/types/git";
   import { toast } from "../../lib/stores/toasts";
   import { clearSignatureCache } from "../../lib/stores/signatures";
+  import { t, tr } from "../../lib/i18n";
 
   let userName = $state("");
   let userEmail = $state("");
@@ -71,13 +72,13 @@
       }
       await savePromise;
       if (saveError) {
-        toast("error", `Settings could not be saved: ${saveError}`, { title: "Commit signing" });
+        toast("error", tr("gitconfig.saveFailed", { error: saveError }), { title: tr("gitconfig.commitSigning") });
         return;
       }
       const res = await tauri.testSigning();
-      toast(res.success ? "success" : "error", res.message, { title: "Commit signing" });
+      toast(res.success ? "success" : "error", res.message, { title: tr("gitconfig.commitSigning") });
     } catch (e) {
-      toast("error", String(e), { title: "Commit signing" });
+      toast("error", String(e), { title: tr("gitconfig.commitSigning") });
     } finally {
       testing = false;
     }
@@ -126,38 +127,38 @@
     }, 500);
   }
 
-  const pullOptions = [
-    { value: "false", label: "Merge (default)" },
-    { value: "true", label: "Rebase" },
-    { value: "ff-only", label: "Fast-forward only" },
-  ];
+  const pullOptions = $derived([
+    { value: "false", text: $t("gitconfig.pullMerge") },
+    { value: "true", text: $t("gitconfig.pullRebase") },
+    { value: "ff-only", text: $t("gitconfig.pullFfOnly") },
+  ]);
 </script>
 
 <div class="section">
-  <h1 class="section-heading">Git Configuration</h1>
+  <h1 class="section-heading">{$t("gitconfig.heading")}</h1>
 
   {#if loading}
-    <p class="loading-text">Loading git config...</p>
+    <p class="loading-text">{$t("gitconfig.loading")}</p>
   {:else if loadError}
-    <div class="notice error">Failed to read git config: {loadError}</div>
+    <div class="notice error">{$t("gitconfig.loadFailed", { error: loadError })}</div>
   {:else}
     <p class="section-desc">
-      These settings map to your global <code>~/.gitconfig</code>. Changes are written directly to git config.
+      {$t("gitconfig.descBefore")}<code>{"~/.gitconfig"}</code>{$t("gitconfig.descAfter")}
     </p>
 
     <div class="setting-group">
-      <h2 class="group-heading">Identity</h2>
+      <h2 class="group-heading">{$t("gitconfig.identity")}</h2>
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">User name</span>
-          <span class="label-hint">git config --global user.name</span>
+          <span class="label-text">{$t("gitconfig.userName")}</span>
+          <span class="label-hint">{"git config --global user.name"}</span>
         </div>
         <div class="setting-control">
           <input
             type="text"
             class="text-input"
-            placeholder="Your Name"
+            placeholder={$t("gitconfig.userNamePlaceholder")}
             value={userName}
             onchange={(e) => { userName = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
           />
@@ -166,14 +167,14 @@
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Email</span>
-          <span class="label-hint">git config --global user.email</span>
+          <span class="label-text">{$t("gitconfig.email")}</span>
+          <span class="label-hint">{"git config --global user.email"}</span>
         </div>
         <div class="setting-control">
           <input
             type="text"
             class="text-input"
-            placeholder="you@example.com"
+            placeholder={$t("gitconfig.emailPlaceholder")}
             value={userEmail}
             onchange={(e) => { userEmail = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
           />
@@ -182,12 +183,12 @@
     </div>
 
     <div class="setting-group">
-      <h2 class="group-heading">Pull & Fetch</h2>
+      <h2 class="group-heading">{$t("gitconfig.pullFetch")}</h2>
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Pull strategy</span>
-          <span class="label-hint">How to reconcile divergent branches on pull</span>
+          <span class="label-text">{$t("gitconfig.pullStrategy")}</span>
+          <span class="label-hint">{$t("gitconfig.pullStrategyHint")}</span>
         </div>
         <div class="setting-control">
           <select
@@ -195,7 +196,7 @@
             onchange={(e) => { pullRebase = e.currentTarget.value as typeof pullRebase; scheduleGitConfigSave(); }}
           >
             {#each pullOptions as opt (opt.value)}
-              <option value={opt.value}>{opt.label}</option>
+              <option value={opt.value}>{opt.text}</option>
             {/each}
           </select>
         </div>
@@ -203,14 +204,14 @@
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Auto-prune on fetch</span>
-          <span class="label-hint">Remove stale remote-tracking branches when fetching</span>
+          <span class="label-text">{$t("gitconfig.autoPrune")}</span>
+          <span class="label-hint">{$t("gitconfig.autoPruneHint")}</span>
         </div>
         <div class="setting-control">
           <label class="toggle">
             <input
               type="checkbox"
-              aria-label="Auto-prune on fetch"
+              aria-label={$t("gitconfig.autoPrune")}
               checked={fetchPrune}
               onchange={() => { fetchPrune = !fetchPrune; scheduleGitConfigSave(); }}
             />
@@ -221,18 +222,18 @@
     </div>
 
     <div class="setting-group">
-      <h2 class="group-heading">Signing</h2>
+      <h2 class="group-heading">{$t("gitconfig.signing")}</h2>
 
       <div class="setting-row">
         <div class="setting-label">
-          <span class="label-text">Sign commits</span>
-          <span class="label-hint">Sign every commit (<code>commit.gpgsign</code>) with a GPG or SSH key</span>
+          <span class="label-text">{$t("gitconfig.signCommits")}</span>
+          <span class="label-hint">{$t("gitconfig.signCommitsHintBefore")}<code>{"commit.gpgsign"}</code>{$t("gitconfig.signCommitsHintAfter")}</span>
         </div>
         <div class="setting-control">
           <label class="toggle">
             <input
               type="checkbox"
-              aria-label="Sign commits"
+              aria-label={$t("gitconfig.signCommits")}
               checked={gpgSign}
               onchange={() => { gpgSign = !gpgSign; scheduleGitConfigSave(); }}
             />
@@ -244,12 +245,12 @@
       {#if gpgSign}
         <div class="setting-row">
           <div class="setting-label">
-            <span class="label-text">Signing format</span>
-            <span class="label-hint">GPG (OpenPGP) or an SSH key (<code>gpg.format</code>)</span>
+            <span class="label-text">{$t("gitconfig.signingFormat")}</span>
+            <span class="label-hint">{$t("gitconfig.signingFormatHintBefore")}<code>{"gpg.format"}</code>{$t("gitconfig.signingFormatHintAfter")}</span>
           </div>
           <div class="setting-control">
             <select
-              aria-label="Signing format"
+              aria-label={$t("gitconfig.signingFormat")}
               value={gpgFormat}
               onchange={(e) => {
                 gpgFormat = e.currentTarget.value;
@@ -257,8 +258,8 @@
                 scheduleGitConfigSave();
               }}
             >
-              <option value="openpgp">GPG (OpenPGP)</option>
-              <option value="ssh">SSH key</option>
+              <option value="openpgp">{$t("gitconfig.formatOpenpgp")}</option>
+              <option value="ssh">{$t("gitconfig.formatSsh")}</option>
               {#if gpgFormat !== "openpgp" && gpgFormat !== "ssh"}
                 <option value={gpgFormat}>{gpgFormat === "x509" ? "X.509 (gpgsm)" : gpgFormat}</option>
               {/if}
@@ -268,22 +269,22 @@
 
         <div class="setting-row">
           <div class="setting-label">
-            <span class="label-text">Signing key</span>
+            <span class="label-text">{$t("gitconfig.signingKey")}</span>
             <span class="label-hint">
-              {gpgFormat === "ssh" ? "Public key file, or a key from your SSH agent" : "GPG secret key ID"}
-              {#if !keysLoading && keys.length === 0} — none found; enter one manually{/if}
+              {gpgFormat === "ssh" ? $t("gitconfig.signingKeyHintSsh") : $t("gitconfig.signingKeyHintGpg")}
+              {#if !keysLoading && keys.length === 0} {$t("gitconfig.noKeysFound")}{/if}
             </span>
           </div>
           <div class="setting-control signing-key">
             {#if keys.length > 0}
               <select
-                aria-label="Signing key"
+                aria-label={$t("gitconfig.signingKey")}
                 value={keys.some((k) => k.value === signingKey) ? signingKey : ""}
                 onchange={(e) => {
                   if (e.currentTarget.value) { signingKey = e.currentTarget.value; scheduleGitConfigSave(); }
                 }}
               >
-                <option value="">{signingKey && !keys.some((k) => k.value === signingKey) ? "Custom (below)" : "Choose a key…"}</option>
+                <option value="">{signingKey && !keys.some((k) => k.value === signingKey) ? $t("gitconfig.keyCustom") : $t("gitconfig.keyChoose")}</option>
                 {#each keys as k (k.value)}
                   <option value={k.value}>{k.label}</option>
                 {/each}
@@ -292,13 +293,13 @@
             <input
               type="text"
               class="text-input"
-              placeholder={gpgFormat === "ssh" ? "~/.ssh/id_ed25519.pub or key::ssh-ed25519 …" : "Key ID or fingerprint"}
-              aria-label="Signing key value"
+              placeholder={gpgFormat === "ssh" ? $t("gitconfig.keyPlaceholderSsh") : $t("gitconfig.keyPlaceholderGpg")}
+              aria-label={$t("gitconfig.keyValueLabel")}
               value={signingKey}
               onchange={(e) => { signingKey = e.currentTarget.value.trim(); scheduleGitConfigSave(); }}
             />
             <button class="test-btn" onclick={runSigningTest} disabled={testing || !signingKey}>
-              {testing ? "Testing…" : "Test signing"}
+              {testing ? $t("gitconfig.testing") : $t("gitconfig.testSigning")}
             </button>
           </div>
         </div>
@@ -311,11 +312,11 @@
       <div class="setting-row">
         <div class="setting-label">
           <span class="label-text">Git LFS</span>
-          <span class="label-hint">Large File Storage support</span>
+          <span class="label-hint">{$t("gitconfig.lfsHint")}</span>
         </div>
         <div class="setting-control">
           <span class="status-badge" class:installed={lfsInstalled}>
-            {lfsInstalled ? "Installed" : "Not detected"}
+            {lfsInstalled ? $t("gitconfig.lfsInstalled") : $t("gitconfig.lfsNotDetected")}
           </span>
         </div>
       </div>
@@ -324,7 +325,7 @@
     {#if saveError}
       <div class="notice error">{saveError}</div>
     {:else if saving}
-      <div class="notice saving">Saving to git config...</div>
+      <div class="notice saving">{$t("gitconfig.saving")}</div>
     {/if}
   {/if}
 </div>

@@ -8,6 +8,7 @@
   import { operationState, refreshOperation } from "../../lib/stores/operation";
   import { EMPTY_SELECTION } from "../../lib/graphSelection";
   import * as tauri from "../../lib/tauri";
+  import { t, tr } from "../../lib/i18n";
   import type { SquashPlan } from "../../lib/types/git";
 
   const target = $derived($squashTarget);
@@ -59,8 +60,8 @@
       if ($operationState?.kind === "rebase") {
         // Stopped part-way (e.g. a newer commit conflicts): the banner owns it now.
         $commitSelection = EMPTY_SELECTION;
-        toast("warning", "The squash paused with conflicts. Use the banner to continue or abort.", {
-          title: "Squash",
+        toast("warning", tr("graph.squashPaused"), {
+          title: tr("graph.squashTitle"),
           duration: 0,
         });
         busy = false;
@@ -68,62 +69,61 @@
         return;
       }
       if (!res.success) {
-        error = res.message.trim() || "The squash did not complete.";
+        error = res.message.trim() || tr("graph.squashIncomplete");
         return;
       }
       // The squashed commits no longer exist.
       $commitSelection = EMPTY_SELECTION;
       $selectedCommitOid = null;
-      toast("success", `Squashed ${plan.count} commits into one`, {
-        action: { label: "Undo history…", run: () => undoHistoryOpen.set(true) },
+      toast("success", tr("graph.squashed", { count: plan.count }), {
+        action: { label: tr("commits.undoHistory"), run: () => undoHistoryOpen.set(true) },
       });
       busy = false;
       close();
     } catch (err) {
-      toastError("Squash Failed", err);
+      toastError(tr("graph.squashFailed"), err);
     } finally {
       busy = false;
     }
   }
 </script>
 
-<Modal open={!!target} title="Squash Commits" onclose={close} width="520px">
+<Modal open={!!target} title={$t("graph.squashDialogTitle")} onclose={close} width="520px">
   {#if target}
     <form class="dialog" onsubmit={submit}>
       {#if plan}
         <p class="desc">
-          Combine {plan.count} commits into one, starting at <code>{plan.first.slice(0, 7)}</code>.
+          {$t("graph.squashCombine", { count: plan.count })} <code>{plan.first.slice(0, 7)}</code>.
           {#if plan.later > 0}
-            The {plan.later} newer commit{plan.later === 1 ? "" : "s"} on top {plan.later === 1 ? "is" : "are"} rebased onto it.
+            {$t("graph.squashLater", { count: plan.later })}
           {/if}
         </p>
         {#if plan.pushed_to.length > 0}
           <p class="warn" role="alert">
-            These commits are already on {plan.pushed_to.join(", ")}. Squashing rewrites them, so the branch
-            will need a force push, and anyone who based work on them will have to rebase.
+            {$t("graph.squashPushed", { branches: plan.pushed_to.join(", ") })}
           </p>
         {:else if plan.pushed_unknown}
-          <p class="desc">Couldn't check every remote branch for these commits (very large history).</p>
+          <p class="desc">{$t("graph.squashPushedUnknown")}</p>
         {/if}
         <label class="field">
-          <span>Commit message</span>
-          <textarea bind:value={message} rows="8" spellcheck="false" aria-label="Squashed commit message"></textarea>
+          <span>{$t("graph.squashMessage")}</span>
+          <textarea bind:value={message} rows="8" spellcheck="false" aria-label={$t("graph.squashMessageLabel")}></textarea>
         </label>
         <label class="check">
           <input type="checkbox" bind:checked={autostash} />
-          <span>Stash uncommitted changes while rewriting (autostash)</span>
+          <span>{$t("graph.squashAutostash")}</span>
         </label>
       {:else if !error}
-        <p class="desc">Checking the selection…</p>
+        <p class="desc">{$t("graph.squashChecking")}</p>
       {/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <div class="actions">
         <button type="button" class="btn-secondary" onclick={close} disabled={busy}>
-          {plan ? "Cancel" : "Close"}
+          {plan ? $t("common.cancel") : $t("common.close")}
         </button>
         {#if plan}
           <button type="submit" class="btn-primary" disabled={busy || !message.trim()}>
-            {busy ? "Squashing…" : `Squash ${plan.count} Commits`}
+            {busy ? $t("graph.squashing") : $t("graph.squashButton", { count: plan.count })}
           </button>
         {/if}
       </div>

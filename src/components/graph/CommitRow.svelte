@@ -4,6 +4,7 @@
   import { formatCommitDate } from "./graphLayout";
   import { activeRepoPath } from "../../lib/stores/repos";
   import { signatureFor } from "../../lib/stores/signatures";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     entry: GraphEntry;
@@ -49,9 +50,9 @@
   const bisectLabel = $derived(
     bisect === "good" ? bisectTerms.good
     : bisect === "bad" ? bisectTerms.bad
-    : bisect === "first-bad" ? `first ${bisectTerms.bad}`
-    : bisect === "testing" ? "testing"
-    : bisect === "skip" ? "skipped"
+    : bisect === "first-bad" ? $t("graph.bisectFirst", { term: bisectTerms.bad })
+    : bisect === "testing" ? $t("graph.bisectTesting")
+    : bisect === "skip" ? $t("graph.bisectSkipped")
     : "",
   );
 
@@ -68,7 +69,11 @@
     })
   );
 
-  const dateLabel = $derived(formatCommitDate(commit.timestamp, dateFormat, now));
+  // Reading $t re-formats relative dates when the language changes.
+  const dateLabel = $derived.by(() => {
+    void $t;
+    return formatCommitDate(commit.timestamp, dateFormat, now);
+  });
 
   // Signed commits get a badge; unsigned ones show nothing.
   const signature = $derived(signatureFor($activeRepoPath, commit.oid));
@@ -79,22 +84,31 @@
         ? "bad"
         : "warn",
   );
-  const SIG_TEXT: Record<string, string> = {
-    good: "Verified signature",
-    untrusted: "Good signature, key not trusted",
-    expired: "Expired signature",
-    expired_key: "Signed with an expired key",
-    revoked: "Signed with a revoked key",
-    unknown_key: "Signed, but the key could not be checked",
-    bad: "Bad signature",
-  };
+  const SIG_KEYS = {
+    good: "graph.sigGood",
+    untrusted: "graph.sigUntrusted",
+    expired: "graph.sigExpired",
+    expired_key: "graph.sigExpiredKey",
+    revoked: "graph.sigRevoked",
+    unknown_key: "graph.sigUnknownKey",
+    bad: "graph.sigBad",
+  } as const;
   const sigTitle = $derived(
     $signature
-      ? [SIG_TEXT[$signature.status] ?? "Signed", $signature.signer, $signature.key && `key ${$signature.key}`]
+      ? [
+          $t(SIG_KEYS[$signature.status as keyof typeof SIG_KEYS] ?? "graph.sigSigned"),
+          $signature.signer,
+          $signature.key && $t("graph.sigKey", { key: $signature.key }),
+        ]
           .filter(Boolean)
           .join(" — ")
       : "",
   );
+
+  // Shift-click extends the selection; don't let it select text too.
+  function preventShiftSelect(e: MouseEvent) {
+    if (e.shiftKey) e.preventDefault();
+  }
 </script>
 
 <button
@@ -105,10 +119,7 @@
   aria-pressed={isSelected}
   tabindex="-1"
   onclick={onSelect}
-  onmousedown={(e) => {
-    // Shift-click extends the selection; don't let it select text too.
-    if (e.shiftKey) e.preventDefault();
-  }}
+  onmousedown={preventShiftSelect}
   {oncontextmenu}
 >
   <img
@@ -128,7 +139,7 @@
     </span>
   {/if}
   {#if bisect}
-    <span class="bisect-pill bisect-{bisect}" title="Bisect: {bisectLabel}">{bisectLabel}</span>
+    <span class="bisect-pill bisect-{bisect}" title={$t("graph.bisectTitle", { label: bisectLabel })}>{bisectLabel}</span>
   {/if}
   <span class="summary" title={commit.summary}>{commit.summary}</span>
   <span class="spacer"></span>
@@ -138,7 +149,7 @@
     </span>
   {/if}
   {#if isUnpushed}
-    <span class="unpushed" title="Not pushed to remote">
+    <span class="unpushed" title={$t("graph.notPushed")}>
       <ArrowUp size={11} />
     </span>
   {/if}

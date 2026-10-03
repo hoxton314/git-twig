@@ -28,6 +28,15 @@
   import ContextMenu, { type MenuItem } from "../shared/ContextMenu.svelte";
   import FilePicker from "../history/FilePicker.svelte";
   import StashViewer, { type StashAction } from "./StashViewer.svelte";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
+
+  type FileTag = "untracked" | "unstaged" | "partly staged" | "staged";
+  const TAG_LABELS: Record<FileTag, MessageKey> = {
+    untracked: "stash.tagUntracked",
+    unstaged: "stash.tagUnstaged",
+    "partly staged": "stash.tagPartlyStaged",
+    staged: "stash.tagStaged",
+  };
 
   const repoPath = $derived($activeRepoPath);
 
@@ -91,7 +100,7 @@
     return [...set].sort();
   });
   const fileTags = $derived.by(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, FileTag>();
     for (const f of $workingStatus.unstaged) m.set(f.path, f.is_new ? "untracked" : "unstaged");
     for (const f of $workingStatus.staged) m.set(f.path, m.has(f.path) ? "partly staged" : "staged");
     return m;
@@ -109,7 +118,7 @@
       if (!$activeRepoPath) return;
       expanded = true;
       if (changedFiles.length === 0) {
-        toast("info", "There are no changes to stash.");
+        toast("info", tr("stash.noChanges"));
         return;
       }
       pickerOpen = true;
@@ -131,16 +140,16 @@
         stashMessage = "";
         onlyFiles = [];
         if (/No local changes to save/i.test(result.message)) {
-          toast("info", "No local changes to save");
+          toast("info", tr("stash.noLocalChanges"));
         } else {
-          toast("success", n > 0 ? `Stashed ${n} file${n === 1 ? "" : "s"}` : "Changes stashed");
+          toast("success", n > 0 ? tr("stash.stashedFiles", { count: n }) : tr("stash.stashed"));
         }
         await refreshAll();
       } else {
-        toast("error", result.message.trim(), { title: "Stash failed" });
+        toast("error", result.message.trim(), { title: tr("stash.failed") });
       }
     } catch (err) {
-      toastError("Stash failed", err);
+      toastError(tr("stash.failed"), err);
     } finally {
       loading = false;
     }
@@ -149,14 +158,14 @@
   async function act(action: "apply" | "pop" | "drop", s: StashDetail) {
     if (!repoPath || busy) return;
     if (action === "drop" && $settings.confirm_destructive_ops) {
-      const ok = await ask(`Drop stash "${s.message}"? This cannot be undone.`, {
-        title: "Drop Stash",
+      const ok = await ask(tr("stash.dropConfirm", { message: s.message }), {
+        title: tr("stash.dropTitle"),
         kind: "warning",
       });
       if (!ok) return;
     }
     actionOid = s.oid;
-    const title = action === "pop" ? "Stash pop failed" : action === "apply" ? "Stash apply failed" : "Stash drop failed";
+    const title = tr(action === "pop" ? "stash.popFailed" : action === "apply" ? "stash.applyFailed" : "stash.dropFailed");
     try {
       const result = await tauri.stashAct(repoPath, s.oid, action);
       // Refresh regardless: a conflicting pop/apply still changes the tree.
@@ -165,7 +174,7 @@
         toast("error", result.message.trim(), { title });
       } else {
         if (action !== "apply" && viewing?.oid === s.oid) viewing = null;
-        toast("success", action === "drop" ? "Stash dropped" : action === "pop" ? "Stash popped" : "Stash applied");
+        toast("success", tr(action === "drop" ? "stash.dropped" : action === "pop" ? "stash.popped" : "stash.applied"));
       }
     } catch (err) {
       toastError(title, err);
@@ -190,14 +199,14 @@
       if (result.success) {
         prompt = null;
         if (p.kind === "branch") viewing = null;
-        toast("success", p.kind === "rename" ? "Stash renamed" : `Created branch ${value} from stash`);
+        toast("success", p.kind === "rename" ? tr("stash.renamed") : tr("stash.branchCreated", { branch: value }));
       } else {
         toast("error", result.message.trim(), {
-          title: p.kind === "rename" ? "Rename failed" : "Create branch failed",
+          title: tr(p.kind === "rename" ? "stash.renameFailed" : "stash.branchFailed"),
         });
       }
     } catch (err) {
-      toastError(p.kind === "rename" ? "Rename failed" : "Create branch failed", err);
+      toastError(tr(p.kind === "rename" ? "stash.renameFailed" : "stash.branchFailed"), err);
     } finally {
       actionOid = null;
     }
@@ -220,14 +229,14 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "View changes", action: () => { viewing = s; } },
+        { label: tr("stash.menuView"), action: () => { viewing = s; } },
         { separator: true },
-        { label: "Pop", action: () => handleAction("pop", s), disabled: busy },
-        { label: "Apply", action: () => handleAction("apply", s), disabled: busy },
-        { label: "Create branch from stash…", action: () => handleAction("branch", s), disabled: busy },
-        { label: "Rename…", action: () => handleAction("rename", s), disabled: busy },
+        { label: tr("stash.pop"), action: () => handleAction("pop", s), disabled: busy },
+        { label: tr("common.apply"), action: () => handleAction("apply", s), disabled: busy },
+        { label: tr("stash.menuBranch"), action: () => handleAction("branch", s), disabled: busy },
+        { label: tr("stash.menuRename"), action: () => handleAction("rename", s), disabled: busy },
         { separator: true },
-        { label: "Drop…", action: () => handleAction("drop", s), danger: true, disabled: busy },
+        { label: tr("stash.menuDrop"), action: () => handleAction("drop", s), danger: true, disabled: busy },
       ],
     };
   }
@@ -238,12 +247,12 @@
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 1) return "just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffMins < 1) return $t("stash.justNow");
+      if (diffMins < 60) return $t("stash.minutesAgo", { count: diffMins });
       const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffHours < 24) return $t("stash.hoursAgo", { count: diffHours });
       const diffDays = Math.floor(diffHours / 24);
-      if (diffDays < 30) return `${diffDays}d ago`;
+      if (diffDays < 30) return $t("stash.daysAgo", { count: diffDays });
       return date.toLocaleDateString();
     } catch {
       return "";
@@ -271,7 +280,7 @@
       <ChevronRight size={14} />
     {/if}
     <Archive size={12} />
-    <span class="section-title">Stashes</span>
+    <span class="section-title">{$t("stash.title")}</span>
     <span class="section-count">{details.length}</span>
   </div>
 
@@ -282,7 +291,7 @@
         <input
           class="stash-input"
           type="text"
-          placeholder="Stash message (optional)..."
+          placeholder={$t("stash.messagePlaceholder")}
           bind:value={stashMessage}
           onkeydown={(e) => e.key === "Enter" && !e.isComposing && handleStashPush()}
         />
@@ -290,7 +299,7 @@
           class="stash-push-btn"
           onclick={handleStashPush}
           disabled={busy}
-          title={onlyFiles.length > 0 ? `Stash ${onlyFiles.length} selected file(s)` : "Stash changes"}
+          title={onlyFiles.length > 0 ? $t("stash.pushSelected", { count: onlyFiles.length }) : $t("stash.push")}
         >
           {#if loading}
             <Loader2 size={12} class="spinner" />
@@ -300,16 +309,16 @@
         </button>
       </div>
       <div class="stash-options">
-        <label title="Leave staged changes in place (they are still saved in the stash)">
-          <input type="checkbox" bind:checked={keepIndex} /> Keep staged
+        <label title={$t("stash.keepStagedTitle")}>
+          <input type="checkbox" bind:checked={keepIndex} /> {$t("stash.keepStaged")}
         </label>
-        <label title="Also stash untracked files">
-          <input type="checkbox" bind:checked={includeUntracked} /> Untracked
+        <label title={$t("stash.untrackedTitle")}>
+          <input type="checkbox" bind:checked={includeUntracked} /> {$t("stash.untracked")}
         </label>
         {#if onlyFiles.length > 0}
           <span class="file-chip" title={onlyFiles.join("\n")}>
-            <button class="chip-main" onclick={() => (pickerOpen = true)}>{onlyFiles.length} file{onlyFiles.length === 1 ? "" : "s"}</button>
-            <button class="chip-x" onclick={() => (onlyFiles = [])} title="Stash everything" aria-label="Clear file selection">
+            <button class="chip-main" onclick={() => (pickerOpen = true)}>{$t("stash.fileCount", { count: onlyFiles.length })}</button>
+            <button class="chip-x" onclick={() => (onlyFiles = [])} title={$t("stash.everything")} aria-label={$t("stash.clearSelection")}>
               <X size={10} />
             </button>
           </span>
@@ -318,9 +327,9 @@
             class="files-btn"
             onclick={() => (pickerOpen = true)}
             disabled={changedFiles.length === 0}
-            title="Stash only selected files"
+            title={$t("stash.onlySelected")}
           >
-            <Files size={11} /> Files…
+            <Files size={11} /> {$t("stash.files")}
           </button>
         {/if}
       </div>
@@ -335,12 +344,12 @@
             onclick={() => (viewing = entry)}
             onkeydown={(e) => (e.key === "Enter" || e.key === " ") && e.target === e.currentTarget && (e.preventDefault(), (viewing = entry))}
             oncontextmenu={(e) => openMenu(e, entry)}
-            title="Click to view changes · right-click for more"
+            title={$t("stash.itemTitle")}
           >
             <div class="stash-info">
               <span class="stash-msg" title={entry.message}>{entry.message}</span>
               <span class="stash-time">
-                {formatTime(entry.timestamp)}{entry.has_untracked ? " · +untracked" : ""}
+                {formatTime(entry.timestamp)}{entry.has_untracked ? ` · ${$t("stash.plusUntracked")}` : ""}
               </span>
             </div>
             <div class="stash-actions">
@@ -351,7 +360,7 @@
                   class="stash-action-btn"
                   onclick={(e) => { e.stopPropagation(); act("pop", entry); }}
                   disabled={busy}
-                  title="Pop (apply & remove)"
+                  title={$t("stash.popTitle")}
                 >
                   <ArchiveRestore size={12} />
                 </button>
@@ -359,7 +368,7 @@
                   class="stash-action-btn"
                   onclick={(e) => { e.stopPropagation(); act("apply", entry); }}
                   disabled={busy}
-                  title="Apply (keep stash)"
+                  title={$t("stash.applyTitle")}
                 >
                   <Copy size={12} />
                 </button>
@@ -367,7 +376,7 @@
                   class="stash-action-btn delete"
                   onclick={(e) => { e.stopPropagation(); act("drop", entry); }}
                   disabled={busy}
-                  title="Drop"
+                  title={$t("stash.drop")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -375,7 +384,7 @@
             </div>
           </div>
         {:else}
-          <div class="empty-msg">No stashes</div>
+          <div class="empty-msg">{$t("stash.empty")}</div>
         {/each}
       </div>
     </div>
@@ -388,12 +397,15 @@
 
 <FilePicker
   open={pickerOpen}
-  title="Stash selected files"
+  title={$t("stash.pickerTitle")}
   items={changedFiles}
   multiple
   initialSelected={onlyFiles}
-  tag={(p) => fileTags.get(p) ?? ""}
-  confirmLabel="Use selection"
+  tag={(p) => {
+    const tag = fileTags.get(p);
+    return tag ? $t(TAG_LABELS[tag]) : "";
+  }}
+  confirmLabel={$t("stash.useSelection")}
   onconfirm={(paths) => {
     onlyFiles = paths;
     pickerOpen = false;
@@ -403,25 +415,23 @@
 
 <Modal
   open={prompt !== null}
-  title={prompt?.kind === "branch" ? "Create branch from stash" : "Rename stash"}
+  title={prompt?.kind === "branch" ? $t("stash.branchDialogTitle") : $t("stash.renameDialogTitle")}
   onclose={() => (prompt = null)}
   width="420px"
 >
   {#if prompt}
     <form class="prompt-form" onsubmit={submitPrompt}>
       <label>
-        <span>{prompt.kind === "branch" ? "New branch name" : "Message"}</span>
+        <span>{prompt.kind === "branch" ? $t("stash.newBranchName") : $t("stash.message")}</span>
         <input type="text" bind:value={prompt.value} spellcheck="false" />
       </label>
       <p class="prompt-hint">
-        {prompt.kind === "branch"
-          ? "Checks out a new branch at the commit the stash was made on, applies the stash and drops it on success."
-          : "The stash keeps its contents; it moves to the top of the list."}
+        {prompt.kind === "branch" ? $t("stash.branchHint") : $t("stash.renameHint")}
       </p>
       <div class="prompt-buttons">
-        <button type="button" class="prompt-btn" onclick={() => (prompt = null)}>Cancel</button>
+        <button type="button" class="prompt-btn" onclick={() => (prompt = null)}>{$t("common.cancel")}</button>
         <button type="submit" class="prompt-btn primary" disabled={!prompt.value.trim() || busy}>
-          {prompt.kind === "branch" ? "Create branch" : "Rename"}
+          {prompt.kind === "branch" ? $t("stash.createBranch") : $t("common.rename")}
         </button>
       </div>
     </form>

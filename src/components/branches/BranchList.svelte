@@ -40,6 +40,7 @@
   import CiBadge from "../github/CiBadge.svelte";
   import { shortcutLabels, withShortcut } from "../../lib/keybindings";
   import { trackOperation } from "../../lib/stores/operations";
+  import { t, tr, splitMessage } from "../../lib/i18n";
 
   const repoPath = $derived($activeRepoPath);
   const allBranches = $derived($branches);
@@ -183,7 +184,7 @@
       });
     } else if (req.kind === "rename_current") {
       if (currentBranch) nameDialog = { mode: "rename", branch: currentBranch };
-      else toast("info", "No branch is checked out.");
+      else toast("info", tr("branches.noBranchCheckedOut"));
     }
   });
 
@@ -196,9 +197,15 @@
 
   /** Tooltip with tracking info for a branch row. */
   function branchTitle(b: BranchInfo): string {
-    const tracking = b.upstream ? `\nTracking ${b.upstream}` : b.is_remote ? "" : "\nNo upstream";
+    const tracking = b.upstream
+      ? `\n${$t("branches.tracking", { upstream: b.upstream })}`
+      : b.is_remote
+        ? ""
+        : `\n${$t("branches.noUpstream")}`;
     return `${b.name} — ${b.last_commit_summary}${tracking}`;
   }
+
+  /** Message split around its `{placeholders}`: odd indices are names. */
 
   /**
    * Run a write op against the active repo, refresh, and toast the outcome.
@@ -229,9 +236,9 @@
   async function copyName(name: string) {
     try {
       await copyText(name);
-      toast("info", `Copied "${name}"`, { duration: 1500 });
+      toast("info", tr("branches.copied", { name }), { duration: 1500 });
     } catch (err) {
-      toastError("Copy Failed", err);
+      toastError(tr("branches.copyFailed"), err);
     }
   }
 
@@ -241,7 +248,7 @@
     if (branch.is_head) return;
     // Remote branches get a local tracking branch instead of a detached HEAD.
     runOp(
-      "Checkout Failed",
+      tr("branches.checkoutFailed"),
       (p) =>
         branch.is_remote && branch.remote_name
           ? tauri.checkoutRemoteTracking(p, branch.remote_name, branch.short_name)
@@ -255,7 +262,7 @@
   async function handleCreateBranch() {
     const name = newBranchName.trim();
     if (!name) return;
-    const result = await runOp("Create Branch Failed", (p) => tauri.createBranch(p, name), { success: null });
+    const result = await runOp(tr("branches.createFailed"), (p) => tauri.createBranch(p, name), { success: null });
     if (result?.success) {
       newBranchName = "";
       showCreateInput = false;
@@ -266,7 +273,7 @@
     try {
       const result = await tauri.createBranchAt(path, branch.name, branch.oid);
       if (!result.success) {
-        toast("error", result.message, { title: "Undo Failed" });
+        toast("error", result.message, { title: tr("branches.undoFailed") });
         return;
       }
       if (branch.upstream) {
@@ -274,16 +281,16 @@
         await tauri.setBranchUpstream(path, branch.name, branch.upstream).catch(() => null);
       }
       if ($activeRepoPath === path) await refreshAll(path);
-      toast("success", `Restored branch "${branch.name}"`);
+      toast("success", tr("branches.restored", { name: branch.name }));
     } catch (err) {
-      toastError("Undo Failed", err);
+      toastError(tr("branches.undoFailed"), err);
     }
   }
 
   async function deleteLocal(branch: BranchInfo) {
     const path = repoPath;
     if (!path || branch.is_head || loading) return;
-    const ok = await confirmDestructive(`Delete branch "${branch.name}"?`, "Delete Branch");
+    const ok = await confirmDestructive(tr("branches.deleteConfirm", { name: branch.name }), tr("branches.deleteTitle"));
     if (!ok) return;
     loading = true;
     try {
@@ -292,23 +299,23 @@
       // (common when the upstream was deleted). Offer a force delete (`-D`).
       if (!result.success && /not fully merged/i.test(result.message)) {
         const force = await ask(
-          `Branch "${branch.name}" is not fully merged. Deleting it may discard commits that exist only on this branch.\n\nForce delete anyway? (You can undo right after.)`,
-          { title: "Branch not fully merged", kind: "warning" },
+          tr("branches.notMergedConfirm", { name: branch.name }),
+          { title: tr("branches.notMergedTitle"), kind: "warning" },
         );
         if (!force) return;
         result = await tauri.deleteBranch(path, branch.name, true);
       }
       await refreshAll(path);
       if (!result.success) {
-        toast("error", result.message, { title: "Delete Failed" });
+        toast("error", result.message, { title: tr("branches.deleteFailed") });
         return;
       }
-      toast("success", `Deleted branch "${branch.name}" (was ${branch.short_oid})`, {
+      toast("success", tr("branches.deleted", { name: branch.name, oid: branch.short_oid }), {
         duration: 10000,
-        action: { label: "Undo", run: () => restoreBranch(path, branch) },
+        action: { label: tr("branches.undo"), run: () => restoreBranch(path, branch) },
       });
     } catch (err) {
-      toastError("Delete Failed", err);
+      toastError(tr("branches.deleteFailed"), err);
     } finally {
       loading = false;
     }
@@ -320,12 +327,12 @@
     const name = branch.short_name;
     // Always confirm: this changes shared state other people depend on.
     const ok = await ask(
-      `This will permanently delete "${name}" from the remote "${remote}". Anyone using this branch will lose it on their next fetch.\n\nDelete remote branch?`,
-      { title: "Delete Remote Branch", kind: "warning" },
+      tr("branches.deleteRemoteConfirm", { name, remote }),
+      { title: tr("branches.deleteRemoteTitle"), kind: "warning" },
     );
     if (!ok) return;
-    runOp("Delete Failed", (p) => tauri.deleteRemoteBranch(p, remote, name), {
-      success: `Deleted "${name}" on ${remote}`,
+    runOp(tr("branches.deleteFailed"), (p) => tauri.deleteRemoteBranch(p, remote, name), {
+      success: tr("branches.deletedRemote", { name, remote }),
     });
   }
 
@@ -336,8 +343,8 @@
     const subject = branch ?? currentBranch?.name ?? "HEAD";
     const switching = branch && branch !== currentBranch?.name;
     const ok = await confirmDestructive(
-      `Rebase "${subject}" onto "${onto}"?\n\nThis rewrites the commits of "${subject}". If they were already pushed, you will need to force-push.${switching ? `\n\n"${subject}" will be checked out.` : ""}`,
-      "Rebase Branch",
+      tr(switching ? "branches.rebaseConfirmSwitch" : "branches.rebaseConfirm", { subject, onto }),
+      tr("branches.rebaseTitle"),
     );
     if (!ok) return;
     loading = true;
@@ -345,17 +352,17 @@
       const result = await tauri.rebaseBranch(path, onto, branch);
       await refreshAll(path);
       if (result.success) {
-        toast("success", `Rebased "${subject}" onto "${onto}"`);
+        toast("success", tr("branches.rebased", { subject, onto }));
       } else if (/conflict|could not apply|resolve all conflicts/i.test(result.message)) {
         // The operation banner (conflicts/) offers resolve, continue and abort.
-        toast("warning", "Resolve the conflicts, then continue or abort from the banner.", {
-          title: "Rebase stopped on conflicts",
+        toast("warning", tr("branches.rebaseConflicts"), {
+          title: tr("branches.rebaseConflictsTitle"),
         });
       } else {
-        toast("error", result.message, { title: "Rebase Failed" });
+        toast("error", result.message, { title: tr("branches.rebaseFailed") });
       }
     } catch (err) {
-      toastError("Rebase Failed", err);
+      toastError(tr("branches.rebaseFailed"), err);
     } finally {
       loading = false;
     }
@@ -363,23 +370,23 @@
 
   async function pullBranch(b: BranchInfo) {
     if (!b.is_head) {
-      runOp("Fast-forward Failed", (p) => tauri.fastForwardBranch(p, b.name));
+      runOp(tr("branches.fastForwardFailed"), (p) => tauri.fastForwardBranch(p, b.name));
       return;
     }
     const up = allRemote.find((r) => r.name === b.upstream);
     const result = await runOp(
-      "Pull Failed",
+      tr("branches.pullFailed"),
       (p) => (up?.remote_name ? tauri.pull(p, up.remote_name, up.short_name) : tauri.pull(p)),
       { success: null },
     );
     if (result?.success) {
-      if (result.message.includes("conflicts")) toast("warning", result.message, { title: "Pull — Stash Conflicts" });
-      else toast("success", `Pulled "${b.name}"`);
+      if (result.message.includes("conflicts")) toast("warning", result.message, { title: tr("branches.pullStashConflicts") });
+      else toast("success", tr("branches.pulled", { name: b.name }));
     }
   }
 
   function push(b: BranchInfo, remote?: string) {
-    runOp("Push Failed", (p) => tauri.pushLocalBranch(p, b.name, remote));
+    runOp(tr("branches.pushFailed"), (p) => tauri.pushLocalBranch(p, b.name, remote));
   }
 
   async function confirmNameDialog(name: string, checkout: boolean) {
@@ -387,16 +394,16 @@
     if (!d) return;
     if (d.mode === "rename") {
       const old = d.branch.name;
-      const result = await runOp("Rename Failed", (p) => tauri.renameBranch(p, old, name), {
-        success: `Renamed "${old}" to "${name}"`,
+      const result = await runOp(tr("branches.renameFailed"), (p) => tauri.renameBranch(p, old, name), {
+        success: tr("branches.renamed", { old, name }),
       });
       if (result?.success) nameDialog = null;
     } else {
       const start = d.startPoint;
       const result = await runOp(
-        "Create Branch Failed",
+        tr("branches.createFailed"),
         (p) => (checkout ? tauri.createBranch(p, name, start) : tauri.createBranchAt(p, name, start)),
-        { success: `Created "${name}" from "${start}"` },
+        { success: tr("branches.created", { name, start }) },
       );
       if (result?.success) nameDialog = null;
     }
@@ -405,7 +412,7 @@
   async function confirmUpstream(upstream: string) {
     const b = upstreamFor;
     if (!b) return;
-    const result = await runOp("Set Upstream Failed", (p) => tauri.setBranchUpstream(p, b.name, upstream));
+    const result = await runOp(tr("branches.setUpstreamFailed"), (p) => tauri.setBranchUpstream(p, b.name, upstream));
     if (result?.success) upstreamFor = null;
   }
 
@@ -425,10 +432,10 @@
   }
 
   function pushItems(b: BranchInfo): MenuItem[] {
-    if (b.upstream) return [{ label: `Push to ${b.upstream}`, action: () => push(b) }];
-    if ($remotes.length === 0) return [{ label: "Push (no remotes)", disabled: true }];
+    if (b.upstream) return [{ label: $t("branches.pushTo", { upstream: b.upstream }), action: () => push(b) }];
+    if ($remotes.length === 0) return [{ label: $t("branches.pushNoRemotes"), disabled: true }];
     return $remotes.map((r) => ({
-      label: `Push to ${r.name} (set upstream)`,
+      label: $t("branches.pushToSetUpstream", { remote: r.name }),
       action: () => push(b, r.name),
     }));
   }
@@ -437,58 +444,60 @@
     const cur = currentBranch;
     const other = !b.is_head && !!cur;
     return [
-      { label: "Checkout", action: () => handleCheckout(b), disabled: b.is_head },
+      { label: $t("branches.checkout"), action: () => handleCheckout(b), disabled: b.is_head },
       { separator: true },
-      { label: cur ? `Merge "${b.name}" into "${cur.name}"` : "Merge into current", disabled: !other,
-        action: () => openMerge(b.name) },
-      { label: cur ? `Rebase "${cur.name}" onto "${b.name}"` : "Rebase current onto this", disabled: !other,
-        action: () => rebase(b.name) },
+      { label: cur ? $t("branches.mergeInto", { source: b.name, target: cur.name }) : $t("branches.mergeIntoCurrent"),
+        disabled: !other, action: () => openMerge(b.name) },
+      { label: cur ? $t("branches.rebaseOnto", { branch: cur.name, onto: b.name }) : $t("branches.rebaseCurrentOntoThis"),
+        disabled: !other, action: () => rebase(b.name) },
       { separator: true },
-      { label: b.is_head ? "Pull" : "Pull (fast-forward)", disabled: !b.upstream, action: () => pullBranch(b) },
+      { label: b.is_head ? $t("branches.pull") : $t("branches.pullFastForward"), disabled: !b.upstream,
+        action: () => pullBranch(b) },
       ...pushItems(b),
-      { label: "Set upstream…", action: () => { upstreamFor = b; } },
-      { label: "Unset upstream", disabled: !b.upstream,
-        action: () => void runOp("Unset Upstream Failed", (p) => tauri.unsetBranchUpstream(p, b.name)) },
+      { label: $t("branches.setUpstreamMenu"), action: () => { upstreamFor = b; } },
+      { label: $t("branches.unsetUpstream"), disabled: !b.upstream,
+        action: () => void runOp(tr("branches.unsetUpstreamFailed"), (p) => tauri.unsetBranchUpstream(p, b.name)) },
       { separator: true },
-      { label: "Create branch from here…", action: () => { nameDialog = { mode: "create", startPoint: b.name }; } },
-      { label: "Rename…", shortcut: "F2", action: () => { nameDialog = { mode: "rename", branch: b }; } },
-      { label: cur ? `Compare with "${cur.name}"` : "Compare with current", disabled: !other,
+      { label: $t("branches.createFromHere"), action: () => { nameDialog = { mode: "create", startPoint: b.name }; } },
+      { label: $t("branches.renameMenu"), shortcut: "F2", action: () => { nameDialog = { mode: "rename", branch: b }; } },
+      { label: cur ? $t("branches.compareWith", { name: cur.name }) : $t("branches.compareWithCurrent"), disabled: !other,
         action: () => openCompare(b.name) },
-      { label: "Copy name", action: () => copyName(b.name) },
+      { label: $t("branches.copyName"), action: () => copyName(b.name) },
       { separator: true },
-      { label: "Delete…", shortcut: "Del", danger: true, disabled: b.is_head, action: () => deleteLocal(b) },
+      { label: $t("branches.deleteMenu"), shortcut: "Del", danger: true, disabled: b.is_head, action: () => deleteLocal(b) },
     ];
   }
 
   function remoteMenu(b: BranchInfo): MenuItem[] {
     const cur = currentBranch;
     return [
-      { label: `Checkout as "${b.short_name}"`, action: () => handleCheckout(b) },
+      { label: $t("branches.checkoutAs", { name: b.short_name }), action: () => handleCheckout(b) },
       { separator: true },
-      { label: cur ? `Merge "${b.name}" into "${cur.name}"` : "Merge into current", disabled: !cur,
-        action: () => openMerge(b.name) },
-      { label: cur ? `Rebase "${cur.name}" onto "${b.name}"` : "Rebase current onto this", disabled: !cur,
-        action: () => rebase(b.name) },
+      { label: cur ? $t("branches.mergeInto", { source: b.name, target: cur.name }) : $t("branches.mergeIntoCurrent"),
+        disabled: !cur, action: () => openMerge(b.name) },
+      { label: cur ? $t("branches.rebaseOnto", { branch: cur.name, onto: b.name }) : $t("branches.rebaseCurrentOntoThis"),
+        disabled: !cur, action: () => rebase(b.name) },
       { separator: true },
-      { label: "Create branch from here…", action: () => { nameDialog = { mode: "create", startPoint: b.name }; } },
-      { label: cur ? `Compare with "${cur.name}"` : "Compare with current", disabled: !cur,
+      { label: $t("branches.createFromHere"), action: () => { nameDialog = { mode: "create", startPoint: b.name }; } },
+      { label: cur ? $t("branches.compareWith", { name: cur.name }) : $t("branches.compareWithCurrent"), disabled: !cur,
         action: () => openCompare(b.name) },
-      { label: "Copy name", action: () => copyName(b.name) },
+      { label: $t("branches.copyName"), action: () => copyName(b.name) },
       { separator: true },
-      { label: `Delete from ${b.remote_name ?? "remote"}…`, danger: true, disabled: !b.remote_name,
-        action: () => deleteRemote(b) },
+      { label: b.remote_name ? $t("branches.deleteFrom", { remote: b.remote_name }) : $t("branches.deleteFromRemote"),
+        danger: true, disabled: !b.remote_name, action: () => deleteRemote(b) },
     ];
   }
 
   function remoteGroupMenu(name: string): MenuItem[] {
     const info = $remotes.find((r) => r.name === name);
     return [
-      { label: `Fetch ${name}`, disabled: !info, action: () => remoteRun("Fetch Failed", (p) => tauri.fetchRemote(p, name)) },
-      { label: "Prune stale branches", disabled: !info,
-        action: () => remoteRun("Prune Failed", (p) => tauri.pruneRemote(p, name)) },
-      { label: "Copy URL", disabled: !info?.fetch_url, action: () => info?.fetch_url && copyName(info.fetch_url) },
+      { label: $t("branches.fetchRemote", { name }), disabled: !info,
+        action: () => remoteRun(tr("branches.fetchFailed"), (p) => tauri.fetchRemote(p, name)) },
+      { label: $t("branches.pruneStale"), disabled: !info,
+        action: () => remoteRun(tr("branches.pruneFailed"), (p) => tauri.pruneRemote(p, name)) },
+      { label: $t("branches.copyUrl"), disabled: !info?.fetch_url, action: () => info?.fetch_url && copyName(info.fetch_url) },
       { separator: true },
-      { label: "Manage remotes…", action: () => remotesDialogOpen.set(true) },
+      { label: $t("branches.manageRemotesMenu"), action: () => remotesDialogOpen.set(true) },
     ];
   }
 
@@ -579,11 +588,11 @@
     if (!source || source.name === target.name || target.is_remote) return;
 
     const items: MenuItem[] = [
-      { label: `Merge "${source.name}" into "${target.name}"`,
+      { label: $t("branches.mergeInto", { source: source.name, target: target.name }),
         action: () => { mergeDialog = { source: source.name, target: target.name, targetIsHead: target.is_head }; } },
-      { label: `Rebase "${source.name}" onto "${target.name}"`, disabled: source.is_remote,
+      { label: $t("branches.rebaseOnto", { branch: source.name, onto: target.name }), disabled: source.is_remote,
         action: () => rebase(target.name, source.name) },
-      { label: `Rebase "${target.name}" onto "${source.name}"`,
+      { label: $t("branches.rebaseOnto", { branch: target.name, onto: source.name }),
         action: () => rebase(source.name, target.name) },
     ];
     menu = { x: e.clientX, y: e.clientY, items };
@@ -608,7 +617,7 @@
         const checkout = await tauri.checkoutBranch(path, target);
         if (!checkout.success) {
           mergeDialog = null;
-          toast("error", checkout.message, { title: "Checkout Failed" });
+          toast("error", checkout.message, { title: tr("branches.checkoutFailed") });
           return;
         }
       }
@@ -619,11 +628,11 @@
       // Refresh first so the UI reflects any conflict markers, then report.
       await refreshAll(path);
 
-      if (!result.success) toast("error", result.message, { title: "Merge Failed" });
-      else toast("success", `Merged "${source}" into "${target}"`);
+      if (!result.success) toast("error", result.message, { title: tr("branches.mergeFailed") });
+      else toast("success", tr("branches.merged", { source, target }));
     } catch (err) {
       mergeDialog = null;
-      toastError("Merge Failed", err);
+      toastError(tr("branches.mergeFailed"), err);
     } finally {
       merging = false;
     }
@@ -631,11 +640,15 @@
 
   async function handleFetch() {
     const result = await runOp(
-      "Fetch Failed",
-      (p) => trackOperation(p, "fetch", "Fetching…", () => tauri.fetchAll(p)),
+      tr("branches.fetchFailed"),
+      (p) => trackOperation(p, "fetch", tr("branches.fetching"), () => tauri.fetchAll(p)),
       { success: null },
     );
-    if (result?.success) toast("success", "Fetched all remotes", { duration: 2000 });
+    if (result?.success) toast("success", tr("branches.fetchedAll"), { duration: 2000 });
+  }
+
+  function onFilterKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") filter = "";
   }
 </script>
 
@@ -674,12 +687,12 @@
     {#if branch.ahead > 0 || branch.behind > 0}
       <span class="ahead-behind">
         {#if branch.ahead > 0}
-          <span class="ab-badge ab-ahead" title="{branch.ahead} ahead of remote">
+          <span class="ab-badge ab-ahead" title={$t("branches.ahead", { count: branch.ahead })}>
             <ArrowUp size={10} />{branch.ahead}
           </span>
         {/if}
         {#if branch.behind > 0}
-          <span class="ab-badge ab-behind" title="{branch.behind} behind remote">
+          <span class="ab-badge ab-behind" title={$t("branches.behind", { count: branch.behind })}>
             <ArrowDown size={10} />{branch.behind}
           </span>
         {/if}
@@ -689,8 +702,8 @@
       <button
         class="merge-btn"
         onclick={(e) => handleMergeDefault(e)}
-        title="Merge {defaultBranch} into {branch.name}"
-        aria-label="Merge {defaultBranch} into {branch.name}"
+        title={$t("branches.mergeDefault", { source: defaultBranch, target: branch.name })}
+        aria-label={$t("branches.mergeDefault", { source: defaultBranch, target: branch.name })}
       >
         <GitMerge size={12} />
       </button>
@@ -702,8 +715,8 @@
           e.stopPropagation();
           deleteRemote(branch);
         }}
-        title="Delete branch on remote"
-        aria-label="Delete remote branch {branch.name}"
+        title={$t("branches.deleteOnRemote")}
+        aria-label={$t("branches.deleteRemoteNamed", { name: branch.name })}
       >
         <Trash2 size={12} />
       </button>
@@ -714,8 +727,8 @@
           e.stopPropagation();
           deleteLocal(branch);
         }}
-        title="Delete branch"
-        aria-label="Delete branch {branch.name}"
+        title={$t("branches.deleteBranch")}
+        aria-label={$t("branches.deleteBranchNamed", { name: branch.name })}
       >
         <Trash2 size={12} />
       </button>
@@ -755,15 +768,15 @@
 
 <div class="branch-list">
   <div class="section-header">
-    <span class="section-title">Branches</span>
+    <span class="section-title">{$t("branches.title")}</span>
     <div class="header-actions">
-      <button class="icon-btn" onclick={() => (showCreateInput = !showCreateInput)} title="New branch" aria-label="New branch">
+      <button class="icon-btn" onclick={() => (showCreateInput = !showCreateInput)} title={$t("branches.newBranch")} aria-label={$t("branches.newBranch")}>
         <Plus size={14} />
       </button>
-      <button class="icon-btn" onclick={() => remotesDialogOpen.set(true)} title="Manage remotes" aria-label="Manage remotes">
+      <button class="icon-btn" onclick={() => remotesDialogOpen.set(true)} title={$t("branches.manageRemotes")} aria-label={$t("branches.manageRemotes")}>
         <Server size={14} />
       </button>
-      <button class="icon-btn" onclick={handleFetch} title={withShortcut("Fetch all", $shortcutLabels["fetch"])} aria-label="Fetch all" disabled={loading}>
+      <button class="icon-btn" onclick={handleFetch} title={withShortcut($t("branches.fetchAll"), $shortcutLabels["fetch"])} aria-label={$t("branches.fetchAll")} disabled={loading}>
         <RefreshCw size={14} class={loading ? "spin" : ""} />
       </button>
     </div>
@@ -773,8 +786,8 @@
     <div class="create-input">
       <input
         type="text"
-        placeholder="New branch name..."
-        aria-label="New branch name"
+        placeholder={$t("branches.newBranchPlaceholder")}
+        aria-label={$t("branches.newBranchName")}
         bind:this={createInputEl}
         bind:value={newBranchName}
         onkeydown={handleKeydown}
@@ -786,18 +799,18 @@
     <Search size={12} />
     <input
       type="text"
-      placeholder="Filter branches..."
-      aria-label="Filter branches"
+      placeholder={$t("branches.filterPlaceholder")}
+      aria-label={$t("branches.filterLabel")}
       bind:this={filterEl}
       bind:value={filter}
-      onkeydown={(e) => e.key === "Escape" && (filter = "")}
+      onkeydown={onFilterKeydown}
     />
   </div>
 
   {#if detachedAt}
-    <div class="detached" title="HEAD is not on a branch. Create a branch to keep new commits.">
+    <div class="detached" title={$t("branches.detachedTitle")}>
       <span class="dot"></span>
-      <span class="branch-name">HEAD detached at {detachedAt}</span>
+      <span class="branch-name">{$t("branches.detachedAt", { ref: detachedAt })}</span>
     </div>
   {/if}
 
@@ -809,13 +822,13 @@
       <ChevronRight size={14} />
     {/if}
     <GitBranch size={14} />
-    <span>Local</span>
+    <span>{$t("branches.local")}</span>
     <span class="count">{localBranches.length}</span>
   </button>
 
   {#if !isCollapsed(LOCAL_KEY)}
     {#if localBranches.length === 0}
-      <div class="empty">{filterLc ? "No matching branches" : "No branches yet"}</div>
+      <div class="empty">{filterLc ? $t("branches.noMatching") : $t("branches.noBranches")}</div>
     {:else}
       {@render tree(localTree, 0)}
     {/if}
@@ -829,7 +842,7 @@
       <ChevronRight size={14} />
     {/if}
     <Globe size={14} />
-    <span>Remote</span>
+    <span>{$t("branches.remote")}</span>
     <span class="count">{remoteBranches.length}</span>
   </button>
 
@@ -851,12 +864,12 @@
           <ChevronRight size={12} />
         {/if}
         <Server size={12} />
-        <span class="branch-name">{group.name || "(unknown remote)"}</span>
+        <span class="branch-name">{group.name || $t("branches.unknownRemote")}</span>
         <span class="count">{group.count}</span>
       </button>
       {#if open}
         {#if group.count === 0}
-          <div class="empty" style="padding-left: {rowPad(1)}px">No branches — fetch to update</div>
+          <div class="empty" style="padding-left: {rowPad(1)}px">{$t("branches.noRemoteBranchesFetch")}</div>
         {:else}
           {@render tree(group.tree, 1)}
         {/if}
@@ -864,9 +877,10 @@
     {:else}
       <div class="empty">
         {#if filterLc}
-          No matching branches
+          {$t("branches.noMatching")}
         {:else}
-          No remotes. <button class="link" onclick={() => remotesDialogOpen.set(true)}>Add a remote…</button>
+          {$t("branches.noRemotes")}
+          <button class="link" onclick={() => remotesDialogOpen.set(true)}>{$t("branches.addRemoteLink")}</button>
         {/if}
       </div>
     {/each}
@@ -879,14 +893,14 @@
 
 <BranchNameDialog
   open={!!nameDialog}
-  title={nameDialog?.mode === "rename" ? "Rename Branch" : "Create Branch"}
+  title={nameDialog?.mode === "rename" ? $t("branches.renameTitle") : $t("branches.createTitle")}
   description={nameDialog?.mode === "rename"
-    ? `Rename "${nameDialog.branch.name}". Its upstream configuration is kept.`
+    ? $t("branches.renameDesc", { name: nameDialog.branch.name })
     : nameDialog
-      ? `Create a branch starting at "${nameDialog.startPoint}".`
+      ? $t("branches.createDesc", { start: nameDialog.startPoint })
       : ""}
   initial={nameDialog?.mode === "rename" ? nameDialog.branch.name : ""}
-  confirmLabel={nameDialog?.mode === "rename" ? "Rename" : "Create"}
+  confirmLabel={nameDialog?.mode === "rename" ? $t("common.rename") : $t("common.create")}
   showCheckout={nameDialog?.mode === "create"}
   existing={allLocal.map((b) => b.name)}
   busy={loading}
@@ -905,21 +919,23 @@
 <CompareDialog pair={comparePair} onclose={() => (comparePair = null)} />
 
 <!-- Merge confirmation modal -->
-<Modal open={!!mergeDialog} title="Merge Branch" onclose={() => (mergeDialog = null)} width="360px">
+<Modal open={!!mergeDialog} title={$t("branches.mergeTitle")} onclose={() => (mergeDialog = null)} width="360px">
   {#if mergeDialog}
     <div class="merge-dialog">
       <p class="merge-desc">
-        Merge <strong>{mergeDialog.source}</strong> into <strong>{mergeDialog.target}</strong>?
+        {#each splitMessage($t("branches.mergeConfirm")) as part, i}{#if i % 2}<strong>{part === "source" ? mergeDialog.source : mergeDialog.target}</strong>{:else}{part}{/if}{/each}
       </p>
       {#if !mergeDialog.targetIsHead}
-        <p class="merge-warning">This will checkout <strong>{mergeDialog.target}</strong> first.</p>
+        <p class="merge-warning">
+          {#each splitMessage($t("branches.mergeCheckoutFirst")) as part, i}{#if i % 2}<strong>{mergeDialog.target}</strong>{:else}{part}{/if}{/each}
+        </p>
       {/if}
       <div class="merge-actions">
         <button class="btn-merge" onclick={executeMerge} disabled={merging}>
-          {#if merging}Merging...{:else}Merge{/if}
+          {#if merging}{$t("branches.merging")}{:else}{$t("branches.merge")}{/if}
         </button>
         <button class="btn-cancel" onclick={() => (mergeDialog = null)} disabled={merging}>
-          Cancel
+          {$t("common.cancel")}
         </button>
       </div>
     </div>

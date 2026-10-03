@@ -5,6 +5,7 @@
    */
   import Modal from "../shared/Modal.svelte";
   import { Search, Loader2, FileText } from "lucide-svelte";
+  import { t } from "../../lib/i18n";
 
   interface Props {
     open: boolean;
@@ -30,7 +31,7 @@
     multiple = false,
     initialSelected = [],
     tag,
-    confirmLabel = "Select",
+    confirmLabel,
     onconfirm,
     onclose,
   }: Props = $props();
@@ -129,8 +130,8 @@
       <Search size={13} />
       <input
         type="text"
-        placeholder="Filter files…"
-        aria-label="Filter files"
+        placeholder={$t("history.picker.filterPlaceholder")}
+        aria-label={$t("history.picker.filter")}
         bind:value={query}
         onkeydown={onKeydown}
       />
@@ -143,9 +144,9 @@
       {#if error}
         <div class="empty error">{error}</div>
       {:else if !items}
-        <div class="empty"><Loader2 size={14} class="spinner" /> Loading files…</div>
+        <div class="empty"><Loader2 size={14} class="spinner" /> {$t("history.picker.loading")}</div>
       {:else if shown.length === 0}
-        <div class="empty">{items.length === 0 ? "No files" : "No matching files"}</div>
+        <div class="empty">{items.length === 0 ? $t("history.picker.noFiles") : $t("history.picker.noMatches")}</div>
       {:else}
         {#each shown as item, i (item)}
           {@const [dir, name] = splitPath(item)}
@@ -174,18 +175,18 @@
           </div>
         {/each}
         {#if matches.length > shown.length}
-          <div class="more">{(matches.length - shown.length).toLocaleString()} more — refine the filter</div>
+          <div class="more">{$t("history.picker.more", { n: (matches.length - shown.length).toLocaleString() })}</div>
         {/if}
       {/if}
     </div>
 
     {#if multiple}
       <div class="footer">
-        <span class="hint">{selected.size} selected · Space toggles · Ctrl+Enter confirms</span>
-        <button class="btn" onclick={() => (selected = new Set(matches))} disabled={!items || matches.length === 0}>All</button>
-        <button class="btn" onclick={() => (selected = new Set())} disabled={selected.size === 0}>None</button>
+        <span class="hint">{$t("history.picker.hint", { count: selected.size })}</span>
+        <button class="btn" onclick={() => (selected = new Set(matches))} disabled={!items || matches.length === 0}>{$t("history.picker.all")}</button>
+        <button class="btn" onclick={() => (selected = new Set())} disabled={selected.size === 0}>{$t("history.picker.none")}</button>
         <button class="btn primary" disabled={selected.size === 0} onclick={() => onconfirm([...selected])}>
-          {confirmLabel}
+          {confirmLabel ?? $t("history.picker.select")}
         </button>
       </div>
     {/if}

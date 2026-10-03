@@ -3,6 +3,7 @@
   import { tick, untrack } from "svelte";
   import { Search } from "lucide-svelte";
   import Modal from "../shared/Modal.svelte";
+  import { t, splitMessage } from "../../lib/i18n";
   import type { BranchInfo } from "../../lib/types/git";
 
   interface Props {
@@ -56,19 +57,21 @@
     }
   }
 
+  /** Message split around its `{placeholders}`: odd indices are names. */
+
   function optionId(name: string) {
     return `upstream-opt-${name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   }
 </script>
 
-<Modal open={!!branch} title="Set Upstream" {onclose} width="420px">
+<Modal open={!!branch} title={$t("branches.setUpstreamTitle")} {onclose} width="420px">
   {#if branch}
     <div class="upstream-dialog">
       <p class="desc">
-        Choose the remote branch <strong>{branch.name}</strong> should track for pull, push and ahead/behind counts.
+        {#each splitMessage($t("branches.setUpstreamDesc")) as part, i}{#if i % 2}<strong>{branch.name}</strong>{:else}{part}{/if}{/each}
       </p>
       {#if remoteBranches.length === 0}
-        <p class="empty">No remote branches. Add a remote and fetch first, or push the branch to create one.</p>
+        <p class="empty">{$t("branches.noRemoteBranches")}</p>
       {:else}
         <div class="search">
           <Search size={12} />
@@ -76,13 +79,13 @@
             bind:this={inputEl}
             bind:value={query}
             onkeydown={onKeydown}
-            placeholder="Filter remote branches…"
-            aria-label="Filter remote branches"
+            placeholder={$t("branches.filterRemotePlaceholder")}
+            aria-label={$t("branches.filterRemote")}
             aria-controls="upstream-options"
             spellcheck="false"
           />
         </div>
-        <div class="options" id="upstream-options" role="listbox" aria-label="Remote branches">
+        <div class="options" id="upstream-options" role="listbox" aria-label={$t("branches.remoteBranches")}>
           {#each shown as r (r.name)}
             <div
               id={optionId(r.name)}
@@ -99,21 +102,21 @@
               onkeydown={onKeydown}
             >
               <span class="opt-name">{r.name}</span>
-              {#if r.name === branch.upstream}<span class="tag">current</span>{/if}
+              {#if r.name === branch.upstream}<span class="tag">{$t("branches.current")}</span>{/if}
             </div>
           {:else}
-            <div class="empty">No matches.</div>
+            <div class="empty">{$t("branches.noMatches")}</div>
           {/each}
         </div>
       {/if}
       <div class="actions">
-        <button class="btn-secondary" onclick={onclose} disabled={busy}>Cancel</button>
+        <button class="btn-secondary" onclick={onclose} disabled={busy}>{$t("common.cancel")}</button>
         <button
           class="btn-primary"
           onclick={submit}
           disabled={!selected || busy || selected === branch.upstream}
         >
-          {busy ? "Saving…" : "Set Upstream"}
+          {busy ? $t("branches.saving") : $t("branches.setUpstreamTitle")}
         </button>
       </div>
     </div>

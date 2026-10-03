@@ -7,6 +7,7 @@
   import { prPanelOpen } from "../../lib/stores/pullRequests";
   import { getShortcut } from "../../lib/keybindings";
   import type { ProviderKind } from "../../lib/types/hosting";
+  import { t } from "../../lib/i18n";
 
   let provider = $state<ProviderKind | null>(null);
 
@@ -26,7 +27,7 @@
     };
   });
 
-  const label = $derived(provider === "gitlab" ? "Merge Requests" : "Pull Requests");
+  const label = $derived(provider === "gitlab" ? $t("prs.titleMr") : $t("prs.titlePr"));
   const shortcut = $derived(getShortcut("open_pull_requests"));
 </script>
 
@@ -34,7 +35,7 @@
   <button
     class="pr-entry"
     onclick={() => prPanelOpen.set(true)}
-    title={shortcut ? `${label} (${shortcut})` : label}
+    title={shortcut ? $t("prs.withShortcut", { label, shortcut }) : label}
   >
     <GitPullRequest size={14} />
     <span>{label}</span>

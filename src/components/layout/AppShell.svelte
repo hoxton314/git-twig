@@ -50,6 +50,7 @@
   import NewRepoDialog from "./NewRepoDialog.svelte";
   import { openNewRepoDialog } from "../../lib/newRepo";
   import { invalidateCi } from "../../lib/stores/ci";
+  import { tr } from "../../lib/i18n";
 
   let showTitleBar = $state(false);
   let appVersion = $state("");
@@ -65,13 +66,13 @@
 
   async function manualUpdateCheck() {
     if (!(await ensureUpdaterSupport())) {
-      toast("info", "Updates are managed by your package manager.");
+      toast("info", tr("app.updatesManaged"));
       return;
     }
     await checkForUpdates(true);
     const u = get(updater);
-    if (u.status === "up-to-date") toast("success", "Twig is up to date.");
-    else if (u.status === "error") toastError("Update check failed", u.error);
+    if (u.status === "up-to-date") toast("success", tr("app.upToDate"));
+    else if (u.status === "error") toastError(tr("app.updateCheckFailed"), u.error);
   }
 
   onMount(() => {
@@ -149,26 +150,26 @@
         const path = get(activeRepoPath);
         if (!path) return;
         try {
-          const result = await trackOperation(path, "fetch", "Fetching…", () => tauri.fetchAll(path));
+          const result = await trackOperation(path, "fetch", tr("app.fetching"), () => tauri.fetchAll(path));
           refreshAll(path);
           invalidateCi(path);
-          if (!result.success) toastError("Fetch failed", result.message);
+          if (!result.success) toastError(tr("app.fetchFailed"), result.message);
         } catch (err) {
-          toastError("Fetch failed", err);
+          toastError(tr("app.fetchFailed"), err);
         }
       }),
       onAction("pull", async () => {
         const path = get(activeRepoPath);
         if (!path) return;
         try {
-          const result = await trackOperation(path, "pull", "Pulling…", () => tauri.pull(path));
+          const result = await trackOperation(path, "pull", tr("app.pulling"), () => tauri.pull(path));
           refreshAll(path);
-          if (!result.success) toastError("Pull failed", result.message);
+          if (!result.success) toastError(tr("app.pullFailed"), result.message);
           else if (result.message.includes("conflicts")) {
-            toast("warning", result.message, { title: "Pull — stash conflicts", duration: 0 });
+            toast("warning", result.message, { title: tr("app.pullStashConflicts"), duration: 0 });
           }
         } catch (err) {
-          toastError("Pull failed", err);
+          toastError(tr("app.pullFailed"), err);
         }
       }),
       onAction("push", async () => {
@@ -179,14 +180,14 @@
           const branch = info.head_name ?? "HEAD";
           // Same behavior as the Push button in StagingArea: set upstream so
           // first pushes of new branches work.
-          const result = await trackOperation(path, "push", `Pushing ${branch}…`, () =>
+          const result = await trackOperation(path, "push", tr("app.pushing", { branch }), () =>
             tauri.pushBranch(path, branch, undefined, true),
           );
           refreshAll(path);
           invalidateCi(path);
-          if (!result.success) toastError("Push failed", result.message);
+          if (!result.success) toastError(tr("app.pushFailed"), result.message);
         } catch (err) {
-          toastError("Push failed", err);
+          toastError(tr("app.pushFailed"), err);
         }
       }),
       // commit is handled inside StagingArea via the textarea exception in keybindings.ts
@@ -200,11 +201,11 @@
         if (!info) return;
         const pinned = !isFavoriteRepo(info.path);
         toggleFavoriteRepo(info.path, info.name);
-        toast("info", pinned ? `Pinned ${info.name} to favorites` : `Unpinned ${info.name}`);
+        toast("info", pinned ? tr("tabs.pinned", { name: info.name }) : tr("tabs.unpinned", { name: info.name }));
       }),
       onAction("reveal_repo", () => {
         const path = get(activeRepoPath);
-        if (path) tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err));
+        if (path) tauri.openInFileManager(path).catch((err) => toastError(tr("tabs.openFolderFailed"), err));
       }),
       onAction("open_terminal", () => {
         const path = get(activeRepoPath);
@@ -219,8 +220,8 @@
         if (!path) return;
         navigator.clipboard
           .writeText(path)
-          .then(() => toast("success", "Repository path copied"))
-          .catch((err) => toastError("Copy failed", err));
+          .then(() => toast("success", tr("app.repoPathCopied")))
+          .catch((err) => toastError(tr("tabs.copyFailed"), err));
       }),
       onAction("check_for_updates", manualUpdateCheck),
       onAction("open_settings_folder", openSettingsFolder),

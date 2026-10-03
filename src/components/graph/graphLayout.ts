@@ -1,4 +1,5 @@
 import type { GraphDateFormat, GraphRowDensity } from "../../lib/types/git";
+import { tr } from "../../lib/i18n";
 
 export const GRAPH_LEFT_PAD = 12;
 export const GRAPH_LANE_WIDTH = 20;
@@ -56,13 +57,13 @@ function relative(ts: number, now: number): string {
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 30) return `${days}d ago`;
+  if (minutes < 1) return tr("time.justNow");
+  if (minutes < 60) return tr("graph.ageMinutes", { count: minutes });
+  if (hours < 24) return tr("graph.ageHours", { count: hours });
+  if (days < 30) return tr("graph.ageDays", { count: days });
   const months = Math.floor(days / 30.44);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(days / 365.25)}y ago`;
+  if (months < 12) return tr("graph.ageMonths", { count: months });
+  return tr("graph.ageYears", { count: Math.floor(days / 365.25) });
 }
 
 /** Format a commit timestamp (seconds) for the date column. */

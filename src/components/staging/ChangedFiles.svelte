@@ -32,6 +32,7 @@
   import type { FileStatus, IgnoreKind } from "../../lib/types/git";
   import { runWrite, confirmDestructive } from "./writeQueue";
   import { filterFiles, parentDir, extension } from "./fileTree";
+  import { t, tr } from "../../lib/i18n";
 
   type Area = "staged" | "unstaged";
 
@@ -84,28 +85,26 @@
     }
   }
 
-  const plural = (n: number, word: string) => `${n} ${word}${n !== 1 ? "s" : ""}`;
-
   async function stage(files: FileStatus[]) {
     if (!repoPath || files.length === 0) return;
     const path = repoPath;
     const conflicted = files.filter((f) => f.status === "conflicted");
     if (conflicted.length > 0 && files.length > 1) {
       const ok = await ask(
-        `${plural(conflicted.length, "conflicted file")} will be marked as resolved. Make sure all conflict markers have been removed. Continue?`,
-        { title: "Stage Conflicted Files", kind: "warning" },
+        tr("staging.conflictedConfirm", { count: conflicted.length }),
+        { title: tr("staging.conflictedTitle"), kind: "warning" },
       );
       if (!ok) return;
     }
     const paths = files.map((f) => f.path);
-    await runWrite(() => tauri.stageFiles(path, paths), "Stage Failed");
+    await runWrite(() => tauri.stageFiles(path, paths), tr("staging.stageFailed"));
   }
 
   async function unstage(files: FileStatus[]) {
     if (!repoPath || files.length === 0) return;
     const path = repoPath;
     const paths = files.map((f) => f.path);
-    await runWrite(() => tauri.unstageFiles(path, paths), "Unstage Failed");
+    await runWrite(() => tauri.unstageFiles(path, paths), tr("staging.unstageFailed"));
   }
 
   async function discard(files: FileStatus[]) {
@@ -117,24 +116,40 @@
     if (files.length === 1) {
       const f = files[0];
       text = f.is_new
-        ? `Delete untracked file "${f.path}"? This cannot be undone.`
-        : `Discard changes to "${f.path}"? This cannot be undone.`;
+        ? tr("staging.deleteUntrackedConfirm", { path: f.path })
+        : tr("staging.discardFileConfirm", { path: f.path });
     } else {
-      text = `Discard changes to ${plural(tracked.length, "file")}${
-        untracked.length > 0 ? ` and delete ${plural(untracked.length, "untracked file")}` : ""
-      }? This cannot be undone.`;
+      text =
+        untracked.length > 0
+          ? tr("staging.discardFilesUntrackedConfirm", {
+              count: tracked.length,
+              untracked: tr("staging.untrackedFiles", { count: untracked.length }),
+            })
+          : tr("staging.discardFilesConfirm", { count: tracked.length });
     }
-    if (!(await confirmDestructive(text, "Discard Changes"))) return;
-    await runWrite(() => tauri.discardFiles(path, tracked, untracked), "Discard Failed");
+    if (!(await confirmDestructive(text, tr("staging.discardTitle")))) return;
+    await runWrite(() => tauri.discardFiles(path, tracked, untracked), tr("staging.discardFailed"));
   }
 
-  const unstagedActions: RowAction[] = [
-    { icon: Trash2, title: "Discard changes", folderTitle: "Discard changes in folder", tone: "danger", run: discard },
-    { icon: Plus, title: "Stage file", folderTitle: "Stage folder", tone: "stage", run: stage },
-  ];
-  const stagedActions: RowAction[] = [
-    { icon: Minus, title: "Unstage file", folderTitle: "Unstage folder", tone: "danger", run: unstage },
-  ];
+  const unstagedActions: RowAction[] = $derived([
+    {
+      icon: Trash2,
+      title: $t("staging.discardChanges"),
+      folderTitle: $t("staging.discardChangesInFolder"),
+      tone: "danger",
+      run: discard,
+    },
+    { icon: Plus, title: $t("staging.stageFile"), folderTitle: $t("staging.stageFolder"), tone: "stage", run: stage },
+  ]);
+  const stagedActions: RowAction[] = $derived([
+    {
+      icon: Minus,
+      title: $t("staging.unstageFile"),
+      folderTitle: $t("staging.unstageFolder"),
+      tone: "danger",
+      run: unstage,
+    },
+  ]);
 
   // ── Context menu ─────────────────────────────────────────────────────
 
@@ -152,11 +167,11 @@
       const ok = document.execCommand("copy");
       ta.remove();
       if (!ok) {
-        toast("error", "Could not access the clipboard", { title: "Copy Failed" });
+        toast("error", tr("staging.clipboardError"), { title: tr("staging.copyFailed") });
         return;
       }
     }
-    toast("success", `Copied ${text}`, { duration: 2000 });
+    toast("success", tr("staging.copied", { text }), { duration: 2000 });
   }
 
   function absolutePath(rel: string): string {
@@ -172,7 +187,7 @@
     try {
       await tauri.openRepoFile(repoPath, rel);
     } catch (err) {
-      toastError("Open Failed", err);
+      toastError(tr("staging.openFailed"), err);
     }
   }
 
@@ -181,7 +196,7 @@
     try {
       await tauri.revealRepoFile(repoPath, rel);
     } catch (err) {
-      toastError("Reveal Failed", err);
+      toastError(tr("staging.revealFailed"), err);
     }
   }
 
@@ -190,7 +205,7 @@
     try {
       await tauri.openExternalDiff(repoPath, file.path, area === "staged", $settings.external_diff_tool);
     } catch (err) {
-      toastError("External Diff Failed", err);
+      toastError(tr("staging.externalDiffFailed"), err);
     }
   }
 
@@ -200,18 +215,18 @@
     try {
       const result = await tauri.addToGitignore(path, rel, kind);
       if (result.already_present) {
-        toast("info", `${result.pattern} is already in .gitignore`);
+        toast("info", tr("staging.ignoreAlreadyPresent", { pattern: result.pattern }));
       } else if (result.tracked) {
         toast(
           "warning",
-          `Added ${result.pattern} to .gitignore, but matching files are already tracked. Ignore rules only apply to untracked files.`,
-          { title: "Already Tracked", duration: 8000 },
+          tr("staging.ignoreTracked", { pattern: result.pattern }),
+          { title: tr("staging.alreadyTracked"), duration: 8000 },
         );
       } else {
-        toast("success", `Added ${result.pattern} to .gitignore`);
+        toast("success", tr("staging.ignoreAdded", { pattern: result.pattern }));
       }
     } catch (err) {
-      toastError("Add to .gitignore Failed", err);
+      toastError(tr("staging.ignoreFailed"), err);
     }
     await refreshStatus(path);
   }
@@ -219,15 +234,15 @@
   function ignoreItems(rel: string, isFolder: boolean): MenuItem[] {
     const items: MenuItem[] = [];
     if (isFolder) {
-      items.push({ label: `Ignore folder "${rel}/"`, action: () => ignore(rel, "folder") });
+      items.push({ label: tr("staging.ignoreFolder", { path: rel }), action: () => ignore(rel, "folder") });
       return items;
     }
     const name = rel.replace(/\/+$/, "").split("/").pop() ?? rel;
-    items.push({ label: `Ignore "${name}"`, action: () => ignore(rel, "path") });
+    items.push({ label: tr("staging.ignoreName", { name }), action: () => ignore(rel, "path") });
     const ext = rel.endsWith("/") ? null : extension(rel);
-    if (ext) items.push({ label: `Ignore all *.${ext} files`, action: () => ignore(rel, "extension") });
+    if (ext) items.push({ label: tr("staging.ignoreExtension", { ext }), action: () => ignore(rel, "extension") });
     const dir = parentDir(rel);
-    if (dir) items.push({ label: `Ignore folder "${dir}/"`, action: () => ignore(dir, "folder") });
+    if (dir) items.push({ label: tr("staging.ignoreFolder", { path: dir }), action: () => ignore(dir, "folder") });
     return items;
   }
 
@@ -237,37 +252,37 @@
     const canDiff = !(area === "unstaged" && file.status === "untracked");
     const items: MenuItem[] = [];
     if (area === "unstaged") {
-      items.push({ label: "Stage", action: () => stage([file]) });
+      items.push({ label: tr("staging.menuStage"), action: () => stage([file]) });
       items.push({
-        label: file.is_new ? "Delete untracked file…" : "Discard changes…",
+        label: file.is_new ? tr("staging.menuDeleteUntracked") : tr("staging.menuDiscard"),
         danger: true,
         action: () => discard([file]),
       });
     } else {
-      items.push({ label: "Unstage", action: () => unstage([file]) });
+      items.push({ label: tr("staging.menuUnstage"), action: () => unstage([file]) });
     }
     if (file.status === "conflicted") {
-      items.push({ label: "Resolve conflict…", action: () => openConflictResolver(file.path) });
+      items.push({ label: tr("staging.menuResolveConflict"), action: () => openConflictResolver(file.path) });
     }
     items.push({ separator: true });
     // New files have no history yet.
     const tracked = !file.is_new && file.status !== "untracked";
-    items.push({ label: "File history", disabled: !tracked, action: () => showFileHistory(file.path) });
-    items.push({ label: "Blame", disabled: !tracked || deleted, action: () => showBlame(file.path) });
+    items.push({ label: tr("staging.menuFileHistory"), disabled: !tracked, action: () => showFileHistory(file.path) });
+    items.push({ label: tr("staging.menuBlame"), disabled: !tracked || deleted, action: () => showBlame(file.path) });
     items.push({ separator: true });
-    items.push({ label: "Open in default app", disabled: deleted, action: () => openFile(file.path) });
+    items.push({ label: tr("staging.menuOpenDefault"), disabled: deleted, action: () => openFile(file.path) });
     items.push({
-      label: "Open in editor",
+      label: tr("staging.menuOpenEditor"),
       disabled: deleted,
       action: () => {
         if (repoPath) openRepoInEditor(repoPath, file.path);
       },
     });
-    items.push({ label: "Reveal in file manager", action: () => revealFile(file.path) });
-    items.push({ label: "Open in external diff tool", disabled: !canDiff, action: () => externalDiff(file, area) });
+    items.push({ label: tr("staging.menuReveal"), action: () => revealFile(file.path) });
+    items.push({ label: tr("staging.menuExternalDiff"), disabled: !canDiff, action: () => externalDiff(file, area) });
     items.push({ separator: true });
-    items.push({ label: "Copy path", action: () => copyText(file.path.replace(/\/+$/, "")) });
-    items.push({ label: "Copy absolute path", action: () => copyText(absolutePath(file.path)) });
+    items.push({ label: tr("staging.menuCopyPath"), action: () => copyText(file.path.replace(/\/+$/, "")) });
+    items.push({ label: tr("staging.menuCopyAbsolutePath"), action: () => copyText(absolutePath(file.path)) });
     if (area === "unstaged") {
       items.push({ separator: true });
       items.push(...ignoreItems(file.path, false));
@@ -278,15 +293,15 @@
   function folderMenu(path: string, files: FileStatus[], area: Area): MenuItem[] {
     const items: MenuItem[] = [];
     if (area === "unstaged") {
-      items.push({ label: `Stage folder (${files.length})`, action: () => stage(files) });
-      items.push({ label: "Discard changes in folder…", danger: true, action: () => discard(files) });
+      items.push({ label: tr("staging.menuStageFolder", { count: files.length }), action: () => stage(files) });
+      items.push({ label: tr("staging.menuDiscardFolder"), danger: true, action: () => discard(files) });
     } else {
-      items.push({ label: `Unstage folder (${files.length})`, action: () => unstage(files) });
+      items.push({ label: tr("staging.menuUnstageFolder", { count: files.length }), action: () => unstage(files) });
     }
     items.push({ separator: true });
-    items.push({ label: "Reveal in file manager", action: () => revealFile(path) });
-    items.push({ label: "Copy path", action: () => copyText(path) });
-    items.push({ label: "Copy absolute path", action: () => copyText(absolutePath(path)) });
+    items.push({ label: tr("staging.menuReveal"), action: () => revealFile(path) });
+    items.push({ label: tr("staging.menuCopyPath"), action: () => copyText(path) });
+    items.push({ label: tr("staging.menuCopyAbsolutePath"), action: () => copyText(absolutePath(path)) });
     if (area === "unstaged") {
       items.push({ separator: true });
       items.push(...ignoreItems(path, true));
@@ -340,13 +355,13 @@
       bind:value={filter}
       class="filter-input"
       type="text"
-      placeholder="Filter files…"
+      placeholder={$t("staging.filterPlaceholder")}
       spellcheck="false"
-      aria-label="Filter changed files by path"
+      aria-label={$t("staging.filterLabel")}
       onkeydown={onFilterKey}
     />
     {#if filter}
-      <button class="clear-btn" onclick={() => (filter = "")} title="Clear filter" aria-label="Clear filter">
+      <button class="clear-btn" onclick={() => (filter = "")} title={$t("staging.clearFilter")} aria-label={$t("staging.clearFilter")}>
         <X size={12} />
       </button>
     {/if}
@@ -354,8 +369,8 @@
   <button
     class="view-btn"
     onclick={toggleTree}
-    title={treeView ? "Show as flat list" : "Show as folder tree"}
-    aria-label={treeView ? "Show as flat list" : "Show as folder tree"}
+    title={treeView ? $t("staging.showFlatList") : $t("staging.showFolderTree")}
+    aria-label={treeView ? $t("staging.showFlatList") : $t("staging.showFolderTree")}
     aria-pressed={treeView}
   >
     {#if treeView}
@@ -381,7 +396,7 @@
     {:else}
       <ChevronRight size={14} />
     {/if}
-    <span class="section-title">Unstaged</span>
+    <span class="section-title">{$t("staging.unstaged")}</span>
     <span class="section-count">
       {filtering ? `${unstaged.length} / ${status.unstaged.length}` : status.unstaged.length}
     </span>
@@ -389,14 +404,14 @@
       <button
         class="stage-all-btn danger"
         onclick={(e) => { e.stopPropagation(); discard(unstaged); }}
-        title={filtering ? `Discard ${unstaged.length} shown` : "Discard all changes"}
+        title={filtering ? $t("staging.discardShown", { count: unstaged.length }) : $t("staging.discardAll")}
       >
         <Trash2 size={12} />
       </button>
       <button
         class="stage-all-btn"
         onclick={(e) => { e.stopPropagation(); stage(unstaged); }}
-        title={filtering ? `Stage ${unstaged.length} shown` : "Stage all"}
+        title={filtering ? $t("staging.stageShown", { count: unstaged.length }) : $t("staging.stageAll")}
       >
         <Plus size={12} />
       </button>
@@ -408,10 +423,10 @@
       files={unstaged}
       tree={treeView}
       selectedPath={selectedFile?.area === "unstaged" ? selectedFile.path : null}
-      emptyText={filtering && status.unstaged.length > 0 ? "No matching files" : "No unstaged changes"}
+      emptyText={filtering && status.unstaged.length > 0 ? $t("staging.noMatchingFiles") : $t("staging.noUnstaged")}
       actions={unstagedActions}
       onselect={(f) => selectFile(f, "unstaged")}
-      onmenu={(t, x, y) => openMenu("unstaged", t, x, y)}
+      onmenu={(target, x, y) => openMenu("unstaged", target, x, y)}
     />
   {/if}
 </div>
@@ -431,7 +446,7 @@
     {:else}
       <ChevronRight size={14} />
     {/if}
-    <span class="section-title">Staged</span>
+    <span class="section-title">{$t("staging.staged")}</span>
     <span class="section-count">
       {filtering ? `${staged.length} / ${status.staged.length}` : status.staged.length}
     </span>
@@ -439,7 +454,7 @@
       <button
         class="stage-all-btn danger"
         onclick={(e) => { e.stopPropagation(); unstage(staged); }}
-        title={filtering ? `Unstage ${staged.length} shown` : "Unstage all"}
+        title={filtering ? $t("staging.unstageShown", { count: staged.length }) : $t("staging.unstageAll")}
       >
         <Minus size={12} />
       </button>
@@ -451,10 +466,10 @@
       files={staged}
       tree={treeView}
       selectedPath={selectedFile?.area === "staged" ? selectedFile.path : null}
-      emptyText={filtering && status.staged.length > 0 ? "No matching files" : "No staged changes"}
+      emptyText={filtering && status.staged.length > 0 ? $t("staging.noMatchingFiles") : $t("staging.noStaged")}
       actions={stagedActions}
       onselect={(f) => selectFile(f, "staged")}
-      onmenu={(t, x, y) => openMenu("staged", t, x, y)}
+      onmenu={(target, x, y) => openMenu("staged", target, x, y)}
     />
   {/if}
 </div>

@@ -14,39 +14,45 @@
   } from "../../lib/stores/settings";
   import type { OverridableKey } from "../../lib/repoSettings";
   import type { AppSettings } from "../../lib/types/git";
+  import { t, type MessageKey } from "../../lib/i18n";
 
   type Field =
-    | { key: OverridableKey; label: string; hint: string; kind: "bool" }
-    | { key: OverridableKey; label: string; hint: string; kind: "select"; options: { value: number; label: string }[] }
-    | { key: OverridableKey; label: string; hint: string; kind: "number"; min: number; max: number }
-    | { key: OverridableKey; label: string; hint: string; kind: "text"; placeholder: string };
+    | { key: OverridableKey; name: MessageKey; info: MessageKey | null; kind: "bool" }
+    | { key: OverridableKey; name: MessageKey; info: MessageKey | null; kind: "select"; options: { value: number; minutes: number }[] }
+    | { key: OverridableKey; name: MessageKey; info: MessageKey | null; kind: "number"; min: number; max: number }
+    | { key: OverridableKey; name: MessageKey; info: MessageKey | null; kind: "text"; example: MessageKey };
 
   const FIELDS: Field[] = [
     {
       key: "auto_fetch_interval",
-      label: "Auto-fetch interval",
-      hint: "How often this repository is fetched in the background",
+      name: "repoSettings.autoFetch",
+      info: "repoSettings.autoFetchHint",
       kind: "select",
       options: [
-        { value: 0, label: "Off" },
-        { value: 60, label: "1 minute" },
-        { value: 300, label: "5 minutes" },
-        { value: 600, label: "10 minutes" },
-        { value: 1800, label: "30 minutes" },
+        { value: 0, minutes: 0 },
+        { value: 60, minutes: 1 },
+        { value: 300, minutes: 5 },
+        { value: 600, minutes: 10 },
+        { value: 1800, minutes: 30 },
       ],
     },
-    { key: "max_commits", label: "Commits per page", hint: "Graph page size", kind: "number", min: 100, max: 50000 },
-    { key: "graph_hide_remotes", label: "Hide remote branches", hint: "Graph shows local branches only", kind: "bool" },
-    { key: "graph_current_branch_only", label: "Current branch only", hint: "Graph shows HEAD's history only", kind: "bool" },
-    { key: "tab_size", label: "Tab size", hint: "Columns per tab in diffs", kind: "number", min: 1, max: 16 },
-    { key: "context_lines", label: "Context lines", hint: "Unchanged lines around each change", kind: "number", min: 0, max: 100 },
-    { key: "show_whitespace_changes", label: "Show whitespace changes", hint: "Off hides whitespace-only changes (diff -w)", kind: "bool" },
-    { key: "word_wrap_in_diffs", label: "Wrap long lines in diffs", hint: "", kind: "bool" },
-    { key: "syntax_highlighting", label: "Syntax highlighting", hint: "Highlight code in diffs", kind: "bool" },
-    { key: "staging_tree_view", label: "Changed files as a tree", hint: "Staging panel shows folders", kind: "bool" },
-    { key: "external_diff_tool", label: "External diff tool", hint: "Command for “Open in external diff”", kind: "text", placeholder: "e.g. meld" },
-    { key: "external_merge_tool", label: "External merge tool", hint: "Command for resolving conflicts", kind: "text", placeholder: "e.g. kdiff3" },
+    { key: "max_commits", name: "repoSettings.maxCommits", info: "repoSettings.maxCommitsHint", kind: "number", min: 100, max: 50000 },
+    { key: "graph_hide_remotes", name: "repoSettings.hideRemotes", info: "repoSettings.hideRemotesHint", kind: "bool" },
+    { key: "graph_current_branch_only", name: "repoSettings.currentBranchOnly", info: "repoSettings.currentBranchOnlyHint", kind: "bool" },
+    { key: "tab_size", name: "repoSettings.tabSize", info: "repoSettings.tabSizeHint", kind: "number", min: 1, max: 16 },
+    { key: "context_lines", name: "repoSettings.contextLines", info: "repoSettings.contextLinesHint", kind: "number", min: 0, max: 100 },
+    { key: "show_whitespace_changes", name: "repoSettings.whitespace", info: "repoSettings.whitespaceHint", kind: "bool" },
+    { key: "word_wrap_in_diffs", name: "repoSettings.wordWrap", info: null, kind: "bool" },
+    { key: "syntax_highlighting", name: "repoSettings.syntax", info: "repoSettings.syntaxHint", kind: "bool" },
+    { key: "staging_tree_view", name: "repoSettings.treeView", info: "repoSettings.treeViewHint", kind: "bool" },
+    { key: "external_diff_tool", name: "repoSettings.diffTool", info: "repoSettings.diffToolHint", kind: "text", example: "repoSettings.diffToolPlaceholder" },
+    { key: "external_merge_tool", name: "repoSettings.mergeTool", info: "repoSettings.mergeToolHint", kind: "text", example: "repoSettings.mergeToolPlaceholder" },
   ];
+
+  /** Label of an auto-fetch option: "Off" or "N minutes". */
+  function optionLabel(o: { minutes: number }): string {
+    return o.minutes === 0 ? $t("repoSettings.off") : $t("repoSettings.minutes", { count: o.minutes });
+  }
 
   const path = $derived($activeRepoPath);
   const mine = $derived(path ? ($repoOverrides[path] ?? {}) : {});
@@ -82,36 +88,38 @@
   }
 
   function show(v: unknown): string {
-    if (typeof v === "boolean") return v ? "On" : "Off";
-    if (v === null || v === "" || v === undefined) return "Not set";
+    if (typeof v === "boolean") return v ? $t("repoSettings.on") : $t("repoSettings.off");
+    if (v === null || v === "" || v === undefined) return $t("repoSettings.notSet");
     return String(v);
   }
 
   function globalLabel(f: Field): string {
     const g = $globalSettings[f.key];
-    if (f.kind === "select") return f.options.find((o) => o.value === g)?.label ?? show(g);
+    if (f.kind === "select") {
+      const o = f.options.find((x) => x.value === g);
+      return o ? optionLabel(o) : show(g);
+    }
     return show(g);
   }
 </script>
 
 <div class="section">
-  <h1 class="section-heading">This repository</h1>
+  <h1 class="section-heading">{$t("repoSettings.heading")}</h1>
   {#if !path}
-    <p class="hint">Open a repository to override settings for it.</p>
+    <p class="hint">{$t("repoSettings.noRepo")}</p>
   {:else}
     <p class="hint">
-      Overrides for <strong>{$activeRepo?.name ?? path}</strong> <span class="path">{path}</span>. Unchecked settings follow
-      the global value.
+      {$t("repoSettings.overridesBefore")} <strong>{$activeRepo?.name ?? path}</strong> <span class="path">{path}</span>{$t("repoSettings.overridesAfter")}
     </p>
     <div class="setting-group">
       {#each FIELDS as f (f.key)}
         <div class="setting-row" class:on={overridden(f.key)}>
-          <label class="override" title="Override this setting for this repository">
-            <input type="checkbox" checked={overridden(f.key)} onchange={(e) => toggle(f.key, e.currentTarget.checked)} aria-label="Override {f.label}" />
+          <label class="override" title={$t("repoSettings.overrideTitle")}>
+            <input type="checkbox" checked={overridden(f.key)} onchange={(e) => toggle(f.key, e.currentTarget.checked)} aria-label={$t("repoSettings.overrideLabel", { label: $t(f.name) })} />
           </label>
           <div class="setting-label">
-            <span class="label-text">{f.label}</span>
-            <span class="label-hint">{overridden(f.key) ? `Global: ${globalLabel(f)}` : f.hint || "Uses the global value"}</span>
+            <span class="label-text">{$t(f.name)}</span>
+            <span class="label-hint">{overridden(f.key) ? $t("repoSettings.globalValue", { value: globalLabel(f) }) : f.info ? $t(f.info) : $t("repoSettings.usesGlobal")}</span>
           </div>
           <div class="setting-control">
             {#if f.kind === "bool"}
@@ -120,12 +128,12 @@
                 checked={Boolean(value(f.key))}
                 disabled={!overridden(f.key)}
                 onchange={(e) => set(f.key, e.currentTarget.checked as never)}
-                aria-label={f.label}
+                aria-label={$t(f.name)}
               />
             {:else if f.kind === "select"}
-              <select value={value(f.key)} disabled={!overridden(f.key)} onchange={(e) => set(f.key, Number(e.currentTarget.value) as never)} aria-label={f.label}>
+              <select value={value(f.key)} disabled={!overridden(f.key)} onchange={(e) => set(f.key, Number(e.currentTarget.value) as never)} aria-label={$t(f.name)}>
                 {#each f.options as o (o.value)}
-                  <option value={o.value}>{o.label}</option>
+                  <option value={o.value}>{optionLabel(o)}</option>
                 {/each}
               </select>
             {:else if f.kind === "number"}
@@ -136,17 +144,17 @@
                 value={value(f.key)}
                 disabled={!overridden(f.key)}
                 onchange={(e) => setNumber(f, e.currentTarget)}
-                aria-label={f.label}
+                aria-label={$t(f.name)}
               />
             {:else}
               <input
                 type="text"
                 value={(value(f.key) as string | null) ?? ""}
-                placeholder={f.placeholder}
+                placeholder={$t(f.example)}
                 disabled={!overridden(f.key)}
                 onchange={(e) => set(f.key, (e.currentTarget.value.trim() || null) as never)}
                 spellcheck="false"
-                aria-label={f.label}
+                aria-label={$t(f.name)}
               />
             {/if}
           </div>
@@ -156,7 +164,7 @@
     {#if count > 0}
       <div class="footer">
         <button class="btn-secondary" onclick={() => path && clearRepoOverrides(path)}>
-          Reset all {count} override{count === 1 ? "" : "s"} to global
+          {$t("repoSettings.resetAll", { count })}
         </button>
       </div>
     {/if}

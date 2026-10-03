@@ -5,6 +5,8 @@
   import Modal from "../shared/Modal.svelte";
   import { settings } from "../../lib/stores/settings";
   import * as tauri from "../../lib/tauri";
+  import { t } from "../../lib/i18n";
+  import { markers, segments } from "./prFormat";
   import type { GitHubRepo } from "../../lib/types/github";
   import type { RepoInfo } from "../../lib/types/git";
 
@@ -53,7 +55,7 @@
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        title: "Clone destination",
+        title: $t("github.cloneDestination"),
         defaultPath: s.default_repo_dir ?? undefined,
       });
       if (!selected) {
@@ -89,7 +91,7 @@
   }
 </script>
 
-<Modal open={isOpen} title="New GitHub Repository" onclose={handleClose} width="460px">
+<Modal open={isOpen} title={$t("github.newRepoTitle")} onclose={handleClose} width="460px">
   {#if error}
     <div class="error-banner">{error}</div>
   {/if}
@@ -98,73 +100,73 @@
     <!-- Success state -->
     <div class="success-state">
       <div class="success-msg">
-        Repository <strong>{createdRepo.full_name}</strong> created successfully.
+        {#each segments($t("github.repoCreated", markers("name"))) as seg}{#if seg.param === "name"}<strong>{createdRepo.full_name}</strong>{:else}{seg.text}{/if}{/each}
       </div>
 
       <div class="success-actions">
         <button class="btn-primary" onclick={handleCloneLocally} disabled={cloning}>
           {#if cloning}
             <Loader2 size={14} class="spinner" />
-            <span>Cloning...</span>
+            <span>{$t("github.cloning")}</span>
           {:else}
             <FolderOpen size={14} />
-            <span>Clone locally</span>
+            <span>{$t("github.cloneLocally")}</span>
           {/if}
         </button>
         <button class="btn-secondary" onclick={handleOpenInBrowser}>
           <ExternalLink size={14} />
-          <span>Open on GitHub</span>
+          <span>{$t("github.openOnGitHub")}</span>
         </button>
-        <button class="btn-ghost" onclick={handleClose}>Close</button>
+        <button class="btn-ghost" onclick={handleClose}>{$t("common.close")}</button>
       </div>
     </div>
   {:else}
     <!-- Create form -->
     <div class="create-form">
       <label class="field-label">
-        Repository name
+        {$t("github.repoName")}
         <input
           type="text"
           class="field-input"
-          placeholder="my-new-repo"
+          placeholder={$t("github.repoNamePlaceholder")}
           bind:value={name}
           onkeydown={(e) => e.key === "Enter" && handleCreate()}
         />
       </label>
 
       <label class="field-label">
-        Description
+        {$t("github.description")}
         <input
           type="text"
           class="field-input"
-          placeholder="Optional description"
+          placeholder={$t("github.optionalDescription")}
           bind:value={description}
         />
       </label>
 
       <div class="visibility-row">
-        <span class="field-label-text">Visibility</span>
+        <span class="field-label-text">{$t("github.visibility")}</span>
         <div class="visibility-toggle">
           <button
             class="vis-btn"
             class:active={isPrivate}
             onclick={() => (isPrivate = true)}
           >
-            Private
+            {$t("github.private")}
           </button>
           <button
             class="vis-btn"
             class:active={!isPrivate}
             onclick={() => (isPrivate = false)}
           >
-            Public
+            {$t("github.public")}
           </button>
         </div>
       </div>
 
       <label class="checkbox-row">
         <input type="checkbox" bind:checked={autoInit} />
-        <span>Initialize with README</span>
+        <span>{$t("github.initReadme")}</span>
       </label>
 
       <button
@@ -174,9 +176,9 @@
       >
         {#if creating}
           <Loader2 size={14} class="spinner" />
-          <span>Creating...</span>
+          <span>{$t("github.creating")}</span>
         {:else}
-          <span>Create repository</span>
+          <span>{$t("github.createRepo")}</span>
         {/if}
       </button>
     </div>

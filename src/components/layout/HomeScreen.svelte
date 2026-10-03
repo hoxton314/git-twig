@@ -99,11 +99,11 @@
 
   function relativeTime(ms: number): string {
     const s = Math.max(0, (Date.now() - ms) / 1000);
-    if (s < 60) return "just now";
-    if (s < 3600) return `${Math.round(s / 60)} min ago`;
-    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    if (s < 60) return $t("time.justNow");
+    if (s < 3600) return $t("time.minutesAgo", { count: Math.round(s / 60) });
+    if (s < 86400) return $t("time.hoursAgo", { count: Math.round(s / 3600) });
     const d = Math.round(s / 86400);
-    return d < 30 ? `${d} d ago` : new Date(ms).toLocaleDateString();
+    return d < 30 ? $t("time.daysAgo", { count: d }) : new Date(ms).toLocaleDateString();
   }
 
   function handleCloned(info: RepoInfo) {

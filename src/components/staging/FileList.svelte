@@ -35,6 +35,23 @@
   } from "lucide-svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { buildTree, visibleRows } from "./fileTree";
+  import { t, type MessageKey } from "../../lib/i18n";
+
+  const STATUS_LABELS: Record<string, MessageKey> = {
+    added: "staging.statusAdded",
+    modified: "staging.statusModified",
+    deleted: "staging.statusDeleted",
+    renamed: "staging.statusRenamed",
+    copied: "staging.statusCopied",
+    typechange: "staging.statusTypechange",
+    untracked: "staging.statusUntracked",
+    conflicted: "staging.statusConflicted",
+  };
+
+  function statusLabel(status: string): string {
+    const key = STATUS_LABELS[status];
+    return key ? $t(key) : status;
+  }
 
   interface Props {
     files: FileStatus[];
@@ -155,7 +172,7 @@
     aria-haspopup="menu"
   >
     <Icon size={13} color={statusColor(file.status)} />
-    <span class="file-name" title="{file.path} ({file.status})">{label}</span>
+    <span class="file-name" title="{file.path} ({statusLabel(file.status)})">{label}</span>
     {#each actions as action (action.title)}
       {@const ActionIcon = action.icon}
       <button

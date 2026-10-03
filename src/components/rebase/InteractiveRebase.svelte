@@ -13,6 +13,7 @@
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
   import type { RebaseAction, RebaseCommit, RebaseTodoItem } from "../../lib/types/git";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
 
   interface Row {
     commit: RebaseCommit;
@@ -20,14 +21,17 @@
     message: string;
   }
 
-  const ACTIONS: { id: RebaseAction; key: string; hint: string }[] = [
-    { id: "pick", key: "p", hint: "Use the commit" },
-    { id: "reword", key: "r", hint: "Use the commit, edit its message" },
-    { id: "edit", key: "e", hint: "Stop after this commit to amend it" },
-    { id: "squash", key: "s", hint: "Meld into the previous commit, combine messages" },
-    { id: "fixup", key: "f", hint: "Meld into the previous commit, discard this message" },
-    { id: "drop", key: "d", hint: "Remove the commit" },
+  // The action names are git's rebase todo commands (and match the keys).
+  const ACTIONS: { id: RebaseAction; key: string; help: MessageKey }[] = [
+    { id: "pick", key: "p", help: "rebase.hint.pick" },
+    { id: "reword", key: "r", help: "rebase.hint.reword" },
+    { id: "edit", key: "e", help: "rebase.hint.edit" },
+    { id: "squash", key: "s", help: "rebase.hint.squash" },
+    { id: "fixup", key: "f", help: "rebase.hint.fixup" },
+    { id: "drop", key: "d", help: "rebase.hint.drop" },
   ];
+  /** The keys hint, split where the <kbd> keys go. */
+  const keysHint = $derived($t("rebase.keysHint").split("{keys}"));
 
   const dialog = $derived($interactiveRebaseDialog);
   const headName = $derived($activeRepo?.head_name ?? "HEAD");
@@ -75,7 +79,7 @@
     if (!path) return;
     const b = fromRoot ? null : base.trim();
     if (b === "") {
-      loadError = "Enter a base branch or commit.";
+      loadError = tr("rebase.enterBase");
       return;
     }
     loading = true;
@@ -93,7 +97,8 @@
       mergesSkipped = list.merges_skipped;
       ontoNewBase = list.onto_new_base;
       loadedFor = b ?? "--root";
-      if (list.commits.length === 0) loadError = `No commits between ${b ?? "root"} and ${headName}.`;
+      if (list.commits.length === 0)
+        loadError = tr("rebase.noCommits", { base: b ?? tr("rebase.root"), head: headName });
     } catch (err) {
       rows = [];
       loadedFor = null;
@@ -192,11 +197,11 @@
     const errs: string[] = [];
     const first = rows.find((r) => r.action !== "drop");
     if (first && (first.action === "squash" || first.action === "fixup")) {
-      errs.push(`The first kept commit (${first.commit.short_oid}) cannot be a ${first.action}.`);
+      errs.push($t("rebase.firstCannotBe", { oid: first.commit.short_oid, action: first.action }));
     }
     for (const r of rows) {
       if (r.action === "reword" && !r.message.trim()) {
-        errs.push(`Reword of ${r.commit.short_oid} needs a message.`);
+        errs.push($t("rebase.rewordNeedsMessage", { oid: r.commit.short_oid }));
       }
     }
     return errs;
@@ -236,21 +241,24 @@
       await refreshOperation(path);
       const st = $operationState;
       if (st && st.kind === "rebase") {
-        const why = st.conflicts.length > 0 ? `${st.conflicts.length} conflicted file(s)` : "an edit stop";
-        toast("warning", `Rebase paused at ${why}. Use the banner to continue or abort.`, {
-          title: "Interactive rebase",
+        const text =
+          st.conflicts.length > 0
+            ? tr("rebase.pausedConflicts", { count: st.conflicts.length })
+            : tr("rebase.pausedEdit");
+        toast("warning", text, {
+          title: tr("rebase.interactive"),
         });
         running = false;
         close();
       } else if (res.success) {
-        toast("success", `Rewrote history of ${headName}`);
+        toast("success", tr("rebase.rewrote", { branch: headName }));
         running = false;
         close();
       } else {
-        toastError("Interactive rebase failed", res.message);
+        toastError(tr("rebase.interactiveFailed"), res.message);
       }
     } catch (err) {
-      toastError("Interactive rebase failed", err);
+      toastError(tr("rebase.interactiveFailed"), err);
     } finally {
       running = false;
     }
@@ -259,56 +267,54 @@
   const busyOp = $derived($operationState !== null && $operationState.kind !== "none");
 </script>
 
-<Modal open={dialog.open} title="Interactive rebase: {headName}" onclose={close} width="min(820px, 94vw)">
+<Modal open={dialog.open} title={$t("rebase.interactiveTitle", { branch: headName })} onclose={close} width="min(820px, 94vw)">
   <div class="irb">
     <form class="base-row" onsubmit={(e) => { e.preventDefault(); load(); }}>
-      <label class="base-label" for="irb-base">Base (exclusive)</label>
+      <label class="base-label" for="irb-base">{$t("rebase.baseExclusive")}</label>
       <input
         id="irb-base"
         type="text"
         bind:value={base}
         disabled={fromRoot}
-        placeholder="branch, tag or commit, e.g. main or HEAD~5"
+        placeholder={$t("rebase.basePlaceholder")}
         spellcheck="false"
         autocomplete="off"
       />
       <label class="check">
         <input type="checkbox" bind:checked={fromRoot} onchange={() => load()} />
-        From root
+        {$t("rebase.fromRoot")}
       </label>
-      <button type="submit" class="btn" disabled={loading} title="Load commits">
+      <button type="submit" class="btn" disabled={loading} title={$t("rebase.loadCommits")}>
         {#if loading}<Loader2 size={13} class="spinner" />{:else}<RefreshCw size={13} />{/if}
-        Load
+        {$t("rebase.load")}
       </button>
     </form>
 
     {#if busyOp}
-      <div class="warn"><AlertTriangle size={13} /> A {operationLabel($operationState?.kind ?? "")} is in progress. Finish or abort it first.</div>
+      <div class="warn"><AlertTriangle size={13} /> {$t("rebase.opInProgress", { name: operationLabel($operationState?.kind ?? "") })}</div>
     {/if}
     {#if upstreamCount > 0}
       <div class="warn">
-        <AlertTriangle size={13} /> {upstreamCount} commit{upstreamCount !== 1 ? "s are" : " is"} already in {loadedFor} and
-        {upstreamCount !== 1 ? "are" : "is"} set to drop.
+        <AlertTriangle size={13} /> {$t("rebase.alreadyUpstream", { count: upstreamCount, base: loadedFor ?? "" })}
       </div>
     {/if}
     {#if mergesSkipped > 0}
       <div class="warn">
-        <AlertTriangle size={13} /> {mergesSkipped} merge commit{mergesSkipped !== 1 ? "s" : ""} in range will be flattened (merges are not preserved).
+        <AlertTriangle size={13} /> {$t("rebase.mergesFlattened", { count: mergesSkipped })}
       </div>
     {/if}
 
     <div class="hint">
-      Commits are applied top to bottom. Drag the handle (or Alt+↑/↓) to reorder; keys
-      <kbd>p</kbd> <kbd>r</kbd> <kbd>e</kbd> <kbd>s</kbd> <kbd>f</kbd> <kbd>d</kbd> set the action of the focused row.
+      {keysHint[0]}<kbd>p</kbd> <kbd>r</kbd> <kbd>e</kbd> <kbd>s</kbd> <kbd>f</kbd> <kbd>d</kbd>{keysHint[1] ?? ""}
     </div>
 
     <div class="list" bind:this={listEl} class:dragging={dragFrom !== null}>
       {#if loading}
-        <div class="empty"><Loader2 size={14} class="spinner" /> Loading commits…</div>
+        <div class="empty"><Loader2 size={14} class="spinner" /> {$t("rebase.loadingCommits")}</div>
       {:else if loadError}
         <div class="empty error">{loadError}</div>
       {:else if rows.length === 0}
-        <div class="empty">Choose a base and load the commits to edit.</div>
+        <div class="empty">{$t("rebase.chooseBase")}</div>
       {:else}
         {#each rows as row, i (row.commit.oid)}
           {#if dropAt === i && dragFrom !== null && dropAt !== dragFrom && dropAt !== dragFrom + 1}
@@ -329,7 +335,7 @@
                 class="handle"
                 role="button"
                 tabindex="-1"
-                aria-label="Drag to reorder"
+                aria-label={$t("rebase.dragToReorder")}
                 onpointerdown={(e) => onHandleDown(e, i)}
                 onpointermove={onHandleMove}
                 onpointerup={onHandleUp}
@@ -341,23 +347,23 @@
                 class="action"
                 value={row.action}
                 onchange={(e) => setAction(i, e.currentTarget.value as RebaseAction)}
-                aria-label="Action for {row.commit.short_oid}"
+                aria-label={$t("rebase.actionFor", { oid: row.commit.short_oid })}
               >
                 {#each ACTIONS as a (a.id)}
-                  <option value={a.id} title={a.hint}>{a.id}</option>
+                  <option value={a.id} title={$t(a.help)}>{a.id}</option>
                 {/each}
               </select>
               <span class="oid">{row.commit.short_oid}</span>
               <span class="summary" title={row.commit.message}>{row.commit.summary}</span>
               {#if row.commit.already_upstream}
-                <span class="upstream-badge" title="The new base already contains this change">in base</span>
+                <span class="upstream-badge" title={$t("rebase.inBaseTitle")}>{$t("rebase.inBase")}</span>
               {/if}
               <span class="author">{row.commit.author_name}</span>
               <span class="moves">
-                <button class="icon-btn" onclick={() => move(i, i - 1)} disabled={i === 0} aria-label="Move up" title="Move up (Alt+↑)">
+                <button class="icon-btn" onclick={() => move(i, i - 1)} disabled={i === 0} aria-label={$t("rebase.moveUp")} title={$t("rebase.moveUpTitle")}>
                   <ArrowUp size={12} />
                 </button>
-                <button class="icon-btn" onclick={() => move(i, i + 1)} disabled={i === rows.length - 1} aria-label="Move down" title="Move down (Alt+↓)">
+                <button class="icon-btn" onclick={() => move(i, i + 1)} disabled={i === rows.length - 1} aria-label={$t("rebase.moveDown")} title={$t("rebase.moveDownTitle")}>
                   <ArrowDown size={12} />
                 </button>
               </span>
@@ -367,7 +373,7 @@
                 class="msg"
                 rows="3"
                 bind:value={row.message}
-                aria-label="New message for {row.commit.short_oid}"
+                aria-label={$t("rebase.newMessageFor", { oid: row.commit.short_oid })}
                 spellcheck="true"
               ></textarea>
             {:else if row.action === "squash"}
@@ -375,8 +381,8 @@
                 class="msg"
                 rows="2"
                 bind:value={row.message}
-                placeholder="Optional: message for the combined commit (default: both messages)"
-                aria-label="Combined message for squash of {row.commit.short_oid}"
+                placeholder={$t("rebase.squashPlaceholder")}
+                aria-label={$t("rebase.squashMessageFor", { oid: row.commit.short_oid })}
                 spellcheck="true"
               ></textarea>
             {/if}
@@ -396,23 +402,23 @@
 
     <div class="footer">
       <span class="summary-text">
-        {rows.length} commit{rows.length !== 1 ? "s" : ""}{summary ? ` · ${summary}` : ""}
+        {$t("rebase.commitCount", { count: rows.length })}{summary ? ` · ${summary}` : ""}
       </span>
       {#if dirty}
         <label class="check">
-          <input type="checkbox" bind:checked={autostash} /> Autostash
+          <input type="checkbox" bind:checked={autostash} /> {$t("rebase.autostash")}
         </label>
       {/if}
       <span class="spacer"></span>
-      <button class="btn" onclick={close} disabled={running}>Cancel</button>
+      <button class="btn" onclick={close} disabled={running}>{$t("common.cancel")}</button>
       <button
         class="btn primary"
         onclick={start}
         disabled={running || busyOp || rows.length === 0 || errors.length > 0 || !changed}
-        title={!changed ? "Nothing changed" : "Start the rebase"}
+        title={!changed ? $t("rebase.nothingChanged") : $t("rebase.startTitle")}
       >
         {#if running}<Loader2 size={13} class="spinner" />{/if}
-        Start rebase
+        {$t("rebase.start")}
       </button>
     </div>
   </div>

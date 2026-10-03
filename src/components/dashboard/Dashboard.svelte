@@ -16,12 +16,13 @@
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
   import type { RepoStatusRow } from "../../lib/types/git";
+  import { t, tr } from "../../lib/i18n";
 
   const CONCURRENCY = 3;
 
   const scope = $derived($dashboardScope);
   const group = $derived(scope?.groupId ? $repoHistory.groups.find((g) => g.id === scope.groupId) : null);
-  const title = $derived(group ? `Dashboard — ${group.name}` : "Dashboard — All repositories");
+  const title = $derived(group ? $t("dashboard.titleGroup", { name: group.name }) : $t("dashboard.titleAll"));
   const paths = $derived(scope ? dashboardPaths(scope.groupId, $repoHistory, [...$openRepos.keys()]) : []);
 
   let rows = $state<RepoStatusRow[]>([]);
@@ -37,7 +38,7 @@
     try {
       rows = await tauri.getDashboardStatus(paths);
     } catch (err) {
-      toastError("Dashboard", err);
+      toastError(tr("dashboard.title"), err);
     } finally {
       loading = false;
     }
@@ -76,7 +77,7 @@
 
   async function runOne(kind: "fetch" | "pull", path: string) {
     if (isSyncing($operations, path)) {
-      outcome = { ...outcome, [path]: { ok: true, text: "Already syncing; skipped" } };
+      outcome = { ...outcome, [path]: { ok: true, text: tr("dashboard.alreadySyncing") } };
       return;
     }
     busy = { ...busy, [path]: true };
@@ -86,15 +87,15 @@
       const res = await trackOperation(
         path,
         kind,
-        kind === "fetch" ? "Fetching (dashboard)…" : "Pulling (dashboard)…",
+        kind === "fetch" ? tr("dashboard.fetching") : tr("dashboard.pulling"),
         () => (kind === "fetch" ? tauri.dashboardFetch(path) : tauri.dashboardPull(path)),
         { background: true },
       );
       outcome = {
         ...outcome,
         [path]: res.success
-          ? { ok: true, text: kind === "fetch" ? "Fetched" : firstLine(res.message) || "Up to date" }
-          : { ok: false, text: firstLine(res.message) || `${kind} failed` },
+          ? { ok: true, text: kind === "fetch" ? tr("dashboard.fetched") : firstLine(res.message) || tr("dashboard.upToDate") }
+          : { ok: false, text: firstLine(res.message) || (kind === "fetch" ? tr("dashboard.fetchFailed") : tr("dashboard.pullFailed")) },
       };
     } catch (err) {
       outcome = { ...outcome, [path]: { ok: false, text: err instanceof Error ? err.message : String(err) } };
@@ -111,7 +112,7 @@
       .filter((r) => kind === "fetch" || pullable(r))
       .map((r) => r.path);
     if (targets.length === 0) {
-      toast("info", kind === "fetch" ? "No repositories to fetch." : "Nothing to pull: no repository is behind its upstream.");
+      toast("info", kind === "fetch" ? tr("dashboard.nothingToFetch") : tr("dashboard.nothingToPull"));
       return;
     }
     running = kind;
@@ -119,10 +120,13 @@
     try {
       await runPool(targets, CONCURRENCY, (p) => runOne(kind, p), () => cancelled);
       const failed = targets.filter((p) => outcome[p] && !outcome[p].ok).length;
-      const verb = kind === "fetch" ? "Fetched" : "Pulled";
-      if (cancelled) toast("info", `${verb} some repositories, then stopped.`);
-      else if (failed > 0) toast("warning", `${verb} ${targets.length - failed} of ${targets.length}; ${failed} failed (see the list).`);
-      else toast("success", `${verb} ${targets.length} repositor${targets.length === 1 ? "y" : "ies"}.`);
+      const isFetch = kind === "fetch";
+      const done = targets.length - failed;
+      const total = targets.length;
+      if (cancelled) toast("info", isFetch ? tr("dashboard.fetchStopped") : tr("dashboard.pullStopped"));
+      else if (failed > 0)
+        toast("warning", tr(isFetch ? "dashboard.fetchPartial" : "dashboard.pullPartial", { done, total, failed }));
+      else toast("success", tr(isFetch ? "dashboard.fetchDone" : "dashboard.pullDone", { count: total }));
     } finally {
       running = null;
     }
@@ -136,7 +140,7 @@
       try {
         addRepo(await tauri.openRepo(path));
       } catch (err) {
-        toastError("Open repository failed", err);
+        toastError(tr("tabs.openFailed"), err);
         return;
       }
     }
@@ -160,29 +164,32 @@
   {#if scope}
     <div class="dash">
       <div class="toolbar">
-        <button class="btn" onclick={() => runAll("fetch")} disabled={!!running || loading || rows.length === 0} title="git fetch --all --prune in each repository, 3 at a time">
-          {#if running === "fetch"}<Loader2 size={12} class="spinner" />{/if} Fetch all
+        <button class="btn" onclick={() => runAll("fetch")} disabled={!!running || loading || rows.length === 0} title={$t("dashboard.fetchAllTitle")}>
+          {#if running === "fetch"}<Loader2 size={12} class="spinner" />{/if} {$t("dashboard.fetchAll")}
         </button>
-        <button class="btn" onclick={() => runAll("pull")} disabled={!!running || loading || behindCount === 0} title="Fast-forward each branch that is behind its upstream (git pull --ff-only); never merges">
-          {#if running === "pull"}<Loader2 size={12} class="spinner" />{/if} Pull all ({behindCount})
+        <button class="btn" onclick={() => runAll("pull")} disabled={!!running || loading || behindCount === 0} title={$t("dashboard.pullAllTitle")}>
+          {#if running === "pull"}<Loader2 size={12} class="spinner" />{/if} {$t("dashboard.pullAll", { count: behindCount })}
         </button>
         {#if running}
-          <button class="btn" onclick={() => (cancelled = true)} title="Don't start the remaining repositories"><X size={12} /> Stop</button>
+          <button class="btn" onclick={() => (cancelled = true)} title={$t("dashboard.stopTitle")}><X size={12} /> {$t("dashboard.stop")}</button>
         {/if}
         <span class="spacer"></span>
-        <button class="icon-btn" onclick={reload} disabled={loading || !!running} title="Refresh status" aria-label="Refresh status">
+        <button class="icon-btn" onclick={reload} disabled={loading || !!running} title={$t("dashboard.refresh")} aria-label={$t("dashboard.refresh")}>
           <RefreshCw size={13} />
         </button>
       </div>
 
       {#if loading && rows.length === 0}
-        <p class="muted"><Loader2 size={13} class="spinner" /> Reading {paths.length} repositories…</p>
+        <p class="muted"><Loader2 size={13} class="spinner" /> {$t("dashboard.reading", { count: paths.length })}</p>
       {:else if paths.length === 0}
-        <p class="muted">{group ? "This group has no repositories yet." : "No repositories yet: open or pin some first."}</p>
+        <p class="muted">{group ? $t("dashboard.groupEmpty") : $t("dashboard.empty")}</p>
       {:else}
         <table>
           <thead>
-            <tr><th>Repository</th><th>Branch</th><th>Sync</th><th>Changes</th><th>Fetched</th><th>Status</th></tr>
+            <tr>
+              <th>{$t("dashboard.colRepository")}</th><th>{$t("dashboard.colBranch")}</th><th>{$t("dashboard.colSync")}</th>
+              <th>{$t("dashboard.colChanges")}</th><th>{$t("dashboard.colFetched")}</th><th>{$t("dashboard.colStatus")}</th>
+            </tr>
           </thead>
           <tbody>
             {#each rows as r (r.path)}
@@ -190,24 +197,24 @@
                 <td>
                   <button class="repo" onclick={() => openRow(r.path)} disabled={!!r.error} title={r.path}>
                     <span class="name">{r.name}</span>
-                    {#if $openRepos.has(r.path)}<span class="tag">open</span>{/if}
+                    {#if $openRepos.has(r.path)}<span class="tag">{$t("tabs.open")}</span>{/if}
                   </button>
                 </td>
-                <td class="mono">{r.error ? "" : (r.branch ?? "(no commits)")}{r.detached ? " (detached)" : ""}</td>
+                <td class="mono">{r.error ? "" : (r.branch ?? $t("status.noCommits"))}{r.detached ? $t("dashboard.detached") : ""}</td>
                 <td><span class="sync">
                   {#if r.error}
                     —
                   {:else if !r.upstream}
-                    <span class="muted" title="No upstream branch">local</span>
+                    <span class="muted" title={$t("dashboard.noUpstream")}>{$t("dashboard.local")}</span>
                   {:else if r.ahead === 0 && r.behind === 0}
-                    <span class="muted" title="In sync with {r.upstream}">✓</span>
+                    <span class="muted" title={$t("dashboard.inSync", { upstream: r.upstream })}>✓</span>
                   {:else}
-                    {#if r.ahead > 0 && r.behind > 0}<span class="diverged" title="Diverged from {r.upstream}: Pull all only fast-forwards, so merge or rebase in the repository">diverged</span>{/if}
-                    {#if r.ahead > 0}<span class="ahead" title="{r.ahead} to push"><ArrowUp size={11} />{r.ahead}</span>{/if}
-                    {#if r.behind > 0}<span class="behind" title="{r.behind} to pull"><ArrowDown size={11} />{r.behind}</span>{/if}
+                    {#if r.ahead > 0 && r.behind > 0}<span class="diverged" title={$t("dashboard.divergedTitle", { upstream: r.upstream })}>{$t("dashboard.diverged")}</span>{/if}
+                    {#if r.ahead > 0}<span class="ahead" title={$t("dashboard.toPush", { count: r.ahead })}><ArrowUp size={11} />{r.ahead}</span>{/if}
+                    {#if r.behind > 0}<span class="behind" title={$t("dashboard.toPull", { count: r.behind })}><ArrowDown size={11} />{r.behind}</span>{/if}
                   {/if}
                 </span></td>
-                <td>{r.error ? "" : r.changes === 0 ? "clean" : `${r.changes}${r.changes_capped ? "+" : ""}`}</td>
+                <td>{r.error ? "" : r.changes === 0 ? $t("dashboard.clean") : `${r.changes}${r.changes_capped ? "+" : ""}`}</td>
                 <td class="muted">{r.error ? "" : fetchAge(r.last_fetch)}</td>
                 <td class="status">
                   {#if busy[r.path]}

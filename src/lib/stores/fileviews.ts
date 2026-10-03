@@ -13,6 +13,7 @@ import { writable, get } from "svelte/store";
 import { activeRepoPath } from "./repos";
 import { commitGraph, selectedCommitOid } from "./graph";
 import { toast } from "./toasts";
+import { tr } from "../i18n";
 
 export type FileView =
   | { kind: "history"; path: string }
@@ -54,8 +55,8 @@ export function showInGraph(oid: string): boolean {
   selectedCommitOid.set(oid);
   if (found) revealCommit.set(oid);
   else
-    toast("info", "That commit is not in the loaded graph (it may be beyond the commit limit); showing its diff.", {
-      title: "Commit not in graph",
+    toast("info", tr("history.notInGraph"), {
+      title: tr("history.notInGraphTitle"),
     });
   return found;
 }

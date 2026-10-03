@@ -8,6 +8,7 @@
   import { globalSettings, updateGlobalSettings, updateGlobalSettingsWith } from "../../lib/stores/settings";
   import { toast, toastError } from "../../lib/stores/toasts";
   import * as tauri from "../../lib/tauri";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
   import {
     CUSTOM_PREFIX,
     THEME_TOKENS,
@@ -26,8 +27,17 @@
   const s = $derived($globalSettings);
   const themes = $derived(s.custom_themes ?? []);
   let editing = $state<string | null>(null);
-  const current = $derived(themes.find((t) => t.id === editing) ?? null);
+  const current = $derived(themes.find((th) => th.id === editing) ?? null);
   const warnings = $derived(current ? contrastWarnings(current.colors) : []);
+
+  /** Catalog keys for the editor's token group titles (from lib/themes). */
+  const GROUP_KEYS: Record<string, MessageKey> = {
+    "Surfaces & text": "settings.themes.groupSurfaces",
+    "Graph lanes": "settings.themes.groupLanes",
+    Diff: "settings.themes.groupDiff",
+    Syntax: "settings.themes.groupSyntax",
+    Search: "settings.themes.groupSearch",
+  };
 
   function newId(): string {
     return `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -54,22 +64,22 @@
     }
     const base = (document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark") as "dark" | "light";
     const sourceName = s.theme.startsWith(CUSTOM_PREFIX)
-      ? (themes.find((t) => `${CUSTOM_PREFIX}${t.id}` === s.theme)?.name ?? "Custom")
-      : base === "light" ? "Light" : "Dark";
-    const theme: CustomTheme = { id: newId(), name: `${sourceName} (copy)`, base, colors };
+      ? (themes.find((th) => `${CUSTOM_PREFIX}${th.id}` === s.theme)?.name ?? tr("settings.themes.custom"))
+      : tr(base === "light" ? "settings.appearance.light" : "settings.appearance.dark");
+    const theme: CustomTheme = { id: newId(), name: tr("settings.themes.copyName", { name: sourceName }), base, colors };
     changeThemes((list) => [...list, theme], `${CUSTOM_PREFIX}${theme.id}`);
     editing = theme.id;
   }
 
-  function update(id: string, patch: (t: CustomTheme) => Partial<CustomTheme>) {
-    changeThemes((list) => list.map((t) => (t.id === id ? { ...t, ...patch(t) } : t)));
+  function update(id: string, patch: (th: CustomTheme) => Partial<CustomTheme>) {
+    changeThemes((list) => list.map((th) => (th.id === id ? { ...th, ...patch(th) } : th)));
   }
 
   /** Set a token; an empty value goes back to the base theme's colour. */
-  function setColor(t: CustomTheme, token: ThemeToken, value: string) {
+  function setColor(th: CustomTheme, token: ThemeToken, value: string) {
     const v = value.trim();
     if (!v) {
-      update(t.id, (cur) => {
+      update(th.id, (cur) => {
         const colors = { ...cur.colors };
         delete colors[token];
         return { colors };
@@ -77,122 +87,131 @@
       return;
     }
     if (!isColor(v)) {
-      toast("warning", `${v} isn't a colour Twig accepts (use #hex, rgb(), rgba(), hsl(); empty = base theme).`);
+      toast("warning", tr("settings.themes.invalidColour", { value: v }));
       return;
     }
-    update(t.id, (cur) => ({ colors: { ...cur.colors, [token]: v } }));
+    update(th.id, (cur) => ({ colors: { ...cur.colors, [token]: v } }));
   }
 
   /** What the picker shows: the token's value, else what's on screen for it. */
-  function pickerValue(t: CustomTheme, token: ThemeToken): string {
-    const own = t.colors[token];
+  function pickerValue(th: CustomTheme, token: ThemeToken): string {
+    const own = th.colors[token];
     if (own) return toHexInput(own);
-    if (s.theme === `${CUSTOM_PREFIX}${t.id}`) {
+    if (s.theme === `${CUSTOM_PREFIX}${th.id}`) {
       return toHexInput(getComputedStyle(document.documentElement).getPropertyValue(token).trim());
     }
     return toHexInput("");
   }
 
-  async function remove(t: CustomTheme) {
-    const ok = await ask(`Delete the theme “${t.name}”?`, { title: "Delete Theme", kind: "warning", okLabel: "Delete" });
+  async function remove(th: CustomTheme) {
+    const ok = await ask(tr("settings.themes.deleteConfirm", { name: th.name }), {
+      title: tr("settings.themes.deleteTitle"),
+      kind: "warning",
+      okLabel: tr("common.delete"),
+    });
     if (!ok) return;
-    const selected = s.theme === `${CUSTOM_PREFIX}${t.id}`;
-    changeThemes((list) => list.filter((x) => x.id !== t.id), selected ? t.base : undefined);
-    if (editing === t.id) editing = null;
+    const selected = s.theme === `${CUSTOM_PREFIX}${th.id}`;
+    changeThemes((list) => list.filter((x) => x.id !== th.id), selected ? th.base : undefined);
+    if (editing === th.id) editing = null;
   }
 
   async function importTheme() {
-    const path = await open({ title: "Import Theme", multiple: false, directory: false, filters: [{ name: "Theme", extensions: ["json"] }] });
+    const path = await open({
+      title: tr("settings.themes.importTitle"),
+      multiple: false,
+      directory: false,
+      filters: [{ name: tr("settings.themes.fileFilter"), extensions: ["json"] }],
+    });
     if (!path || Array.isArray(path)) return;
     try {
       const parsed = parseTheme(await tauri.importThemeFile(path), newId());
       if ("error" in parsed) {
-        toastError("Import theme failed", parsed.error);
+        toastError(tr("settings.themes.importFailed"), parsed.error);
         return;
       }
       const theme = parsed.theme;
       changeThemes((list) => [...list, theme], `${CUSTOM_PREFIX}${theme.id}`);
-      toast("success", `Imported “${parsed.theme.name}”`);
+      toast("success", tr("settings.themes.imported", { name: parsed.theme.name }));
     } catch (err) {
-      toastError("Import theme failed", err);
+      toastError(tr("settings.themes.importFailed"), err);
     }
   }
 
-  async function exportOne(t: CustomTheme) {
+  async function exportOne(th: CustomTheme) {
     const path = await save({
-      title: "Export Theme",
-      defaultPath: `${t.name.replace(/[^\w.-]+/g, "-").toLowerCase() || "theme"}.json`,
-      filters: [{ name: "Theme", extensions: ["json"] }],
+      title: tr("settings.themes.exportTitle"),
+      defaultPath: `${th.name.replace(/[^\w.-]+/g, "-").toLowerCase() || "theme"}.json`,
+      filters: [{ name: tr("settings.themes.fileFilter"), extensions: ["json"] }],
     });
     if (!path) return;
     try {
-      await tauri.exportThemeFile(path, exportTheme(t));
-      toast("success", `Exported to ${path}`);
+      await tauri.exportThemeFile(path, exportTheme(th));
+      toast("success", tr("settings.themes.exported", { path }));
     } catch (err) {
-      toastError("Export theme failed", err);
+      toastError(tr("settings.themes.exportFailed"), err);
     }
   }
 </script>
 
 <div class="custom">
   <div class="head">
-    <span class="label-text">Custom themes</span>
+    <span class="label-text">{$t("settings.themes.title")}</span>
     <span class="actions">
-      <button class="btn" onclick={duplicateCurrent} title="Start a new theme from the colours on screen"><Copy size={12} /> Duplicate current</button>
-      <button class="btn" onclick={importTheme}><Upload size={12} /> Import…</button>
+      <button class="btn" onclick={duplicateCurrent} title={$t("settings.themes.duplicateTitle")}><Copy size={12} /> {$t("settings.themes.duplicate")}</button>
+      <button class="btn" onclick={importTheme}><Upload size={12} /> {$t("settings.themes.import")}</button>
     </span>
   </div>
   {#if themes.length === 0}
-    <p class="hint">Duplicate the current theme to start editing colours, or import a theme file.</p>
+    <p class="hint">{$t("settings.themes.empty")}</p>
   {/if}
-  {#each themes as t (t.id)}
-    {@const selected = s.theme === `${CUSTOM_PREFIX}${t.id}`}
+  {#each themes as th (th.id)}
+    {@const selected = s.theme === `${CUSTOM_PREFIX}${th.id}`}
     <div class="theme" class:selected>
       <div class="theme-row">
-        <button class="toggle" onclick={() => (editing = editing === t.id ? null : t.id)} aria-expanded={editing === t.id}>
-          {#if editing === t.id}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
+        <button class="toggle" onclick={() => (editing = editing === th.id ? null : th.id)} aria-expanded={editing === th.id}>
+          {#if editing === th.id}<ChevronDown size={13} />{:else}<ChevronRight size={13} />{/if}
           <span class="swatches">
             {#each ["--color-bg", "--color-surface", "--color-text-primary", "--color-lane-0", "--color-lane-1", "--color-lane-3"] as tok (tok)}
-              {@const c = t.colors[tok as ThemeToken]}
+              {@const c = th.colors[tok as ThemeToken]}
               <!-- Only validated colours reach the style attribute (imported settings are untrusted). -->
               <span class="sw" style="background: {c && isColor(c) ? c : 'transparent'}"></span>
             {/each}
           </span>
-          <span class="name">{t.name}</span>
-          <span class="muted">{t.base}</span>
+          <span class="name">{th.name}</span>
+          <span class="muted">{$t(th.base === "light" ? "settings.themes.baseLight" : "settings.themes.baseDark")}</span>
         </button>
         {#if !selected}
-          <button class="btn" onclick={() => updateGlobalSettings({ theme: `${CUSTOM_PREFIX}${t.id}` })}>Use</button>
+          <button class="btn" onclick={() => updateGlobalSettings({ theme: `${CUSTOM_PREFIX}${th.id}` })}>{$t("settings.themes.use")}</button>
         {:else}
-          <span class="muted">in use</span>
+          <span class="muted">{$t("settings.themes.inUse")}</span>
         {/if}
-        <button class="icon" onclick={() => (editing = t.id)} title="Edit" aria-label="Edit {t.name}"><Pencil size={12} /></button>
-        <button class="icon" onclick={() => exportOne(t)} title="Export…" aria-label="Export {t.name}"><Download size={12} /></button>
-        <button class="icon" onclick={() => remove(t)} title="Delete" aria-label="Delete {t.name}"><Trash2 size={12} /></button>
+        <button class="icon" onclick={() => (editing = th.id)} title={$t("common.edit")} aria-label={$t("settings.themes.editAria", { name: th.name })}><Pencil size={12} /></button>
+        <button class="icon" onclick={() => exportOne(th)} title={$t("settings.themes.export")} aria-label={$t("settings.themes.exportAria", { name: th.name })}><Download size={12} /></button>
+        <button class="icon" onclick={() => remove(th)} title={$t("common.delete")} aria-label={$t("settings.themes.deleteAria", { name: th.name })}><Trash2 size={12} /></button>
       </div>
-      {#if editing === t.id && current}
+      {#if editing === th.id && current}
         <div class="editor">
           <div class="meta">
-            <label>Name <input value={current.name} maxlength="60" onchange={(e) => {
+            <label>{$t("settings.themes.name")} <input value={current.name} maxlength="60" onchange={(e) => {
               const name = e.currentTarget.value.trim();
-              if (name) update(t.id, () => ({ name }));
+              if (name) update(th.id, () => ({ name }));
             }} /></label>
             <label>
-              Base
+              {$t("settings.themes.base")}
               <select value={current.base} onchange={(e) => {
                 const base = e.currentTarget.value as "dark" | "light";
-                update(t.id, () => ({ base }));
+                update(th.id, () => ({ base }));
               }}>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
+                <option value="dark">{$t("settings.appearance.dark")}</option>
+                <option value="light">{$t("settings.appearance.light")}</option>
               </select>
             </label>
-            {#if !selected}<span class="muted">Use the theme to preview edits live.</span>{/if}
+            {#if !selected}<span class="muted">{$t("settings.themes.previewHint")}</span>{/if}
           </div>
           {#each warnings as w (w)}<p class="warn" role="alert">{w}</p>{/each}
           {#each TOKEN_GROUPS as group (group.title)}
             <fieldset>
-              <legend>{group.title}</legend>
+              <legend>{GROUP_KEYS[group.title] ? $t(GROUP_KEYS[group.title]) : group.title}</legend>
               {#each group.tokens as token (token)}
                 {@const value = current.colors[token] ?? ""}
                 <div class="token">
@@ -200,17 +219,17 @@
                     type="color"
                     value={pickerValue(current, token)}
                     oninput={(e) => setColor(current, token, pickedColor(e.currentTarget.value, value))}
-                    aria-label="{tokenLabel(token)} colour"
+                    aria-label={$t("settings.themes.colourAria", { token: tokenLabel(token) })}
                   />
                   <span class="token-name">{tokenLabel(token)}</span>
                   <input
                     class="token-value"
                     value={value}
-                    placeholder="{current.base} theme"
-                    title="Empty: use the {current.base} theme's colour"
+                    placeholder={$t(current.base === "light" ? "settings.themes.placeholderLight" : "settings.themes.placeholderDark")}
+                    title={$t(current.base === "light" ? "settings.themes.emptyTitleLight" : "settings.themes.emptyTitleDark")}
                     spellcheck="false"
-                    onchange={(e) => setColor(t, token, e.currentTarget.value)}
-                    aria-label="{tokenLabel(token)} value"
+                    onchange={(e) => setColor(th, token, e.currentTarget.value)}
+                    aria-label={$t("settings.themes.valueAria", { token: tokenLabel(token) })}
                   />
                 </div>
               {/each}
