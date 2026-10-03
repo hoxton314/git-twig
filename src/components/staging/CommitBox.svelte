@@ -14,6 +14,7 @@
   import { workingStatus, commitGraph, branches, refreshAll } from "../../lib/stores/graph";
   import { onAction } from "../../lib/keybindings";
   import { toast, toastError } from "../../lib/stores/toasts";
+  import { t, tr } from "../../lib/i18n";
   import * as tauri from "../../lib/tauri";
   import { waitForWrites, confirmDestructive } from "./writeQueue";
   import {
@@ -116,9 +117,8 @@
       if (repoPath !== path) return;
       if (head.pushed) {
         const ok = await confirmDestructive(
-          `The last commit has already been pushed${head.pushed_to ? ` to ${head.pushed_to}` : ""}. ` +
-            "Amending rewrites it, so you will need to force-push and collaborators may have to recover. Amend anyway?",
-          "Amend Pushed Commit",
+          head.pushed_to ? tr("commit.amendPushedTo", { remote: head.pushed_to }) : tr("commit.amendPushed"),
+          tr("commit.amendPushedTitle"),
         );
         if (!ok || repoPath !== path) return;
       }
@@ -127,7 +127,7 @@
       historyIndex = -1;
       amend = true;
     } catch (err) {
-      toastError("Cannot Amend", err);
+      toastError(tr("commit.cannotAmend"), err);
     } finally {
       amendBusy = false;
     }
@@ -163,12 +163,12 @@
 
   async function insertTemplate() {
     if (!template) {
-      toast("info", "No commit.template is configured for this repository.");
+      toast("info", tr("commit.noTemplate"));
       return;
     }
     if (commitMessage.trim() && commitMessage.trim() !== template.trim()) {
-      const ok = await ask("Replace the current commit message with the commit template?", {
-        title: "Insert Template",
+      const ok = await ask(tr("commit.replaceWithTemplate"), {
+        title: tr("commit.insertTemplateTitle"),
         kind: "warning",
       });
       if (!ok) return;
@@ -207,7 +207,7 @@
     const rect = historyBtn.getBoundingClientRect();
     const items: MenuItem[] =
       history.length === 0
-        ? [{ label: "No recent messages", disabled: true }]
+        ? [{ label: tr("commit.noRecent"), disabled: true }]
         : history.map((msg, i) => ({
             label: summaryOf(msg),
             shortcut: i === 0 ? "Ctrl+↑" : undefined,
@@ -251,15 +251,15 @@
           amend = false;
           skipHooks = false;
         }
-        if (wasAmend) toast("success", "Amended the last commit");
+        if (wasAmend) toast("success", tr("commit.amended"));
         await refreshAll();
       } else {
-        toast("error", result.message.trim() || "git commit failed", {
-          title: wasAmend ? "Amend Failed" : "Commit Failed",
+        toast("error", result.message.trim() || tr("commit.gitFailed"), {
+          title: wasAmend ? tr("commit.amendFailed") : tr("commit.failed"),
         });
       }
     } catch (err) {
-      toastError(wasAmend ? "Amend Failed" : "Commit Failed", err);
+      toastError(wasAmend ? tr("commit.amendFailed") : tr("commit.failed"), err);
     } finally {
       loading = false;
     }
@@ -268,8 +268,8 @@
   async function handleUndoCommit() {
     if (!repoPath) return;
     const path = repoPath;
-    const ok = await ask("Undo the last commit? Changes will be kept staged.", {
-      title: "Undo Commit",
+    const ok = await ask(tr("commit.undoConfirm"), {
+      title: tr("commit.undoTitleDialog"),
       kind: "warning",
     });
     if (!ok) return;
@@ -278,10 +278,10 @@
       if (result.success) {
         await refreshAll();
       } else {
-        toast("error", result.message.trim() || "Undo failed", { title: "Undo Failed" });
+        toast("error", result.message.trim() || tr("commit.undoFailed"), { title: tr("commit.undoFailed") });
       }
     } catch (err) {
-      toastError("Undo Failed", err);
+      toastError(tr("commit.undoFailed"), err);
     }
   }
 
@@ -304,31 +304,31 @@
       class="cc-type"
       value={conventional?.type ?? ""}
       onchange={(e) => setType(e.currentTarget.value)}
-      title="Conventional commit type"
-      aria-label="Conventional commit type"
+      title={$t("commit.ccType")}
+      aria-label={$t("commit.ccType")}
     >
-      <option value="">type…</option>
-      {#each CONVENTIONAL_TYPES as t (t)}
-        <option value={t}>{t}</option>
+      <option value="">{$t("commit.ccTypePlaceholder")}</option>
+      {#each CONVENTIONAL_TYPES as ty (ty)}
+        <option value={ty}>{ty}</option>
       {/each}
     </select>
     <input
       class="cc-scope"
       type="text"
-      placeholder="scope"
+      placeholder={$t("commit.ccScopePlaceholder")}
       value={conventional?.scope ?? ""}
       oninput={(e) => setScope(e.currentTarget.value)}
       disabled={!conventional}
       spellcheck="false"
-      title={conventional ? "Conventional commit scope (optional)" : "Pick a type first"}
-      aria-label="Conventional commit scope"
+      title={conventional ? $t("commit.ccScope") : $t("commit.ccScopeNeedsType")}
+      aria-label={$t("commit.ccScopeLabel")}
     />
     <div class="helper-btns">
-      <button class="icon-btn" onclick={() => (showCoAuthor = true)} title="Add co-author" aria-label="Add co-author">
+      <button class="icon-btn" onclick={() => (showCoAuthor = true)} title={$t("commit.addCoAuthor")} aria-label={$t("commit.addCoAuthor")}>
         <Users size={13} />
       </button>
       {#if template}
-        <button class="icon-btn" onclick={insertTemplate} title="Insert commit template" aria-label="Insert commit template">
+        <button class="icon-btn" onclick={insertTemplate} title={$t("commit.insertTemplate")} aria-label={$t("commit.insertTemplate")}>
           <FileText size={13} />
         </button>
       {/if}
@@ -336,8 +336,8 @@
         class="icon-btn"
         bind:this={historyBtn}
         onclick={openHistory}
-        title="Recent messages (Ctrl+↑ / Ctrl+↓ in the message box)"
-        aria-label="Recent commit messages"
+        title={$t("commit.recentTitle")}
+        aria-label={$t("commit.recentLabel")}
         aria-haspopup="menu"
       >
         <History size={13} />
@@ -349,34 +349,34 @@
     bind:this={textarea}
     class="commit-input"
     class:amending={amend}
-    placeholder={template ?? (amend ? "Amended commit message..." : "Commit message...")}
+    placeholder={template ?? (amend ? $t("commit.placeholderAmend") : $t("commit.placeholder"))}
     bind:value={commitMessage}
     oninput={() => (historyIndex = -1)}
     onkeydown={onMessageKey}
     rows="3"
     spellcheck="true"
-    aria-label="Commit message"
+    aria-label={$t("commit.messageLabel")}
   ></textarea>
 
   <div class="options">
-    <label class="opt" title="Replace the last commit instead of creating a new one">
+    <label class="opt" title={$t("commit.amendTitle")}>
       <input type="checkbox" checked={amend} disabled={amendBusy} onchange={(e) => setAmend(e.currentTarget.checked)} />
-      <span>Amend</span>
+      <span>{$t("commit.amend")}</span>
     </label>
-    <label class="opt" title="Add a Signed-off-by trailer (git commit --signoff)">
+    <label class="opt" title={$t("commit.signoffTitle")}>
       <input type="checkbox" checked={signoff} onchange={toggleSignoff} />
-      <span>Sign-off</span>
+      <span>{$t("commit.signoff")}</span>
     </label>
-    <label class="opt" class:skipping={skipHooks} title="Don't run the pre-commit and commit-msg hooks for this commit (git commit --no-verify)">
-      <input type="checkbox" bind:checked={skipHooks} aria-label="Skip hooks" />
-      <span>Skip hooks</span>
+    <label class="opt" class:skipping={skipHooks} title={$t("commit.skipHooksTitle")}>
+      <input type="checkbox" bind:checked={skipHooks} aria-label={$t("commit.skipHooks")} />
+      <span>{$t("commit.skipHooks")}</span>
     </label>
     {#if summaryLength > 0}
       <span
         class="summary-hint"
         class:warn={summaryLength > 50}
         class:over={summaryLength > 72}
-        title="Summary (first line) length — keep it under 50, at most 72 characters"
+        title={$t("commit.summaryLength")}
       >
         {summaryLength}
       </span>
@@ -393,23 +393,23 @@
         <Send size={14} />
       {/if}
       {#if amend}
-        <span>Amend Last Commit{status.staged.length > 0 ? ` (+${status.staged.length})` : ""}</span>
+        <span>{status.staged.length > 0 ? $t("commit.amendButtonCount", { count: status.staged.length }) : $t("commit.amendButton")}</span>
       {:else}
-        <span>Commit{status.staged.length > 0 ? ` (${status.staged.length})` : ""}</span>
+        <span>{status.staged.length > 0 ? $t("commit.buttonCount", { count: status.staged.length }) : $t("commit.button")}</span>
       {/if}
     </button>
     {#if hasUnpushed && !amend}
-      <button class="undo-btn" onclick={handleUndoCommit} title="Undo last commit (keep changes staged)">
+      <button class="undo-btn" onclick={handleUndoCommit} title={$t("commit.undoTitle")}>
         <Undo2 size={14} />
       </button>
     {/if}
   </div>
 
   {#if hookOutput}
-    <div class="hook-output" role="status" aria-label="Hook output">
+    <div class="hook-output" role="status" aria-label={$t("commit.hookOutput")}>
       <div class="hook-head">
-        <span title="Everything git and the repository's hooks printed during the commit">Commit output — hooks: {hookOutput.hooks.join(", ")}</span>
-        <button class="hook-close" onclick={() => (hookOutput = null)} title="Dismiss" aria-label="Dismiss hook output">
+        <span title={$t("commit.hookOutputTitle")}>{$t("commit.hookOutputHead", { hooks: hookOutput.hooks.join(", ") })}</span>
+        <button class="hook-close" onclick={() => (hookOutput = null)} title={$t("common.dismiss")} aria-label={$t("commit.hookOutputDismiss")}>
           <X size={12} />
         </button>
       </div>

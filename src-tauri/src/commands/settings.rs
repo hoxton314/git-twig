@@ -142,6 +142,10 @@ pub struct AppSettings {
     /// frontend; only applied as CSS colour values.
     #[serde(default)]
     pub custom_themes: Vec<CustomTheme>,
+    // ── Language ─────────────────────────────────────────────────────
+    /// UI language: "system" or a locale id ("en", "pl", …).
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -153,6 +157,10 @@ pub struct CustomTheme {
     pub base: String,
     #[serde(default)]
     pub colors: std::collections::BTreeMap<String, String>,
+}
+
+fn default_language() -> String {
+    "system".to_string()
 }
 
 fn default_notify_ci() -> String {
@@ -263,6 +271,7 @@ impl Default for AppSettings {
             notify_new_commits: default_notify_new_commits(),
             notify_ci: default_notify_ci(),
             custom_themes: Vec::new(),
+            language: default_language(),
         }
     }
 }

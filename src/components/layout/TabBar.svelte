@@ -21,6 +21,14 @@
   import { openRepoGroup } from "../../lib/groupActions";
   import { groupMenuItems } from "../../lib/groupMenu";
   import { toast, toastError } from "../../lib/stores/toasts";
+  import { t, tr, type MessageKey } from "../../lib/i18n";
+
+  /** Section titles from repoMenu.ts → their messages. */
+  const SECTION_TITLES: Record<string, MessageKey> = {
+    Groups: "tabs.sectionGroups",
+    "Favorites & recent": "tabs.sectionRecent",
+    Repositories: "tabs.repositories",
+  };
   import { openRepoWithDialog } from "../../lib/appActions";
   import CloneFromGitHub from "../github/CloneFromGitHub.svelte";
   import CreateRepoOnGitHub from "../github/CreateRepoOnGitHub.svelte";
@@ -170,7 +178,7 @@
       const info = await tauri.openRepo(path);
       addRepo(info);
     } catch (err) {
-      toastError("Open repository failed", err);
+      toastError(tr("tabs.openFailed"), err);
     }
   }
 
@@ -287,8 +295,8 @@
   function copyPath(path: string) {
     navigator.clipboard
       .writeText(path)
-      .then(() => toast("success", "Path copied"))
-      .catch((err) => toastError("Copy failed", err));
+      .then(() => toast("success", tr("tabs.pathCopied")))
+      .catch((err) => toastError(tr("tabs.copyFailed"), err));
   }
 
   function onTabContextMenu(e: MouseEvent, path: string, info: RepoInfo) {
@@ -299,27 +307,27 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Close", shortcut: path === active ? keys["close_tab"] : undefined, action: () => closeTab(path) },
+        { label: tr("tabs.close"), shortcut: path === active ? keys["close_tab"] : undefined, action: () => closeTab(path) },
         {
-          label: "Close other tabs",
+          label: tr("tabs.closeOthers"),
           disabled: repos.length < 2,
           action: () => repos.filter(([p]) => p !== path).forEach(([p]) => closeTab(p)),
         },
         {
-          label: "Close tabs to the right",
+          label: tr("tabs.closeRight"),
           disabled: idx === repos.length - 1,
           action: () => repos.slice(idx + 1).forEach(([p]) => closeTab(p)),
         },
         { separator: true },
         {
-          label: favorite ? "Unpin from favorites" : "Pin to favorites",
+          label: favorite ? tr("tabs.unpin") : tr("tabs.pin"),
           action: () => {
             toggleFavoriteRepo(path, info.name);
-            toast("info", favorite ? `Unpinned ${info.name}` : `Pinned ${info.name} to favorites`);
+            toast("info", favorite ? tr("tabs.unpinned", { name: info.name }) : tr("tabs.pinned", { name: info.name }));
           },
         },
         {
-          label: "Add to group…",
+          label: tr("tabs.addToGroup"),
           action: () => {
             const items = groupMenuItems(path, info.name);
             const { clientX: x, clientY: y } = e;
@@ -328,13 +336,13 @@
           },
         },
         {
-          label: "Open folder",
-          action: () => tauri.openInFileManager(path).catch((err) => toastError("Could not open folder", err)),
+          label: tr("tabs.openFolder"),
+          action: () => tauri.openInFileManager(path).catch((err) => toastError(tr("tabs.openFolderFailed"), err)),
         },
-        { label: "Copy path", action: () => copyPath(path) },
+        { label: tr("tabs.copyPath"), action: () => copyPath(path) },
         { separator: true },
-        { label: "Move left", disabled: idx === 0, action: () => moveRepo(path, idx - 1) },
-        { label: "Move right", disabled: idx === repos.length - 1, action: () => moveRepo(path, idx + 1) },
+        { label: tr("tabs.moveLeft"), disabled: idx === 0, action: () => moveRepo(path, idx - 1) },
+        { label: tr("tabs.moveRight"), disabled: idx === repos.length - 1, action: () => moveRepo(path, idx + 1) },
       ],
     };
   }
@@ -347,8 +355,8 @@
     class="home-btn"
     class:active={homeActive}
     onclick={() => { $activeRepoPath = null; $currentView = "repos"; }}
-    title={withShortcut("Home", keys["go_home"])}
-    aria-label="Home"
+    title={withShortcut($t("tabs.home"), keys["go_home"])}
+    aria-label={$t("tabs.home")}
   >
     <House size={15} />
   </button>
@@ -367,7 +375,7 @@
       role="tab"
       aria-selected={active === path}
       tabindex="0"
-      title={`${path}\nDrag (or Alt+Shift+←/→) to reorder · right-click for more`}
+      title={$t("tabs.tabTitle", { path })}
     >
       {#if $favoritePaths.has(path)}
         <Pin size={12} class="tab-pin" aria-label="Pinned" />
@@ -381,8 +389,8 @@
       <button
         class="tab-close"
         onclick={(e) => handleCloseTab(e, path)}
-        title={withShortcut("Close tab", active === path ? keys["close_tab"] : undefined)}
-        aria-label="Close {info.name}"
+        title={withShortcut($t("tabs.closeTab"), active === path ? keys["close_tab"] : undefined)}
+        aria-label={$t("tabs.closeNamed", { name: info.name })}
       >
         <X size={12} />
       </button>
@@ -393,8 +401,8 @@
     class="tab-new"
     bind:this={plusBtnEl}
     onclick={toggleMenu}
-    title={withShortcut("Add repository", keys["open_repo"])}
-    aria-label="Add repository"
+    title={withShortcut($t("tabs.addRepo"), keys["open_repo"])}
+    aria-label={$t("tabs.addRepo")}
     aria-haspopup="menu"
     aria-expanded={showMenu}
   >
@@ -407,8 +415,8 @@
     class="settings-btn"
     class:active={view === "settings"}
     onclick={handleOpenSettings}
-    title={withShortcut("Settings", keys["go_settings"])}
-    aria-label="Settings"
+    title={withShortcut($t("tabs.settings"), keys["go_settings"])}
+    aria-label={$t("tabs.settings")}
   >
     <Settings size={15} />
   </button>
@@ -431,17 +439,17 @@
           bind:this={searchEl}
           bind:value={query}
           onkeydown={onSearchKeydown}
-          placeholder="Search repositories…"
-          aria-label="Search repositories"
+          placeholder={$t("tabs.searchPlaceholder")}
+          aria-label={$t("tabs.searchLabel")}
           aria-controls="tab-menu-results"
           aria-activedescendant={selectedIdx >= 0 ? `tab-menu-row-${selectedIdx}` : undefined}
           spellcheck="false"
           autocomplete="off"
         />
       </div>
-      <div class="tab-menu-results" id="tab-menu-results" role="listbox" aria-label="Repositories" bind:this={menuListEl}>
+      <div class="tab-menu-results" id="tab-menu-results" role="listbox" aria-label={$t("tabs.repositories")} bind:this={menuListEl}>
         {#each menuSections as section, si (section.title)}
-          <div class="tab-menu-section">{section.title}</div>
+          <div class="tab-menu-section">{$t(SECTION_TITLES[section.title] ?? "tabs.repositories")}</div>
           {#each section.rows as row, ri (row.path)}
             {@const idx = sectionStart[si] + ri}
             <button
@@ -453,43 +461,43 @@
               role="option"
               aria-selected={idx === selectedIdx}
               disabled={row.missing}
-              title={row.kind === "group" ? `Open the “${row.name}” group (${row.branch})` : row.missing ? `${row.path} (folder not found)` : row.path}
+              title={row.kind === "group" ? $t("tabs.openGroup", { name: row.name, repos: $t("tabs.repoCount", { count: row.count ?? 0 }) }) : row.missing ? $t("tabs.folderNotFound", { path: row.path }) : row.path}
               onclick={() => activateRow(row)}
               onmousemove={() => { if (!row.missing) selectedPath = row.path; }}
             >
               {#if row.kind === "favorite"}<Pin size={14} />{:else if row.kind === "recent"}<History size={14} />{:else}<GitBranch size={14} />{/if}
               <span class="tab-menu-repo-name">{#each highlightRuns(row.name, row.nameHits) as run, k (k)}{#if run.hit}<mark>{run.text}</mark>{:else}{run.text}{/if}{/each}</span>
-              {#if row.kind === "group"}<span class="tab-menu-repo-branch">{row.branch}</span>{:else if row.missing}<span class="tab-menu-repo-branch">missing</span>{:else if row.open}<span class="tab-menu-repo-branch">open</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
+              {#if row.kind === "group"}<span class="tab-menu-repo-branch">{$t("tabs.repoCount", { count: row.count ?? 0 })}</span>{:else if row.missing}<span class="tab-menu-repo-branch">{$t("tabs.missing")}</span>{:else if row.open}<span class="tab-menu-repo-branch">{$t("tabs.open")}</span>{:else if row.branch}<span class="tab-menu-repo-branch">{row.branch}</span>{/if}
             </button>
           {/each}
         {/each}
         {#if menuRows.length === 0}
           <div class="tab-menu-empty">
-            {query.trim() ? `No repositories match "${query.trim()}"` : "No recent repositories"}
+            {query.trim() ? $t("tabs.noMatch", { query: query.trim() }) : $t("tabs.noRecent")}
           </div>
         {/if}
       </div>
       <div class="tab-menu-divider"></div>
       <button class="tab-menu-item" onclick={handleOpenRepo}>
         <FolderOpen size={14} />
-        Open local...
+        {$t("tabs.openLocal")}
         {#if keys["open_repo"]}<span class="tab-menu-shortcut">{keys["open_repo"]}</span>{/if}
       </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; openNewRepoDialog("clone"); }}>
         <Link size={14} />
-        Clone from URL...
+        {$t("tabs.cloneUrl")}
       </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; showCloneModal = true; }}>
         <GitFork size={14} />
-        Clone from GitHub...
+        {$t("tabs.cloneGitHub")}
       </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; openNewRepoDialog("init"); }}>
         <FolderGit2 size={14} />
-        New repository...
+        {$t("tabs.newRepo")}
       </button>
       <button class="tab-menu-item" onclick={() => { showMenu = false; showCreateRepoModal = true; }}>
         <Plus size={14} />
-        New GitHub repo...
+        {$t("tabs.newGitHubRepo")}
       </button>
     </div>
   </div>

@@ -3,6 +3,7 @@
   import { globalSettings, updateGlobalSettings } from "../../lib/stores/settings";
   import { FolderOpen, Download, Upload } from "lucide-svelte";
   import { openSettingsFolder, exportSettingsToFile, importSettingsFromFile } from "../../lib/appActions";
+  import { LOCALES } from "../../lib/i18n";
 
   const s = $derived($globalSettings);
 
@@ -48,6 +49,25 @@
   <h1 class="section-heading">General</h1>
 
   <div class="setting-group">
+    <div class="setting-row">
+      <div class="setting-label">
+        <span class="label-text">Language</span>
+        <span class="label-hint">Language of the interface; System follows your operating system</span>
+      </div>
+      <div class="setting-control">
+        <select
+          value={s.language}
+          aria-label="Language"
+          onchange={(e) => updateGlobalSettings({ language: e.currentTarget.value })}
+        >
+          <option value="system">System</option>
+          {#each LOCALES as l (l.id)}
+            <option value={l.id}>{l.name}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+
     <div class="setting-row">
       <div class="setting-label">
         <span class="label-text">Default repository directory</span>
